@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue'
 import { Check, ChevronDown } from 'lucide-vue-next'
 import AppButton from './AppButton.vue'
 import { tr } from '@/i18n'
@@ -15,6 +15,7 @@ const props = withDefaults(defineProps<{
   modelValue: string
   options: Array<string | AppSelectOption>
   ariaLabel: string
+  id?: string
   menuLabel?: string
   menuClass?: string
   menuZIndex?: number
@@ -41,6 +42,7 @@ const emit = defineEmits<{
 }>()
 
 const root = ref<HTMLElement | null>(null)
+const menuId = useId()
 const menuTarget = ref<HTMLElement | string>('body')
 const menu = ref<HTMLElement | null>(null)
 const open = ref(false)
@@ -193,9 +195,11 @@ onUnmounted(() => {
       type="button"
       variant="secondary"
       class="app-select__trigger"
+      :id="id"
       :aria-label="ariaLabel"
       aria-haspopup="listbox"
       :aria-expanded="open"
+      :aria-controls="open ? menuId : undefined"
       :disabled="disabled || !normalizedOptions.length"
       @click="toggleMenu()"
       @keydown.down.prevent.stop="!open && toggleMenu()"
@@ -210,10 +214,10 @@ onUnmounted(() => {
       <ChevronDown class="app-select__chevron" :size="14" />
     </AppButton>
 
-    <Teleport :to="menuTarget">
+    <Teleport v-if="open" :to="menuTarget">
       <div
-        v-if="open"
         ref="menu"
+        :id="menuId"
         class="app-select__menu"
         :class="[menuClass, { 'is-up': opensUp, 'is-end': align === 'end', 'is-compact': density === 'compact' }]"
         :style="menuStyle"

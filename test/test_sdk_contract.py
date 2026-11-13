@@ -327,3 +327,55 @@ async def test_base64_output_and_inline_audio_are_not_sent_upstream(sdk_api, req
         headers={"authorization":"Bearer " + sdk.api_key})
     assert result.status_code == 422 and not state.seen
     assert not await PlatformCallReceipt.all().exists()
+
+
+@pytest.mark.parametrize("limit", [None, 65536])
+async def test_unconfigured_output_limit_is_omitted_and_completion_limit_is_forwarded(sdk_api, limit):
+    sdk, state, models = sdk_api
+    assert models[0].max_tokens is None
+    options = {} if limit is None else {"max_completion_tokens": limit}
+    await sdk.chat.completions.create(model=f"nv-{models[0].id}",
+        messages=[{"role":"user","content":"fixture"}], **options)
+    sent = json.loads(state.seen[-1].content)
+    assert "max_tokens" not in sent
+    if limit is None:
+        assert "max_completion_tokens" not in sent
+    else:
+        assert sent["max_completion_tokens"] == limit
+
+
+@pytest.mark.parametrize("finish_reason", ["stop", "length"])
+@pytest.mark.parametrize("limit", [None, 65536])
+async def test_chat_stream_preserves_long_content_reasoning_and_provider_finish(sdk_api, finish_reason, limit):
+    sdk, state, models = sdk_api
+    text = "长篇正文测试。" * 6000
+    reasoning = "供应商思考摘要"
+    base = {"id":"chatcmpl-long", "object":"chat.completion.chunk", "created":1, "model":"vendor-model"}
+    chunks = [
+        {**base, "choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":reasoning,
+            "encrypted_content":"opaque-provider-state"},"finish_reason":None}]},
+        *[{**base,"choices":[{"index":0,"delta":{"content":text[start:start+1000]},"finish_reason":None}]}
+          for start in range(0,len(text),1000)],
+        {**base,"choices":[{"index":0,"delta":{},"finish_reason":finish_reason}]},
+        {**base,"choices":[],"usage":{"prompt_tokens":11167,"completion_tokens":17301,
+            "total_tokens":28468,"completion_tokens_details":{"reasoning_tokens":5301}}},
+    ]
+    wire = "".join("data: " + json.dumps(chunk,ensure_ascii=False) + "\n\n" for chunk in chunks) + "data: [DONE]\n\n"
+    state.failure = 200, wire.encode(), {"content-type":"text/event-stream"}
+    options = {} if limit is None else {"max_completion_tokens":limit}
+    stream = await sdk.chat.completions.create(model=f"nv-{models[0].id}",
+        messages=[{"role":"user","content":"长篇测试"}],stream=True,stream_options={"include_usage":True},**options)
+    received = [chunk async for chunk in stream]
+    sent = json.loads(state.seen[-1].content)
+    assert sent["stream"] is True and sent["stream_options"]["include_usage"] is True
+    assert "max_tokens" not in sent
+    assert sent.get("max_completion_tokens") == limit
+    assert "".join(choice.delta.content or "" for chunk in received for choice in chunk.choices) == text
+    assert received[0].choices[0].delta.model_extra["reasoning_content"] == reasoning
+    assert received[0].choices[0].delta.model_extra["encrypted_content"] == "opaque-provider-state"
+    assert [choice.finish_reason for chunk in received for choice in chunk.choices if choice.finish_reason] == [finish_reason]
+    assert all(chunk.model == f"nv-{models[0].id}" for chunk in received)
+    assert received[-1].usage.completion_tokens == 17301
+    assert received[-1].usage.completion_tokens_details.reasoning_tokens == 5301
+    receipt = await PlatformCallReceipt.get()
+    assert receipt.state == "completed" and receipt.usage["output_tokens"] == 17301

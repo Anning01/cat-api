@@ -150,6 +150,8 @@ class PlatformApiKey(AbstractBaseModel):
     token_hash = fields.CharField(max_length=64, unique=True)
     preview = fields.CharField(max_length=20)
     revoked_at = fields.DatetimeField(null=True)
+    allowed_model_ids = fields.JSONField(null=True)
+    expires_at = fields.DatetimeField(null=True)
 
 
     class Meta:

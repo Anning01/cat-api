@@ -115,7 +115,7 @@ class Settings:
     CONSOLE_LOCALE: str = os.getenv('CONSOLE_LOCALE', 'zh').strip().lower()
     if CONSOLE_LOCALE not in {'zh', 'en'}:
         raise ValueError('CONSOLE_LOCALE must be zh or en')
-    AUTH_PROVIDER: str = os.getenv("AUTH_PROVIDER", "password").strip().lower()
+    AUTH_PROVIDER: str = os.getenv("AUTH_PROVIDER", "qiling").strip().lower()
     if AUTH_PROVIDER not in {"password", "qiling"}:
         raise ValueError("AUTH_PROVIDER must be password or qiling")
     QILING_API_BASE_URL: str = os.getenv(

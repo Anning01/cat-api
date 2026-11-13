@@ -25,6 +25,7 @@ class AuthContext:
     user: Optional[User] = None
     is_super_admin: bool = False
     platform_key_id: int | None = None
+    allowed_model_ids: frozenset[str] | None = None
 
     @property
     def is_anonymous(self) -> bool:

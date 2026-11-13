@@ -15,7 +15,7 @@ export interface CatalogModel {
 </script>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, useId } from 'vue'
 import {
   ArrowRight,
   Braces,
@@ -36,13 +36,16 @@ import {
 } from 'lucide-vue-next'
 import { tr } from '@/i18n'
 import { notice } from '@/shared/notice'
+import AppUnitPrice from '@/components/AppUnitPrice.vue'
 import AppSelect from '@/components/AppSelect.vue'
 
 const props = defineProps<{ models: CatalogModel[]; canManage?: boolean; loggedIn?: boolean }>()
 const kind = ref('all')
 const query = ref('')
 const sort = ref('default')
-const viewMode = ref<'grid' | 'compact' | 'list'>('list')
+const filtersOpen = ref(false)
+const viewMode = ref<'grid' | 'compact' | 'list'>('grid')
+const filterPanelId = useId()
 const copiedId = ref('')
 const selectedSeries = ref<string[]>([])
 const selectedResolutions = ref<string[]>([])
@@ -158,6 +161,7 @@ const hasSidebarFilter = computed(() => (
   selectedResolutions.value.length > 0 ||
   selectedFeatures.value.length > 0
 ))
+const selectedFilterCount = computed(() => selectedSeries.value.length + selectedResolutions.value.length + selectedFeatures.value.length)
 
 function resetSidebarFilters() {
   selectedSeries.value = []
@@ -229,7 +233,7 @@ const filtered = computed(() => {
 })
 
 const groups = computed(() => {
-  if (sort.value !== 'default' || kind.value !== 'all') return [{ kind: '', models: filtered.value }]
+  if (viewMode.value !== 'list' || sort.value !== 'default' || kind.value !== 'all') return [{ kind: '', models: filtered.value }]
   return categories.value.filter(value => value !== 'all')
     .map(value => ({ kind: value, models: filtered.value.filter(model => model.kinds[0] === value) }))
     .filter(group => group.models.length)
@@ -241,10 +245,6 @@ function count(value: string) {
 
 function icon(value: string) {
   return { image: Image, video: Film }[value] ?? Braces
-}
-
-function price(value: number) {
-  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value)
 }
 
 function isResolution(label: string): boolean {
@@ -304,8 +304,6 @@ function onModelAction(model: CatalogModel) {
       <div class="console-inline"><RouterLink v-if="canManage" class="catalog-setup-link" to="/settings">{{ tr('前往模型配置') }}</RouterLink><RouterLink v-else-if="!loggedIn" class="catalog-setup-link" to="/login">{{ tr('登录控制台') }}</RouterLink><RouterLink to="/platform/docs">{{ tr('查看接入文档') }}</RouterLink></div>
     </section>
     <template v-else>
-    <!-- SVG Defs for 3D Art -->
-
     <!-- Top Toolbar -->
     <div class="catalog-toolbar">
       <div class="filters" role="group" :aria-label="tr('模型类型')">
@@ -316,7 +314,6 @@ function onModelAction(model: CatalogModel) {
           :aria-pressed="kind === value"
           @click="kind = value"
         >
-          <component :is="icon(value)" v-if="value !== 'all'" :size="15" aria-hidden="true" />
           {{ labels[value] }}<span class="pill-badge">{{ count(value) }}</span>
         </button>
       </div>
@@ -339,45 +336,16 @@ function onModelAction(model: CatalogModel) {
           <AppSelect v-model="sort" :options="sortOptions" :ariaLabel="tr('模型排序')" density="compact" />
         </div>
 
-        <div class="catalog-view-modes" role="group" :aria-label="tr('视图模式')">
-          <button
-            type="button"
-            class="view-mode-btn"
-            :class="{ 'is-active': viewMode === 'grid' }"
-            :aria-pressed="viewMode === 'grid'"
-            :title="tr('大卡片视图')"
-            @click="viewMode = 'grid'"
-          >
-            <LayoutGrid :size="15" />
-          </button>
-          <button
-            type="button"
-            class="view-mode-btn"
-            :class="{ 'is-active': viewMode === 'compact' }"
-            :aria-pressed="viewMode === 'compact'"
-            :title="tr('紧凑网格视图')"
-            @click="viewMode = 'compact'"
-          >
-            <Grid3X3 :size="15" />
-          </button>
-          <button
-            type="button"
-            class="view-mode-btn"
-            :class="{ 'is-active': viewMode === 'list' }"
-            :aria-pressed="viewMode === 'list'"
-            :title="tr('列表视图')"
-            @click="viewMode = 'list'"
-          >
-            <List :size="15" />
-          </button>
-        </div>
+        <button type="button" class="catalog-filter-toggle" :class="{ 'is-active': filtersOpen || hasSidebarFilter }" :aria-expanded="filtersOpen" :aria-controls="filterPanelId" @click="filtersOpen = !filtersOpen">
+          <SlidersHorizontal :size="15" aria-hidden="true"/>{{ tr('筛选') }}<span v-if="selectedFilterCount">{{ selectedFilterCount }}</span>
+        </button>
       </div>
     </div>
 
-    <!-- Main Two-Column Layout -->
+    <!-- Optional filters and model cards -->
     <div class="catalog-layout">
-      <!-- Left Sidebar -->
-      <aside class="catalog-sidebar">
+      <!-- Detailed filters -->
+      <aside v-if="filtersOpen" :id="filterPanelId" class="catalog-sidebar" :aria-label="tr('筛选')">
         <div class="sidebar-header">
           <span class="sidebar-title">{{ tr('筛选') }}</span>
           <button
@@ -391,10 +359,44 @@ function onModelAction(model: CatalogModel) {
           </button>
         </div>
 
+        <div class="catalog-view-settings"><span>{{ tr('视图模式') }}</span>
+        <div class="catalog-view-modes" role="group" :aria-label="tr('视图模式')">
+          <button
+            type="button"
+            class="view-mode-btn"
+            :class="{ 'is-active': viewMode === 'grid' }"
+            :aria-pressed="viewMode === 'grid'"
+            :aria-label="tr('大卡片视图')"
+            @click="viewMode = 'grid'"
+          >
+            <LayoutGrid :size="15" />
+          </button>
+          <button
+            type="button"
+            class="view-mode-btn"
+            :class="{ 'is-active': viewMode === 'compact' }"
+            :aria-pressed="viewMode === 'compact'"
+            :aria-label="tr('紧凑网格视图')"
+            @click="viewMode = 'compact'"
+          >
+            <Grid3X3 :size="15" />
+          </button>
+          <button
+            type="button"
+            class="view-mode-btn"
+            :class="{ 'is-active': viewMode === 'list' }"
+            :aria-pressed="viewMode === 'list'"
+            :aria-label="tr('列表视图')"
+            @click="viewMode = 'list'"
+          >
+            <List :size="15" />
+          </button>
+        </div>
+        </div>
         <div class="sidebar-body">
           <!-- 模型系列 -->
           <div v-if="seriesOptions.length" class="sidebar-group">
-            <h4 class="sidebar-group-title">{{ tr('模型系列') }}</h4>
+            <h3 class="sidebar-group-title">{{ tr('模型系列') }}</h3>
             <label v-for="item in seriesOptions" :key="item.key" class="sidebar-checkbox-label">
               <input type="checkbox" :value="item.key" v-model="selectedSeries">
               <span class="checkbox-indicator" aria-hidden="true"></span>
@@ -405,7 +407,7 @@ function onModelAction(model: CatalogModel) {
 
           <!-- 分辨率 -->
           <div v-if="resolutionOptions.length" class="sidebar-group">
-            <h4 class="sidebar-group-title">{{ tr('分辨率') }}</h4>
+            <h3 class="sidebar-group-title">{{ tr('分辨率') }}</h3>
             <label v-for="item in resolutionOptions" :key="item.key" class="sidebar-checkbox-label">
               <input type="checkbox" :value="item.key" v-model="selectedResolutions">
               <span class="checkbox-indicator" aria-hidden="true"></span>
@@ -416,7 +418,7 @@ function onModelAction(model: CatalogModel) {
 
           <!-- 特性 -->
           <div v-if="featureOptions.length" class="sidebar-group">
-            <h4 class="sidebar-group-title">{{ tr('特性') }}</h4>
+            <h3 class="sidebar-group-title">{{ tr('特性') }}</h3>
             <label v-for="item in featureOptions" :key="item.key" class="sidebar-checkbox-label">
               <input type="checkbox" :value="item.key" v-model="selectedFeatures">
               <span class="checkbox-indicator" aria-hidden="true"></span>
@@ -437,11 +439,9 @@ function onModelAction(model: CatalogModel) {
         </div>
       </aside>
 
-      <!-- Right Main Content -->
+      <!-- Models -->
       <div class="catalog-content">
-        <div class="catalog-meta-row">
-          <p class="catalog-result" role="status">{{ tr('共 {p0} 个模型', { p0: filtered.length }) }}</p>
-        </div>
+        <p class="visually-hidden" role="status">{{ tr('共 {p0} 个模型', { p0: filtered.length }) }}</p>
 
         <template v-if="filtered.length">
           <section v-for="group in groups" :key="group.kind" class="catalog-group">
@@ -462,14 +462,14 @@ function onModelAction(model: CatalogModel) {
                     <component :is="icon(model.kinds[0] ?? '')" :size="13" :stroke-width="2" aria-hidden="true" />
                     <span>{{ model.kinds.map(value => labels[value]).join(' / ') }}</span>
                   </span>
-                  <span v-if="model.pricing.discount != null && model.pricing.discount < 1" class="model-discount-pill-top">
+                  <span v-if="getModelDiscount(model) < 1" class="model-discount-pill-top">
                     <Flame :size="12" class="flame-icon-top" aria-hidden="true" />
                     <span>{{ tr('官方价 {p0}折', { p0: getDiscountRate(model.pricing.discount) }) }}</span>
                   </span>
                 </div>
 
                 <!-- Model Title -->
-                <h3 :title="model.name">{{ model.name }}</h3>
+                <component :is="group.kind ? 'h3' : 'h2'" class="model-title" :title="model.name">{{ model.name }}</component>
 
                 <!-- Model ID & Capabilities -->
                 <div class="model-meta-bar">
@@ -489,6 +489,17 @@ function onModelAction(model: CatalogModel) {
                     <span v-if="model.tool_calls" class="tag-tool">{{ tr('工具调用') }}</span>
                     <span v-if="model.json_output" class="tag-json">{{ tr('结构化输出') }}</span>
                   </div>
+                  <div class="model-card-footer">
+                    <button
+                      type="button"
+                      class="model-action-btn"
+                      :title="tr('查看接口调用文档')"
+                      :aria-label="tr('接口文档')+' · '+model.name"
+                      @click="onModelAction(model)"
+                    >
+                      {{ tr('接口文档') }}<ArrowRight :size="14" aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
 
                 <!-- Pricing Rows -->
@@ -496,7 +507,7 @@ function onModelAction(model: CatalogModel) {
                   <template v-for="row in pricingRows(model).filter(row => !row.reference)" :key="row.label">
                     <div class="price-line">
                       <dt><Monitor v-if="model.kinds.includes('video') && isResolution(row.label)" :size="12" class="price-icon" aria-hidden="true" />{{ row.label }}</dt>
-                      <dd><strong>¥{{ price(row.value) }}</strong><span> / {{ row.unit }}</span></dd>
+                      <dd><AppUnitPrice :amount="row.value" :multiplier="getModelDiscount(model)" :unit="row.unit"/></dd>
                     </div>
                   </template>
                 </dl>
@@ -506,42 +517,11 @@ function onModelAction(model: CatalogModel) {
                   <summary>{{ tr('参考素材价格') }}<ChevronDown :size="13" aria-hidden="true" /></summary>
                   <dl class="model-prices">
                     <template v-for="row in pricingRows(model).filter(row => row.reference)" :key="row.label">
-                      <div class="price-line"><dt>{{ row.label }}</dt><dd><strong>¥{{ price(row.value) }}</strong><span> / {{ row.unit }}</span></dd></div>
+                      <div class="price-line"><dt>{{ row.label }}</dt><dd><AppUnitPrice :amount="row.value" :multiplier="getModelDiscount(model)" :unit="row.unit"/></dd></div>
                     </template>
                   </dl>
-                  <p v-if="model.pricing.input_image">{{ tr('输入图前 {p0} 张免费，之后 ¥{p1} / 张', { p0: model.pricing.input_image.first_free, p1: price(model.pricing.input_image.price_per_image) }) }}</p>
+                  <p v-if="model.pricing.input_image">{{ tr('输入图前 {p0} 张免费，之后', { p0: model.pricing.input_image.first_free }) }} <AppUnitPrice :amount="model.pricing.input_image.price_per_image" :multiplier="getModelDiscount(model)" :unit="tr('张')"/></p>
                 </details>
-
-                <!-- Card Footer -->
-                <div class="model-card-footer">
-                  <div class="footer-multiplier">
-                    <div v-if="model.pricing.discount != null && model.pricing.discount < 1" class="official-discount-badge">
-                      <div class="discount-flame-box">
-                        <Flame :size="15" class="flame-svg" aria-hidden="true" />
-                      </div>
-                      <div class="discount-content">
-                        <span class="discount-title">{{ tr('官方价') }}</span>
-                        <div class="discount-rate-row">
-                          <span class="discount-large-num">{{ getDiscountRate(model.pricing.discount) }}</span>
-                          <span class="discount-unit-text">{{ tr('折') }}</span>
-                          <span class="discount-raw-pill">×{{ model.pricing.discount }}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div v-else class="standard-pricing-badge">
-                      <span class="standard-pricing-text">{{ tr('官方标准价') }}</span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    class="model-action-btn"
-                    :title="tr('查看接口调用文档')"
-                    :aria-label="tr('查看接口调用文档')"
-                    @click="onModelAction(model)"
-                  >
-                    <ArrowRight :size="14" aria-hidden="true" />
-                  </button>
-                </div>
               </article>
             </div>
           </section>
@@ -561,813 +541,117 @@ function onModelAction(model: CatalogModel) {
 
 <style scoped>
 .model-directory { min-width: 0; width: 100%; }
-.catalog-initial-empty { display:flex; flex-direction:column; align-items:flex-start; gap:16px; padding:40px 32px; border:1px solid var(--app-border); border-radius:8px; background:var(--app-surface); color:var(--app-text-secondary); }
+.catalog-initial-empty { display:flex; flex-direction:column; align-items:flex-start; gap:16px; padding:32px; border:1px solid var(--app-border); border-radius:12px; background:var(--app-surface); color:var(--app-text-secondary); }
 .catalog-initial-empty h2 { margin:0; color:var(--app-text); font-size:20px; }
-.catalog-initial-empty p { max-width:64ch; margin:0; line-height:1.8; }
+.catalog-initial-empty p { max-width:64ch; margin:0; }
 .catalog-initial-empty .console-inline { gap:20px; flex-wrap:wrap; }
 .catalog-setup-link { display:inline-flex; align-items:center; min-height:40px; padding:8px 16px; border-radius:6px; background:var(--app-primary); color:var(--app-on-primary)!important; }
-@media(max-width:640px) { .catalog-initial-empty { padding:28px 20px; } }
-.art-svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 
-/* Top Toolbar */
-.catalog-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 24px;
-}
+.catalog-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; margin-block-end:12px; }
+.filters { display:flex; flex:1 1 400px; align-items:center; gap:4px; min-width:0; overflow-x:auto; }
+.filter-pill { display:inline-flex; flex-shrink:0; align-items:center; gap:5px; min-height:34px; padding:0 8px; border:1px solid transparent; border-radius:8px; background:transparent; color:var(--app-text-secondary); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; }
+.pill-badge { font-size:11px; font-variant-numeric:tabular-nums; padding:0 3px; }
+.filter-pill:hover { color:var(--app-text); background:var(--app-surface-muted); }
+.filter-pill[aria-pressed=true] { background:var(--app-accent-soft); color:var(--app-accent); border-color:var(--app-accent); }
+.catalog-controls { display:flex; flex:1 1 380px; justify-content:flex-end; align-items:center; gap:8px; min-width:0; }
+.catalog-search { display:flex; flex:1; align-items:center; gap:8px; min-width:120px; max-width:260px; min-height:36px; padding-inline:10px; border:1px solid var(--app-border); border-radius:8px; background:var(--app-surface); color:var(--app-text-secondary); }
+.catalog-search:focus-within { outline:2px solid var(--app-accent); outline-offset:2px; }
+.model-directory .catalog-search input { flex:1; width:100%; min-width:0; min-height:32px; padding:0; border:0; outline:0; background:transparent; color:var(--app-text); font:inherit; font-size:13px; }
+.catalog-search input::-webkit-search-cancel-button { display:none; }
+.catalog-search button { display:grid; place-items:center; min-width:24px; min-height:24px; padding:0; border:0; background:transparent; color:inherit; cursor:pointer; }
+.catalog-sort-box { flex:0 0 auto; }
+.catalog-sort-box :deep(.app-select__trigger) { min-height:36px; border-color:var(--app-border); }
+.catalog-filter-toggle { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:36px; padding:0 10px; border:1px solid var(--app-border); border-radius:8px; background:var(--app-surface-muted); color:var(--app-text); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; }
+.catalog-filter-toggle.is-active { background:var(--app-accent-soft); color:var(--app-accent); border-color:var(--app-accent); }
+.catalog-filter-toggle span { font-size:11px; font-variant-numeric:tabular-nums; }
 
-/* Category Filter Pills */
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.filter-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 38px;
-  padding: 0 16px;
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
-  background: var(--app-surface);
-  color: var(--app-text-secondary);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all .16s ease;
-}
-.filter-pill .pill-badge {
-  display: inline-block;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  padding: 1px 7px;
-  border-radius: 6px;
-  background: var(--app-surface-muted);
-  color: inherit;
-  margin-inline-start: 2px;
-}
-.filter-pill:hover {
-  background: var(--app-surface-hover);
-  border-color: var(--app-border-strong);
-  color: var(--app-text);
-}
-.filter-pill[aria-pressed="true"] {
-  background: var(--app-primary);
-  border-color: var(--app-accent, #6366f1);
-  color: var(--app-on-primary);
-  font-weight: 600;
-  box-shadow:none;
-}
-.filter-pill[aria-pressed="true"] .pill-badge {
-  background: rgba(255, 255, 255, 0.25);
-  color: var(--app-on-primary);
-}
+.catalog-layout { min-width:0; }
+.catalog-sidebar { padding:16px; margin-block-end:16px; border:1px solid var(--app-border); border-radius:12px; background:var(--app-surface); }
+.sidebar-header, .catalog-view-settings { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.sidebar-header { margin-block-end:12px; }
+.sidebar-title { font-size:14px; font-weight:600; }
+.sidebar-quick-reset { display:grid; place-items:center; min-width:32px; min-height:32px; background:transparent; color:var(--app-accent); cursor:pointer; }
+.catalog-view-settings { justify-content:flex-start; margin-block-end:16px; font-size:13px; color:var(--app-text-secondary); }
+.catalog-view-modes { display:inline-flex; gap:4px; padding:3px; border-radius:8px; background:var(--app-surface-muted); }
+.view-mode-btn { display:grid; place-items:center; width:32px; height:32px; border:0; border-radius:6px; background:transparent; color:var(--app-text-secondary); cursor:pointer; }
+.view-mode-btn:hover { color:var(--app-accent); }
+.view-mode-btn.is-active { background:var(--app-surface); color:var(--app-accent); }
+.sidebar-body { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); gap:16px 24px; }
+.sidebar-group-title { margin:0 0 8px; font-size:13px; font-weight:600; }
+.sidebar-checkbox-label { display:flex; align-items:center; gap:8px; min-height:30px; font-size:13px; cursor:pointer; }
+.sidebar-checkbox-label input { position:absolute; opacity:0; width:0; height:0; }
+.checkbox-indicator { position:relative; display:grid; place-items:center; width:16px; height:16px; flex-shrink:0; border:1px solid var(--app-border-strong); border-radius:4px; background:var(--app-surface); }
+.sidebar-checkbox-label input:checked + .checkbox-indicator { background:var(--app-primary); border-color:var(--app-primary); }
+.sidebar-checkbox-label input:checked + .checkbox-indicator::after { content:''; width:4px; height:8px; border:solid var(--app-on-primary); border-width:0 2px 2px 0; transform:rotate(45deg) translate(-.5px,-.5px); }
+.sidebar-checkbox-label input:focus-visible + .checkbox-indicator { outline:2px solid var(--app-accent); outline-offset:2px; }
+.checkbox-count { color:var(--app-text-secondary); font-size:12px; font-variant-numeric:tabular-nums; }
+.reset-filters-btn { display:inline-flex; align-items:center; gap:6px; grid-column:1 / -1; justify-self:start; min-height:32px; padding:0 10px; border:1px solid var(--app-border); border-radius:6px; background:var(--app-surface-muted); color:var(--app-text-secondary); font:inherit; font-size:12px; cursor:pointer; }
 
-/* Right Controls */
-.catalog-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.catalog-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  width: 250px;
-  padding: 0 14px;
-  border-radius: 6px;
-  background: var(--app-surface);
-  border: 1px solid var(--app-border);
-  color: var(--app-text-secondary);
-  transition: border-color .16s, box-shadow .16s;
-}
-.catalog-search:focus-within {
-  border-color: var(--app-accent);
-  box-shadow:none;
-}
-.model-directory .catalog-search input {
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--app-text);
-  font: inherit;
-  font-size: 13px;
-}
-.catalog-search input::-webkit-search-cancel-button { display: none; }
-.catalog-search button {
-  display: grid;
-  place-items: center;
-  padding: 3px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.catalog-sort-box :deep(.app-select__button) {
-  border-radius: 6px !important;
-  min-height: 38px;
-  padding: 0 14px;
-  background: var(--app-surface);
-  border: 1px solid var(--app-border);
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--app-text);
-}
-.catalog-sort-box :deep(.app-select__button:hover) {
-  border-color: var(--app-border-strong);
-  background: var(--app-surface-hover);
-}
-
-.catalog-view-modes {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--app-surface);
-  border: 1px solid var(--app-border);
-}
-.view-mode-btn {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--app-text-secondary);
-  cursor: pointer;
-  transition: all .16s ease;
-}
-.view-mode-btn:hover {
-  color: var(--app-text);
-  background: var(--app-surface-hover);
-}
-.view-mode-btn.is-active {
-  background: var(--app-primary);
-  color: var(--app-on-primary);
-  box-shadow:none;
-}
-
-/* Two-Column Layout */
-.catalog-layout {
-  display: flex;
-  align-items: flex-start;
-  gap: 24px;
-  margin-top: 10px;
-}
-
-/* Sidebar */
-.catalog-sidebar {
-  width: 200px;
-  flex-shrink: 0;
-  padding: 18px 16px;
-  border-radius: 14px;
-  border: 1px solid var(--app-border);
-  background: var(--app-surface);
-}
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--app-border);
-}
-.sidebar-title {
-  font-size: 14px;
-  font-weight: 650;
-  color: var(--app-text);
-}
-.sidebar-quick-reset {
-  display: grid;
-  place-items: center;
-  padding: 4px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--app-text-secondary);
-  cursor: pointer;
-}
-.sidebar-quick-reset:hover {
-  color: var(--app-accent);
-  background: var(--app-surface-hover);
-}
-.sidebar-body {
-  padding-top: 14px;
-}
-.sidebar-group {
-  margin-bottom: 20px;
-}
-.sidebar-group-title {
-  margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--app-text);
-}
-.sidebar-checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 9px;
-  font-size: 13px;
-  color: var(--app-text);
-  cursor: pointer;
-  user-select: none;
-}
-.sidebar-checkbox-label input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.checkbox-indicator {
-  position: relative;
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  border: 1.5px solid var(--app-border-strong);
-  background: var(--app-surface);
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  transition: all .16s ease;
-}
-.sidebar-checkbox-label:hover .checkbox-indicator {
-  border-color: var(--app-accent);
-}
-.sidebar-checkbox-label input:checked + .checkbox-indicator {
-  background: var(--app-primary);
-  border-color: var(--app-accent, #6366f1);
-}
-.sidebar-checkbox-label input:checked + .checkbox-indicator::after {
-  content: '';
-  width: 4px;
-  height: 8px;
-  border: solid #ffffff;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg) translate(-0.5px, -0.5px);
-}
-.sidebar-checkbox-label input:focus-visible + .checkbox-indicator {
-  outline: 2px solid var(--app-accent);
-  outline-offset: 2px;
-}
-.checkbox-text {
-  color: var(--app-text);
-  font-size: 13px;
-}
-.checkbox-count {
-  color: var(--app-text-secondary);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  margin-inline-start: 2px;
-  opacity: 0.85;
-}
-
-.reset-filters-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  margin-top: 8px;
-  padding: 8px 12px;
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
-  background: var(--app-surface-muted);
-  color: var(--app-text-secondary);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all .16s ease;
-}
-.reset-filters-btn:hover {
-  border-color: var(--app-accent);
-  color: var(--app-accent);
-  background: var(--app-accent-soft);
-}
-
-/* Main Content */
-.catalog-content {
-  flex: 1;
-  width: 100%;
-  min-width: 0;
-  container-type: inline-size;
-}
-.catalog-meta-row {
-  margin-bottom: 12px;
-}
-.catalog-result {
-  margin: 0;
-  color: var(--app-text-secondary);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.catalog-group {
-  margin-top: 14px;
-}
-.catalog-group-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 14px;
-  color: var(--app-text);
-  font-size: 15px;
-  font-weight: 650;
-}
-.catalog-group-title span {
-  margin-inline-start: 2px;
-  color: var(--app-text-secondary);
-  font-size: 12px;
-  font-weight: 400;
-}
-
-/* Card Grid Modes */
-.catalog {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  align-items: stretch;
-}
-.catalog.is-compact {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-.catalog.is-list {
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-
-/* Model Card */
-.model-card {
-  position: relative;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 20px 22px;
-  border: 1px solid var(--app-border);
-  border-radius: 8px;
-  background: var(--app-surface);
-  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
-  overflow: hidden;
-}
-.model-card:hover {
-  border-color: color-mix(in srgb, var(--app-accent) 45%, var(--app-border));
-  box-shadow:none;
-  transform:none;
-}
-
-/* 3D Art */
-.model-card-art {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  pointer-events: none;
-  opacity: 0.9;
-}
-
-/* Heading & Badge */
-.model-card-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-.model-discount-pill-top {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background:var(--app-warning-soft);
-  color: var(--app-on-primary);
-  font-size: 11px;
-  font-weight: 700;
-  box-shadow:none;
-  letter-spacing: 0.3px;
-
-}
-.flame-icon-top {
-  color: var(--app-on-primary);
-  flex-shrink: 0;
-}
-.model-kind-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  background: color-mix(in srgb, var(--app-accent) 12%, transparent);
-  color: var(--app-accent);
-}
-.model-kind-pill.is-video {
-  background: color-mix(in srgb, #8b5cf6 12%, transparent);
-  color: var(--app-accent);
-}
-.model-kind-pill.is-image {
-  background: color-mix(in srgb, #6366f1 12%, transparent);
-  color: var(--app-accent);
-}
-.model-kind-pill.is-text {
-  background: color-mix(in srgb, #a855f7 12%, transparent);
-  color: var(--app-accent);
-}
-
-.model-card h3 {
-  margin: 0 0 8px;
-  min-height: 44px;
-  font-size: 15px;
-  line-height: 1.4;
-  font-weight: 650;
-  color: var(--app-text);
-  letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
-}
-
-/* Meta Bar: ID + Tags */
-.model-meta-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-.model-id {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 7px;
-  border: 1px solid var(--app-border);
-  border-radius: 5px;
-  color: var(--app-text-secondary);
-  background: var(--app-surface-muted);
-  cursor: pointer;
-  transition: all .16s ease;
-}
-.model-id code {
-  font-family: ui-monospace, monospace;
-  font-size: 11px;
-}
-.model-id:hover {
-  color: var(--app-accent);
-  border-color: var(--app-accent);
-}
-
-.model-capabilities {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-.model-capabilities span {
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--app-surface-muted);
-  color: var(--app-text-secondary);
-  font-size: 11px;
-}
-.tag-ref {
-  color: var(--app-accent) !important;
-  background: color-mix(in srgb, var(--app-accent) 10%, transparent) !important;
-}
-
-/* Pricing Rows */
-.model-prices {
-  margin: 0;
-  flex: 1;
-}
-.price-line {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 5px 0;
-}
-.price-line dt {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--app-text-secondary);
-  font-size: 12px;
-}
-.price-icon {
-  color: var(--app-text-secondary);
-  opacity: 0.8;
-}
-.price-line dd {
-  margin: 0;
-  white-space: nowrap;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: var(--app-text-secondary);
-}
-.price-line strong {
-  color: var(--app-text);
-  font-size: 14px;
-  font-weight: 600;
-}
-.price-line dd span {
-  color: var(--app-text-secondary);
-  font-size: 11px;
-}
-
-/* Reference Pricing Accordion */
-.reference-prices {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--app-border);
-}
-.reference-prices summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  list-style: none;
-  color: var(--app-text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-}
-.reference-prices summary::-webkit-details-marker { display: none; }
-.reference-prices summary svg { transition: transform .16s ease; }
-.reference-prices[open] summary svg { transform: rotate(180deg); }
-.reference-prices[open] summary { margin-bottom: 8px; }
-.reference-prices p {
-  margin: 8px 0 0;
-  color: var(--app-text-secondary);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-/* Card Footer */
-.model-card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--app-border);
-}
-.footer-multiplier {
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-}
-.official-discount-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 12px;
-  border-radius: 10px;
-  background:var(--app-warning-soft);
-  border: 1px solid rgba(249, 115, 22, 0.35);
-  box-shadow:none;
-  transition: all 0.2s ease;
-}
-.official-discount-badge:hover {
-  transform:none;
-  box-shadow:none;
-  border-color: rgba(249, 115, 22, 0.55);
-}
-.discount-flame-box {
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  background:var(--app-warning-soft);
-  color: var(--app-on-primary);
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  box-shadow:none;
-}
-.flame-svg {
-  color: var(--app-on-primary);
-}
-.discount-content {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  line-height: 1.1;
-}
-.discount-title {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--app-text-secondary);
-  letter-spacing: 0.5px;
-}
-.discount-rate-row {
-  display: flex;
-  align-items: baseline;
-  gap: 2px;
-}
-.discount-large-num {
-  font-size: 20px;
-  font-weight: 900;
-  color: var(--creation-warning);
-  line-height: 1;
-}
-.discount-unit-text {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--creation-warning);
-  margin-right: 4px;
-}
-.discount-raw-pill {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: rgba(249, 115, 22, 0.16);
-  color: var(--creation-warning);
-  line-height: 1.2;
-}
-
-:global([data-app-theme="dark"]) .official-discount-badge {
-  background:var(--app-warning-soft);
-  border-color: rgba(249, 115, 22, 0.45);
-  box-shadow:none;
-}
-:global([data-app-theme="dark"]) .discount-large-num,
-:global([data-app-theme="dark"]) .discount-unit-text {
-  color: var(--creation-warning);
-}
-:global([data-app-theme="dark"]) .discount-raw-pill {
-  background: rgba(249, 115, 22, 0.25);
-  color: var(--creation-warning);
-}
-
-.standard-pricing-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: var(--app-surface-muted);
-  border: 1px solid var(--app-border);
-}
-.standard-pricing-text {
-  font-size: 11px;
-  color: var(--app-text-secondary);
-  font-weight: 500;
-}
-
-
-.model-action-btn {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 0;
-  background: var(--app-primary);
-  color: var(--app-on-primary);
-  cursor: pointer;
-  transition: transform .16s ease, box-shadow .16s ease;
-}
-.model-action-btn:hover {
-  transform:none;
-  box-shadow:none;
-}
-
-/* Compact / List Modes */
-.catalog.is-compact .model-card {
-  padding: 16px;
-}
-.catalog.is-compact .model-card h3 {
-  font-size: 14px;
-  min-height: 38px;
-}
-.catalog.is-compact .model-card-art {
-  display: none;
-}
-
-.catalog.is-list .model-card {
-  flex-direction: column;
-  align-items: stretch;
-  padding: 14px 20px;
-  gap: 12px;
-}
-.catalog.is-list .model-card-heading {
-  justify-content: flex-start;
-  margin: 0;
-}
-.catalog.is-list .model-kind-pill {
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.catalog.is-list .model-discount-pill-top {
-  display: none;
-}
-.catalog.is-list .model-card h3 {
-  min-height: 0;
-  margin: 0;
-}
-.catalog.is-list .model-card-art {
-  display: none;
-}
-.catalog.is-list .model-card-footer {
-  margin-top: 0;
-  padding-top: 10px;
-  gap: 16px;
-}
-.catalog.is-list .model-meta-bar,
-.catalog.is-list > .model-card > .model-prices {
-  margin: 0;
-}
-.catalog.is-list .discount-flame-box { display: none; }
-.catalog.is-list .discount-content { flex-direction: row; align-items: center; gap: 8px; }
-.catalog.is-list .discount-large-num { font-size: 14px; }
-.catalog.is-list .discount-title { font-size: 12px; }
-.catalog.is-list .official-discount-badge { padding: 4px 8px; border-radius: 6px; }
-.catalog.is-list .reference-prices { margin: 0; }
-@container (min-width: 620px) {
-  .catalog.is-list .model-card {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    column-gap: 24px;
-    row-gap: 10px;
-    align-items: start;
-  }
-  .catalog.is-list .model-card-heading { grid-column: 1; grid-row: 1; }
-  .catalog.is-list .model-card h3 { grid-column: 1; grid-row: 2; }
-  .catalog.is-list .model-meta-bar { grid-column: 1; grid-row: 3; }
-  .catalog.is-list > .model-card > .model-prices { grid-column: 2; grid-row: 1 / span 3; }
-  .catalog.is-list .reference-prices,
-  .catalog.is-list .model-card-footer { grid-column: 1 / -1; }
-}
-
-/* Empty State */
-.catalog-empty {
-  padding: 70px 20px;
-  text-align: center;
-  color: var(--app-text-secondary);
-}
-.catalog-empty h2 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--app-text);
-  margin: 12px 0 6px;
-}
-.catalog-empty p {
-  font-size: 13px;
-  margin: 0 0 16px;
-}
-.catalog-empty button {
-  border: 1px solid var(--app-border);
-  padding: 8px 18px;
-  border-radius: 6px;
-  background: var(--app-surface);
-  color: var(--app-accent);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all .16s ease;
-}
-.catalog-empty button:hover {
-  border-color: var(--app-accent);
-  background: var(--app-accent-soft);
-}
-
-button:focus-visible, summary:focus-visible, input:focus-visible {
-  outline: 2px solid var(--app-accent);
-  outline-offset: 2px;
-}
-
-/* Responsive */
-@media (max-width: 1180px) {
-  .catalog { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .catalog.is-compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-@media (max-width: 900px) {
-  .catalog-layout { flex-direction: column; }
-  .catalog-sidebar { width: 100%; }
-  .catalog.is-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 640px) {
-  .catalog { grid-template-columns: 1fr; }
-  .catalog.is-compact { grid-template-columns: 1fr; }
-  .catalog-controls { width: 100%; }
-  .catalog-search { flex: 1; width: auto; min-width: 140px; }
-  .model-card { padding: 18px; }
-  .model-card h3 { min-height: 0; }
-  .catalog-group { margin-top: 20px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  *, summary svg { transition: none !important; }
+.catalog-content { min-width:0; container:catalog-content / inline-size; }
+.catalog-group + .catalog-group { margin-block-start:20px; }
+.catalog-group-title { display:flex; align-items:center; gap:8px; margin-block-end:12px; }
+.catalog-group-title span { color:var(--app-text-secondary); font-size:12px; }
+.catalog { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr)); gap:12px; align-items:stretch; }
+.catalog.is-compact { grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr)); }
+.catalog.is-list { grid-template-columns:1fr; }
+.model-card { display:flex; flex-direction:column; gap:6px; min-width:0; padding:16px; border:1px solid var(--app-border); border-radius:12px; background:var(--app-surface); }
+.model-card:hover { border-color:var(--app-accent); }
+.model-card-heading { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.model-kind-pill, .model-discount-pill-top { display:inline-flex; align-items:center; gap:4px; min-height:22px; padding:2px 6px; border-radius:5px; font-size:11px; font-weight:500; }
+.model-kind-pill { background:var(--app-accent-soft); color:var(--app-accent); }
+.model-discount-pill-top { background:var(--app-warning-soft); color:var(--creation-warning); }
+.model-title { margin:0; color:var(--app-text); font-size:15px; font-weight:650; line-height:1.5; overflow-wrap:anywhere; }
+.model-meta-bar { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.model-id { display:inline-flex; align-items:center; gap:6px; min-height:24px; padding:2px 6px; border:1px solid transparent; border-radius:5px; background:var(--app-surface-muted); color:var(--app-text-secondary); cursor:pointer; }
+.model-id code { font:11px ui-monospace,monospace; }
+.model-id:hover { color:var(--app-accent); border-color:var(--app-accent); }
+.model-capabilities { display:flex; flex-wrap:wrap; gap:4px; }
+.model-capabilities span { font-size:11px; color:var(--app-text-secondary); }
+.model-capabilities span + span::before { content:'·'; margin-inline-end:4px; }
+.model-prices { margin:0; }
+.model-card > .model-prices { margin-block-start:4px; padding-block-start:8px; border-block-start:1px solid var(--app-border); }
+.price-line { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:2px 8px; padding-block:2px; }
+.price-line dt { display:inline-flex; align-items:center; gap:4px; color:var(--app-text-secondary); font-size:12px; }
+.price-line dd { min-width:0; margin:0; margin-inline-start:auto; font-size:12px; font-variant-numeric:tabular-nums; }
+.reference-prices { margin-block-start:0; }
+.reference-prices summary { display:flex; align-items:center; gap:6px; min-height:24px; width:fit-content; list-style:none; color:var(--app-text-secondary); font-size:12px; cursor:pointer; }
+.reference-prices summary::-webkit-details-marker { display:none; }
+.reference-prices[open] summary svg { transform:rotate(180deg); }
+.reference-prices p { margin:4px 0 0; color:var(--app-text-secondary); font-size:12px; }
+.model-card-footer { display:flex; justify-content:flex-end; margin-inline-start:auto; }
+.model-action-btn { display:inline-flex; align-items:center; gap:6px; min-height:28px; padding:0 6px; border:0; border-radius:6px; background:transparent; color:var(--app-accent); font:inherit; font-size:12px; cursor:pointer; }
+.model-action-btn:hover { background:var(--app-accent-soft); }
+.catalog.is-compact .model-card { padding:12px; gap:6px; }
+.catalog.is-compact .model-title { font-size:15px; }
+@container catalog-content (min-width:640px) {
+  .catalog.is-list .model-card { display:grid; grid-template-columns:minmax(0,1fr) minmax(240px,.8fr); gap:6px 24px; align-items:center; }
+  .catalog.is-list .model-card-heading { grid-column:1; grid-row:1; }
+  .catalog.is-list .model-title { grid-column:1; grid-row:2; }
+  .catalog.is-list .model-meta-bar { grid-column:1; grid-row:3; }
+  .catalog.is-list .model-card > .model-prices { grid-column:2; grid-row:1 / span 3; border:0; margin:0; padding:0; }
+  .catalog.is-list .reference-prices { grid-column:2; }
+}
+.catalog-empty { padding:40px 16px; text-align:center; color:var(--app-text-secondary); }
+.catalog-empty h2 { margin:12px 0 6px; }
+.catalog-empty button { padding:8px 16px; border:1px solid var(--app-border); border-radius:6px; background:var(--app-surface-muted); color:var(--app-accent); cursor:pointer; }
+button:focus-visible, summary:focus-visible { outline:2px solid var(--app-accent); outline-offset:2px; }
+@media (max-width:640px) {
+  .catalog-toolbar { gap:8px; }
+  .filters, .catalog-controls { flex-basis:100%; }
+  .catalog-search { min-width:100px; max-width:none; }
+  .catalog-search svg { display:none; }
+  .model-directory .catalog-search input { font-size:16px; }
+  .catalog-sort-box :deep(.app-select__trigger) { font-size:12px!important; padding-inline:6px; }
+  .catalog-filter-toggle { padding-inline:8px; }
+  .model-card { padding:16px; }
+}
+@media (pointer:coarse) {
+  .filter-pill, .catalog-filter-toggle, .model-action-btn, .model-id, .view-mode-btn, .reference-prices summary, .sidebar-checkbox-label { min-height:44px; }
+  .view-mode-btn { min-width:44px; }
+}
+@media (prefers-reduced-motion:no-preference) {
+  .model-card { transition:border-color 160ms ease-out; }
+  .model-action-btn svg { transition:transform 160ms ease-out; }
+  .model-action-btn:hover svg { transform:translateX(2px); }
 }
 </style>
-
-.model-discount-pill-top,.discount-flame-box,.flame-icon-top,.flame-svg{color:var(--creation-warning);background:var(--app-warning-soft)}
-.model-card-heading{gap:12px}.model-card h3{padding-right:0!important}.model-card-art{display:none}

@@ -304,6 +304,8 @@ async def video_status(ctx, public_id=None, key=None, *, refresh=False):
     job = await PlatformVideoJob.get_or_none(receipt_id=receipt.id) if receipt else None
     if not job:
         raise HTTPException(404,"视频请求不存在")
+    from services.platform.access import authorize_model
+    authorize_model(ctx, receipt.model_config_id)
     if receipt.state=="processing" or refresh and job.status=="completed":
         await refresh_job(job,receipt,renew=job.status=="completed")
         await job.refresh_from_db()

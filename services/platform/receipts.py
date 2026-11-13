@@ -5,6 +5,7 @@ from models.usage_record import ModelUsageRecord
 from schemas.platform_billing import PlatformReceiptOut, PlatformSettlement
 from services.platform.catalog import public_tariff
 from services.platform.calls import request_keys
+from services.platform.access import authorize_model
 
 
 async def call_receipt(request_id, ctx, *, by_key=False) -> PlatformReceiptOut:
@@ -15,6 +16,7 @@ async def call_receipt(request_id, ctx, *, by_key=False) -> PlatformReceiptOut:
     row = rows[0] if rows else None
     if row is None:
         raise HTTPException(404, "请求不存在")
+    authorize_model(ctx, row.model_config_id)
     settlement = PlatformSettlement(status="review" if row.state == "review" else
         "not_charged" if row.state == "rejected" else "pending")
     if row.state == "completed" and row.usage_record_id is not None:

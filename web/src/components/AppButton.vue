@@ -43,13 +43,14 @@ withDefaults(defineProps<{
 </template>
 
 <style scoped>
-.app-button { display:inline-flex; min-width:0; min-height:36px; align-items:center; justify-content:center; gap:7px; margin:0; padding:0 12px; border:1px solid transparent; border-radius:6px; color:var(--app-accent); background:transparent; font:inherit; font-size:14px; font-weight:500; line-height:1.2; white-space:nowrap; appearance:none; cursor:pointer; user-select:none; transition:background-color .15s,color .15s,border-color .15s; }
+.app-button { display:inline-flex; min-width:0; min-height:36px; align-items:center; justify-content:center; gap:7px; margin:0; padding:0 12px; border:1px solid transparent; border-radius:10px; color:var(--app-accent); background:transparent; font:inherit; font-size:14px; font-weight:500; line-height:1.2; white-space:nowrap; appearance:none; cursor:pointer; user-select:none; transition:background-color .15s,color .15s,border-color .15s,transform .14s ease-out; }
 .app-button--primary { color:var(--app-on-primary); background:var(--app-primary); border-color:var(--app-primary); }
 .app-button--primary:hover:not(:disabled) { filter:brightness(.94); }
-.app-button--secondary { color:var(--app-text); background:var(--app-surface); border-color:var(--app-border-strong); }
-.app-button--secondary:hover:not(:disabled) { background:var(--app-surface-hover); }
+.app-button--secondary { color:var(--app-text); background:var(--app-surface-muted); border-color:var(--app-border); }
+.app-button--secondary:hover:not(:disabled) { background:var(--app-accent-soft); border-color:var(--app-accent-soft); color:var(--app-accent); }
 .app-button--soft { color:var(--app-accent); background:var(--app-accent-soft); }
 .app-button--soft:hover:not(:disabled), .app-button--ghost:hover:not(:disabled), .app-button.is-active { background:var(--app-accent-soft); color:var(--app-accent); }
+.app-button--secondary.is-active { border-color:var(--app-accent); }
 .app-button--danger { color:var(--creation-danger); background:var(--app-danger-soft); }
 .app-button--danger:hover:not(:disabled) { border-color:var(--creation-danger); }
 .app-button--dark { color:var(--app-on-primary); background:var(--app-primary); }
@@ -63,6 +64,7 @@ withDefaults(defineProps<{
 .app-button:focus-visible { outline:2px solid var(--app-accent); outline-offset:3px; }
 .app-button:disabled { opacity:.5; cursor:not-allowed; }
 .app-button__spinner { width:1em; height:1em; animation:app-button-spin .8s linear infinite; }
+@media (prefers-reduced-motion:no-preference) { .app-button:active:not(:disabled) { transform:scale(.96); } }
 @keyframes app-button-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce) { .app-button { transition:none; } .app-button__spinner { animation:none; } }
 @media(max-width:767px) { .app-button { min-height:40px; } }

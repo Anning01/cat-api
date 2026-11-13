@@ -26,6 +26,10 @@ async def ensure_billing_integration_schema() -> None:
             "settlement_status": "VARCHAR(16) NOT NULL DEFAULT 'legacy'",
         },
         "platformcallreceipt": {"api_key_id": "INT"},
+        "account_api_keys": {
+            "allowed_model_ids": "JSON" if connection.capabilities.dialect == "sqlite" else "JSONB",
+            "expires_at": "TIMESTAMP" if connection.capabilities.dialect == "sqlite" else "TIMESTAMPTZ",
+        },
     }
     for table, columns in definitions.items():
         if connection.capabilities.dialect == "sqlite":

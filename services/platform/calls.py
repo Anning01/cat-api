@@ -14,6 +14,7 @@ from auth.models import PlatformCallReceipt
 from models.config import AiModelConfig
 from models.usage_record import ModelUsageRecord
 from services.balance import consume, ensure_solvent
+from services.platform.access import authorize_model
 from services.billing.pricing import compute_image_cost, compute_input_image_cost, compute_text_cost
 from utils.enums import AiTaskTypeEnum
 from utils.messages import localized_message
@@ -72,6 +73,7 @@ async def admit(ctx, model, body, key, *, validate=chat_options, kind="text"):
             if len(matched) > 1:
                 raise HTTPException(400, "该模型名称对应多个配置，请使用模型目录中的 ID")
             model_id = matched[0]
+        authorize_model(ctx, model_id)
         selected = eligible.filter(id=model_id)
         # Serialize admission across workers before checking concurrency or a repeated key.
         if not await selected.update(concurrency=F("concurrency")):

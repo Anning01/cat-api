@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from auth.deps import AuthContext, require_user, require_super_admin
 from controllers.billing import billing_scope
@@ -31,8 +31,11 @@ console_router.include_router(model_config_router, prefix="/config", dependencie
 
 
 class NewKey(BaseModel):
+    # Retained for older clients; the console does not categorize keys by purpose.
     purpose: Literal["api", "studio"] = "api"
     name: str = Field(min_length=1, max_length=80, pattern=r"\S")
+    allowed_model_ids: list[Annotated[str, Field(pattern=r"^nv-[1-9][0-9]{0,9}$")]] | None = Field(default=None, min_length=1, max_length=1000)
+    expires_at: AwareDatetime | None = None
 
 
 @console_router.get("/platform/usage", include_in_schema=False)
@@ -59,7 +62,8 @@ async def list_keys(ctx: AuthContext = Depends(console_owner)):
 @console_router.post("/platform/keys", include_in_schema=False)
 async def new_key(body: NewKey, response: Response, ctx: AuthContext = Depends(console_owner)):
     response.headers["Cache-Control"] = "no-store"
-    return ResponseSchema(data=await create_key(ctx, body.name.strip(), studio=body.purpose == "studio"))
+    return ResponseSchema(data=await create_key(ctx, body.name.strip(), studio=body.purpose == "studio",
+        allowed_model_ids=body.allowed_model_ids, expires_at=body.expires_at))
 
 
 @console_router.delete("/platform/keys/{key_id}", include_in_schema=False)
@@ -81,8 +85,9 @@ async def ai_document_index(request: Request):
 
 
 @developer_router.get("/models", summary="列出当前平台模型")
-async def models(_: AuthContext = Depends(developer_identity)):
-    return {"object":"list","data":[{"object":"model", "owned_by":"novelvids", **item} for item in await model_catalog()]}
+async def models(ctx: AuthContext = Depends(developer_identity)):
+    return {"object":"list","data":[{"object":"model", "owned_by":"novelvids", **item} for item in await model_catalog()
+        if ctx.allowed_model_ids is None or item["id"] in ctx.allowed_model_ids]}
 
 
 @developer_router.get("/account", summary="查询 Key 所属平台账户余额", response_model=PlatformAccountOut)

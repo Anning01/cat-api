@@ -147,6 +147,7 @@ watch(() => auth.token, stop)
 
 <style scoped>
 .qiling-login { display: grid; justify-items: start; gap: 8px; color: var(--app-text-secondary); }
+:global(.login-card) .qiling-login { justify-items: center; text-align: center; }
 .qiling-login__code { position: relative; isolation: isolate; width: var(--qiling-qr-size, 224px); max-width: 100%; aspect-ratio: 1; overflow: hidden; border-radius: 8px; background: var(--app-surface); }
 .qiling-login__qr { display: block; width: 100%; height: auto; }
 .qiling-login__code.is-expired .qiling-login__qr { filter: blur(9px); transform: scale(1.08); }

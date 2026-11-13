@@ -35,6 +35,7 @@ python3 - <<'PY'
 import socket
 for port in (9000, 3001):
     with socket.socket() as connection:
+        connection.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             connection.bind(('127.0.0.1', port))
         except OSError:

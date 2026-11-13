@@ -15,6 +15,7 @@ def test_postgres_console_routes_and_account_isolation():
 import asyncio
 import os
 from decimal import Decimal
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from urllib.parse import unquote, urlsplit
 
@@ -23,13 +24,15 @@ from httpx import ASGITransport, AsyncClient
 from tortoise import Tortoise
 
 from auth.deps import AuthContext, get_auth_context
-from auth.models import User, UserWallet
+from auth.models import PlatformApiKey, User, UserWallet
 from controllers.account import account_controller
 from main import app
 from models.config import AiModelConfig
 from schemas.billing import StatementFilters
 from services.balance import consume
 from services.billing.statements import billing_statements
+from services.platform.access import create_key
+from services.schema_compat import ensure_billing_integration_schema
 
 
 async def main():
@@ -48,16 +51,32 @@ async def main():
         })
         await Tortoise.generate_schemas()
         admin = await User.create(username='postgres-admin', is_super_admin=True)
+        legacy = await create_key(AuthContext(user=admin), 'Existing PostgreSQL key')
+        await Tortoise.get_connection('default').execute_script(
+            'ALTER TABLE account_api_keys DROP COLUMN allowed_model_ids; ALTER TABLE account_api_keys DROP COLUMN expires_at;')
+        await ensure_billing_integration_schema()
+        await ensure_billing_integration_schema()
+        preserved = await PlatformApiKey.get(id=legacy['id'])
+        assert preserved.allowed_model_ids is None and preserved.expires_at is None
         user = await User.create(username='postgres-user')
         await UserWallet.create(user=admin, balance=100)
         await account_controller.top_up(user.id, Decimal('12.12'), admin.id, 'Isolated PostgreSQL test')
         await consume(user.id, Decimal('0.123456'), strict=True)
-        await AiModelConfig.create(name='Isolated test model', task_type=7, task_types=[7],
+        model = await AiModelConfig.create(name='Isolated test model', task_type=7, task_types=[7],
             model='test-model', base_url='https://example.invalid/v1', api_key='not-a-provider-secret',
             api_protocol='openai_compatible', is_active=True,
             pricing={'type':'text', 'currency':'CNY', 'input_price_per_1m':1, 'output_price_per_1m':2})
         app.dependency_overrides[get_auth_context] = lambda: AuthContext(user=admin, is_super_admin=True)
         async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+            policy = (await client.post('/api/platform/keys', json={
+                'name':'Scoped PostgreSQL key', 'allowed_model_ids':[f'nv-{model.id}'],
+                'expires_at':(datetime.now(timezone.utc)+timedelta(days=7)).isoformat(),
+            })).json()['data']
+            headers = {'Authorization':'Bearer '+policy['key']}
+            assert (await client.get('/v1/models', headers=headers)).json()['data'][0]['id'] == f'nv-{model.id}'
+            assert (await PlatformApiKey.get(id=policy['id'])).allowed_model_ids == [f'nv-{model.id}']
+            await PlatformApiKey.filter(id=policy['id']).update(expires_at=datetime.now(timezone.utc)-timedelta(seconds=1))
+            assert (await client.get('/v1/models', headers=headers)).status_code == 401
             for path in [
                 '/api/users?role=user&balance_view=low', '/api/users?balance_view=negative', '/api/users/stats',
                 f'/api/users/{user.id}', f'/api/users/{user.id}/transactions', f'/api/users/{user.id}/events',
@@ -93,4 +112,4 @@ async def main():
 
 asyncio.run(main())
 '''
-    subprocess.run([sys.executable, '-c', script], check=True)
+    subprocess.run([sys.executable, '-c', script], check=True, env={**os.environ, 'AUTH_PROVIDER':'password'})
