@@ -128,9 +128,8 @@ class AccountController:
         if order is None:
             raise HTTPException(404, localized_message("充值订单不存在"))
 
-        if not is_super_admin and user_id != order.user_id:
-            if user_id != order.account_user_id:
-                raise HTTPException(403, localized_message("无权查看该充值订单"))
+        if not is_super_admin and user_id != order.account_user_id:
+            raise HTTPException(403, localized_message("无权查看该充值订单"))
 
         if order.status == "refunding":
             from services.recharge_refunds import recharge_refunds
@@ -200,7 +199,7 @@ class AccountController:
         """查询充值订单：超管可看全平台，普通用户仅看本人创建的充值订单。"""
         query = RechargeOrder.all()
         if not is_super_admin:
-            query = query.filter(Q(user_id=user_id) | Q(account_user_id=user_id))
+            query = query.filter(account_user_id=user_id)
 
         if status:
             query = query.filter(status=status)
@@ -323,9 +322,8 @@ class AccountController:
         if order is None:
             raise HTTPException(404, localized_message("充值订单不存在"))
 
-        if not is_super_admin and user_id != order.user_id:
-            if user_id != order.account_user_id:
-                raise HTTPException(403, localized_message("无权操作该充值订单"))
+        if not is_super_admin and user_id != order.account_user_id:
+            raise HTTPException(403, localized_message("无权操作该充值订单"))
 
         await self._finish_recharge(order, f"MOCK_TXN_{uuid.uuid4().hex[:10]}")
         await order.refresh_from_db()

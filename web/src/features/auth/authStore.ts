@@ -3,14 +3,14 @@ import { api, clearAuthToken, getAuthToken, setAuthToken } from '@/api'
 import type { AuthMe, AuthUser, LoginResult } from '@/types'
 export const useAuthStore = defineStore('auth', {
   state: () => ({ ready:false, token:getAuthToken(), user:null as AuthUser | null,
-    balance:'0', totalCost:0, qilingEnabled:false, legalReady:false, provider:'qiling' as 'qiling'|'password' }),
+    balance:'0', totalCost:0, qilingBound:false, qilingEnabled:false, legalReady:false, provider:'qiling' as 'qiling'|'password' }),
   getters: {
     isLoggedIn: state => Boolean(state.token && state.user),
     isSuperAdmin: state => state.user?.is_super_admin === true,
     canAccessBilling: state => Boolean(state.token && state.user),
   },
   actions: {
-    applyMe(me: AuthMe) { this.user=me.user; this.balance=me.balance; this.totalCost=Number(me.total_cost) },
+    applyMe(me: AuthMe) { this.user=me.user; this.balance=me.balance; this.totalCost=Number(me.total_cost); this.qilingBound=me.qiling_bound },
     async bootstrap() {
       if (this.ready) return
       const {data} = await api.authStatus()

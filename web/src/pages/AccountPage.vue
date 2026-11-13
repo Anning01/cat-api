@@ -6,6 +6,7 @@ import { Wallet, ArrowUpRight, RefreshCw, UserRound } from 'lucide-vue-next'
 import { API_BASE, getAuthToken, request } from '@/api'
 import { useAuthStore } from '@/features/auth/authStore'
 import AppButton from '@/components/AppButton.vue'
+import QilingLogin from '@/features/auth/QilingLogin.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import { appConfirm } from '@/shared/confirmDialog'
 import { notice } from '@/shared/notice'
@@ -20,6 +21,7 @@ const data=ref<Table>(), loading=ref(false), error=ref(''), page=ref(1), pageSiz
 const parties=ref<{id:number;name:string}[]>([])
 const rechargeOpen=ref(false), amount=ref('100'), recharge=ref<Recharge>(), qr=ref(''), paymentBusy=ref(false), paymentError=ref('')
 const creditUser=ref<Row>(), creditAmount=ref(''), creditBusy=ref(false)
+const bindOpen=ref(false), editOpen=ref(false), nickname=ref(''), profileBusy=ref(false), oldPassword=ref(''), newPassword=ref('')
 const total=computed(()=>data.value?.pagination.total??0)
 let epoch=0, poll:ReturnType<typeof setTimeout>|undefined, disposed=false
 const money=(value:unknown)=>Number(value??0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:6})
@@ -70,6 +72,19 @@ async function credit(){
   creditBusy.value=true
   try {await request('/account/balance/topup',{method:'POST',body:JSON.stringify({account_user_id:creditUser.value.id,amount:creditAmount.value,note:'管理员增额'})});creditUser.value=undefined;creditAmount.value='';notice.success('余额已更新');await load()}catch(e){notice.error(e instanceof Error?e.message:'增额失败')}finally{creditBusy.value=false}
 }
+async function updateProfile(){
+  profileBusy.value=true
+  try{await request('/auth/profile',{method:'PATCH',body:JSON.stringify({nickname:nickname.value})});await auth.refreshMe();editOpen.value=false;notice.success('昵称已更新')}catch(e){notice.error(e instanceof Error?e.message:'保存失败')}finally{profileBusy.value=false}
+}
+async function avatar(event:Event){
+  const input=event.target as HTMLInputElement,file=input.files?.[0];if(!file)return
+  const form=new FormData();form.append('file',file);profileBusy.value=true
+  try{await request('/auth/avatar',{method:'POST',body:form});await auth.refreshMe();notice.success('头像已更新')}catch(e){notice.error(e instanceof Error?e.message:'上传失败')}finally{profileBusy.value=false;input.value=''}
+}
+async function changePassword(){
+  profileBusy.value=true
+  try{await request('/auth/change-password',{method:'POST',body:JSON.stringify({old_password:oldPassword.value,new_password:newPassword.value})});oldPassword.value='';newPassword.value='';notice.success('密码已修改')}catch(e){notice.error(e instanceof Error?e.message:'修改失败')}finally{profileBusy.value=false}
+}
 async function exportCSV(){
   try {
     const query=filters();if(data.value?.snapshot_id!==undefined)query.set('snapshot_id',String(data.value.snapshot_id))
@@ -89,7 +104,10 @@ onBeforeUnmount(()=>{disposed=true;++epoch;clearTimeout(poll)})
   <p v-if="error" class="account-error" role="alert">{{error}} <button @click="load">重试</button></p>
   <template v-if="section==='profile'">
     <div class="account-cards"><section class="account-card"><Wallet class="accent" :size="26"/><p class="muted">可用余额</p><strong class="account-value">¥ {{money(auth.balance)}}</strong><AppButton @click="rechargeOpen=true">充值<ArrowUpRight :size="16"/></AppButton></section><section class="account-card"><p class="muted">累计消费</p><strong class="account-value">¥ {{money(auth.totalCost)}}</strong><RouterLink to="/billing">查看消费账单 →</RouterLink></section></div>
-    <section class="account-card identity-card"><UserRound :size="28"/><div><h2>{{auth.user?.nickname || auth.user?.username}}</h2><p class="muted">用户编号 {{auth.user?.id}} <span v-if="auth.isSuperAdmin"> · 超级管理员</span></p></div><RouterLink to="/platform/keys">管理 API Key →</RouterLink></section>
+    <section class="account-card identity-card"><img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="当前用户头像" width="52" height="52" style="border-radius:14px;object-fit:cover"><UserRound v-else :size="28"/><div><h2>{{auth.user?.nickname || auth.user?.username}}</h2><p class="muted">用户编号 {{auth.user?.id}} <span v-if="auth.isSuperAdmin"> · 超级管理员</span></p></div><AppButton variant="secondary" @click="nickname=auth.user?.nickname||auth.user?.username||'';editOpen=true">编辑昵称</AppButton><label>更换头像<input type="file" accept="image/png,image/jpeg,image/webp" :disabled="profileBusy" @change="avatar"></label><RouterLink to="/platform/keys">管理 API Key →</RouterLink></section>
+    <section v-if="auth.provider==='qiling'&&!auth.qilingBound" class="account-card" style="margin-top:24px"><h2>绑定器灵账号</h2><p class="muted">绑定后可使用器灵扫码登录此账户，保留现有余额和记录。</p><AppButton @click="bindOpen=true">绑定器灵</AppButton></section>
+    <section v-if="auth.provider==='password'" class="account-card" style="margin-top:24px"><h2>修改密码</h2><form class="account-filters" @submit.prevent="changePassword"><label>当前密码<input v-model="oldPassword" type="password" autocomplete="current-password" required></label><label>新密码<input v-model="newPassword" type="password" autocomplete="new-password" minlength="8" required></label><AppButton type="submit" :loading="profileBusy">修改密码</AppButton></form></section>
+    <p class="muted" style="margin-top:24px"><a href="/api/auth/legal/terms" target="_blank" rel="noopener">用户协议</a> · <a href="/api/auth/legal/privacy" target="_blank" rel="noopener">隐私政策</a> · <a href="/api/auth/legal/privacy#account-data-requests" target="_blank" rel="noopener">账号与数据申请</a></p>
   </template>
   <section v-else class="account-card account-ledger" :aria-busy="loading">
     <form class="account-filters" @submit.prevent="applyFilters">
@@ -105,6 +123,8 @@ onBeforeUnmount(()=>{disposed=true;++epoch;clearTimeout(poll)})
     <tr v-else><td>#{{row.id}}</td><td>{{row.user_name||row.user_id||'历史记录'}}</td><td>{{row.billing_type==='text'?'文本':row.billing_type==='image'?'图片':row.billing_type==='video'?'视频':row.billing_type}}</td><td>¥ {{money(row.cost)}}</td><td>{{row.balance_after==null?'—':'¥ '+money(row.balance_after)}}</td><td>{{row.created_at}}</td></tr></template></tbody></table></div>
     <div v-if="!data?.items.length" class="account-empty">{{loading?'正在加载…':'暂无记录'}}</div><AppPagination :page="page" :page-size="pageSize" :total="total" @page-change="next=>{page=next;load()}" @size-change="size=>{pageSize=size;applyFilters()}"/>
   </section>
+  <ElDialog class="console-dialog" v-model="bindOpen" title="绑定器灵账号" width="min(440px, calc(100vw - 32px))" align-center append-to-body destroy-on-close><div class="payment-dialog"><QilingLogin bind @bound="auth.refreshMe();bindOpen=false"/></div></ElDialog>
+  <ElDialog class="console-dialog" v-model="editOpen" title="编辑昵称" width="min(440px, calc(100vw - 32px))" align-center append-to-body :close-on-click-modal="!profileBusy" :show-close="!profileBusy"><form class="payment-dialog" @submit.prevent="updateProfile"><label>昵称<input v-model="nickname" maxlength="100" required></label><AppButton type="submit" :loading="profileBusy">保存</AppButton></form></ElDialog>
   <ElDialog class="console-dialog" v-model="rechargeOpen" title="账户充值" width="min(440px, calc(100vw - 32px))" align-center append-to-body :close-on-click-modal="!paymentBusy" :close-on-press-escape="!paymentBusy" :show-close="!paymentBusy">
     <div class="payment-dialog"><template v-if="!recharge"><p class="muted">充值金额将计入你在 Cat API 的账户余额。</p><form @submit.prevent="createRecharge"><label>充值金额（元）<input v-model="amount" type="number" min="0.01" max="999999" step="0.01" required></label><AppButton type="submit" :loading="paymentBusy">生成微信支付码</AppButton></form></template><template v-else><strong class="account-value">¥ {{money(recharge.amount)}}</strong><img v-if="qr" :src="qr" width="240" height="240" alt="微信支付二维码"><p>请使用微信扫码支付</p><p class="muted">{{orderLabels[recharge.status]||recharge.status}} · {{recharge.out_trade_no}}</p><AppButton variant="secondary" @click="checkPayment">我已支付，查询状态</AppButton></template><p v-if="paymentError" role="alert" class="account-error">{{paymentError}}</p></div>
   </ElDialog>

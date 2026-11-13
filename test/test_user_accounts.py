@@ -130,3 +130,18 @@ async def test_historical_member_key_and_late_settlement_keep_original_payer():
     assert record.account_user_id == owner.id and record.cost == Decimal('0.000014')
     assert await UserWallet.get(user_id=owner.id).values_list('balance',flat=True) == Decimal('10.123441')
     assert not await UserWallet.filter(user_id=actor.id).exists()
+
+
+async def test_old_order_actor_cannot_read_wallet_owners_current_balance():
+    owner = await User.create(username='order-owner')
+    actor = await User.create(username='order-actor')
+    await UserWallet.create(user=owner,balance=15)
+    order = await RechargeOrder.create(user_id=actor.id,account_user_id=owner.id,amount=10,
+        out_trade_no='historical-other-actor',status='paid')
+    with pytest.raises(HTTPException) as error:
+        await account_controller.query_recharge(order.out_trade_no,actor.id)
+    assert error.value.status_code == 403
+    assert (await account_controller.list_orders(actor.id,False))['pagination']['total'] == 0
+    assert (await account_controller.list_orders(owner.id,False))['pagination']['total'] == 1
+    _,amount = await account_controller.query_recharge(order.out_trade_no,owner.id)
+    assert amount == Decimal('15')
