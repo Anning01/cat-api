@@ -110,6 +110,7 @@ class Settings:
     DATETIME_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 
     # 自建工作台默认启用本地账号与账户。
+    LEGACY_WORKS_ENABLED: bool = _env_bool("LEGACY_WORKS_ENABLED", False)
     AUTH_ENABLED: bool = True
     AUTH_PROVIDER: str = os.getenv("AUTH_PROVIDER", "password").strip().lower()
     if AUTH_PROVIDER not in {"password", "qiling"}:

@@ -28,6 +28,7 @@ async def auth_status():
     legal, missing = profile_status()
     return ResponseSchema(data={"enabled": settings.AUTH_ENABLED, "provider": settings.AUTH_PROVIDER,
                                 "deployment_role": settings.DEPLOYMENT_ROLE,
+                                "legacy_works_enabled": settings.LEGACY_WORKS_ENABLED,
                                 "qiling_enabled": qiling.enabled(), "legal_ready": legal is not None,
                                 "legal_missing": missing})
 

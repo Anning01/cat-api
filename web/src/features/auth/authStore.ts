@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { api, clearAuthToken, getAuthToken, setAuthToken } from '@/api'
 import type { AuthMe, AuthUser, LoginResult } from '@/types'
 export const useAuthStore = defineStore('auth', {
-  state: () => ({ ready:false, token:getAuthToken(), user:null as AuthUser | null,
+  state: () => ({ ready:false, legacyWorksEnabled:false, token:getAuthToken(), user:null as AuthUser | null,
     balance:'0', totalCost:0, qilingBound:false, qilingEnabled:false, legalReady:false, provider:'qiling' as 'qiling'|'password' }),
   getters: {
     isLoggedIn: state => Boolean(state.token && state.user),
@@ -14,6 +14,7 @@ export const useAuthStore = defineStore('auth', {
     async bootstrap() {
       if (this.ready) return
       const {data} = await api.authStatus()
+      this.legacyWorksEnabled=data.legacy_works_enabled === true
       this.qilingEnabled=data.qiling_enabled === true; this.legalReady=data.legal_ready === true
       this.provider=data.provider ?? 'qiling'
       if (this.token) {

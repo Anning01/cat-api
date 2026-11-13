@@ -71,6 +71,7 @@ export interface AuthUser {
 }
 
 export interface AuthStatus {
+  legacy_works_enabled?: boolean
   deployment_role?: 'studio' | 'platform'
   enabled: boolean
   provider?: 'password' | 'qiling'

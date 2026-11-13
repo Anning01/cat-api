@@ -14,7 +14,7 @@ beforeEach(()=>{
 describe('Individual console',()=>{
   it.each([false,true])('contains only user navigation, super admin=%s', async admin=>{
     const pinia=createPinia();setActivePinia(pinia)
-    const auth=useAuthStore();auth.user={id:1,username:'user',nickname:'用户',avatar_url:'',is_super_admin:admin};auth.token='fixture';auth.balance='12.123456'
+    const auth=useAuthStore();auth.user={id:1,username:'user',nickname:'用户',avatar_url:'',is_super_admin:admin};auth.token='fixture';auth.legacyWorksEnabled=true;auth.balance='12.123456'
     const router=createRouter({history:createMemoryHistory(),routes:[{path:'/:pathMatch(.*)*',component:{template:'<div />'}}]})
     await router.push('/platform/models');await router.isReady()
     const wrapper=mount(App,{global:{plugins:[pinia,router,i18n]}})
