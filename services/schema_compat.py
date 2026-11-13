@@ -19,6 +19,7 @@ async def ensure_billing_integration_schema() -> None:
     """Add platform accounting fields while preserving historical records."""
     connection = Tortoise.get_connection("default")
     definitions = {
+        "general_configs": {"api_docs_url":"VARCHAR(2048)"},
         "model_usage_records": {
             "account_user_id": "INT",
             "platform_cost": "DECIMAL(18,6)",
@@ -27,6 +28,7 @@ async def ensure_billing_integration_schema() -> None:
         },
         "platformcallreceipt": {"api_key_id": "INT"},
         "account_api_keys": {
+            "encrypted_token": "TEXT",
             "allowed_model_ids": "JSON" if connection.capabilities.dialect == "sqlite" else "JSONB",
             "expires_at": "TIMESTAMP" if connection.capabilities.dialect == "sqlite" else "TIMESTAMPTZ",
         },

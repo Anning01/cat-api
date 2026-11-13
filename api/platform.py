@@ -14,9 +14,9 @@ from schemas.platform_chat import ChatRequest
 from schemas.platform_billing import PlatformReceiptOut, PlatformAccountOut
 from services.platform.receipts import call_receipt
 from services.platform.videos import VideoRequest, submit_video, video_status
-from services.platform.images import ImageRequest, generate as generate_platform_image
+from services.platform.images import needs_pixel_client, ImageRequest, generate as generate_platform_image
 from services.platform.chat import complete
-from services.platform.access import console_owner, create_key, developer_identity, key_view, revoke_key, studio_identity
+from services.platform.access import console_owner, create_key, developer_identity, key_view, reveal_key, revoke_key, studio_identity
 from services.platform.catalog import model_catalog
 from services.platform.http_contract import DeveloperRoute
 from services.platform.documentation import agent_guide
@@ -72,6 +72,13 @@ async def delete_key(key_id: int, ctx: AuthContext = Depends(console_owner)):
     return ResponseSchema()
 
 
+@console_router.get("/platform/keys/{key_id}/secret", include_in_schema=False)
+async def read_key_secret(key_id: int, response: Response, ctx: AuthContext = Depends(console_owner)):
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return ResponseSchema(data=await reveal_key(ctx, key_id))
+
+
 @developer_router.get("/agent-guide.md", include_in_schema=False)
 async def ai_integration_guide(request: Request):
     base_url = str(request.url).split("?", 1)[0].removesuffix("/agent-guide.md")
@@ -84,10 +91,19 @@ async def ai_document_index(request: Request):
     return Response(f"# 猫影模型 API\n\n- [AI Agent 接入说明]({base_url}/agent-guide.md)\n- [OpenAPI]({base_url}/openapi.json)\n", media_type="text/plain")
 
 
+async def legacy_studio_images(request: Request, ctx):
+    capabilities = request.headers.get("X-NovelVids-Capabilities")
+    if capabilities is not None:
+        return "pixel_tier_images" not in {v.strip() for v in capabilities.split(",")}
+    return await StudioKeyGrant.filter(key_id=ctx.platform_key_id).exists()
+
+
 @developer_router.get("/models", summary="列出当前平台模型")
-async def models(ctx: AuthContext = Depends(developer_identity)):
+async def models(request: Request, ctx: AuthContext = Depends(developer_identity)):
+    legacy = await legacy_studio_images(request, ctx)
     return {"object":"list","data":[{"object":"model", "owned_by":"novelvids", **item} for item in await model_catalog()
-        if ctx.allowed_model_ids is None or item["id"] in ctx.allowed_model_ids]}
+        if (ctx.allowed_model_ids is None or item["id"] in ctx.allowed_model_ids)
+        and not (legacy and needs_pixel_client(item["image_model_type"], item["pricing"]))]}
 
 
 @developer_router.get("/account", summary="查询 Key 所属平台账户余额", response_model=PlatformAccountOut)
@@ -126,18 +142,24 @@ async def studio_media_lease(body: UploadSpec, response: Response, ctx: AuthCont
 
 
 @developer_router.post("/images/generations", summary="生成图像并返回结果链接")
-async def images(body: ImageRequest, ctx: AuthContext = Depends(developer_identity),
+async def images(request: Request, body: ImageRequest, ctx: AuthContext = Depends(developer_identity),
     idempotency_key: Annotated[str | None, Header(min_length=1, max_length=200)] = None):
-    return await generate_platform_image(ctx, body, idempotency_key)
+    return await generate_platform_image(ctx, body, idempotency_key, legacy_studio=await legacy_studio_images(request, ctx))
 
 
 @developer_router.post("/images/edits", summary="使用已上传的参考图", openapi_extra=sdk_request_schema(ImageRequest))
 async def edit_images(request: Request, ctx: AuthContext = Depends(developer_identity),
     idempotency_key: Annotated[str | None, Header(min_length=1, max_length=200)] = None):
     body = validated_body(ImageRequest, await request.json())
-    if not body.image:
+    if not body.reference_urls():
         raise HTTPException(400, "image must contain reference URLs uploaded to temporary storage")
-    return await generate_platform_image(ctx, body, idempotency_key)
+    return await generate_platform_image(ctx, body, idempotency_key, edit=True, legacy_studio=await legacy_studio_images(request, ctx))
+
+
+@developer_router.post("/images", summary="OpenRouter 原生图片接口")
+async def openrouter_images(request: Request, body: ImageRequest, ctx: AuthContext = Depends(developer_identity),
+    idempotency_key: Annotated[str | None, Header(min_length=1, max_length=200)] = None):
+    return await generate_platform_image(ctx, body, idempotency_key, protocol="openrouter_compatible", legacy_studio=await legacy_studio_images(request, ctx))
 
 
 @developer_router.post("/media/uploads", summary="申请临时 OSS 直传地址")
@@ -181,3 +203,28 @@ async def video_content(identifier: str, variant: Literal["video", "thumbnail", 
     if job["status"] != "completed" or not url:
         raise HTTPException(409, "Video is not ready")
     return RedirectResponse(url, status_code=307, headers={"Cache-Control":"no-store"})
+
+
+from api.native import router as native_router
+developer_router.include_router(native_router)
+
+
+from services.platform.docs_settings import DocumentationSettings, documentation_settings, update_documentation
+
+
+@console_router.get("/platform/documentation", include_in_schema=False)
+async def read_documentation_settings():
+    return ResponseSchema(data=(await documentation_settings()).model_dump())
+
+
+@console_router.patch("/platform/documentation", include_in_schema=False)
+async def save_documentation_settings(body: DocumentationSettings, ctx: AuthContext = Depends(require_super_admin)):
+    return ResponseSchema(data=(await update_documentation(body)).model_dump())
+
+
+@console_router.get("/platform/openapi-export", include_in_schema=False)
+async def export_public_openapi():
+    from fastapi.responses import JSONResponse
+    from main import developer_api
+    return JSONResponse(developer_api.openapi(), headers={
+        "Content-Disposition":'attachment; filename="cat-api-openapi.json"', "Cache-Control":"no-store"})

@@ -1,5 +1,8 @@
 {
   "common": {
+    "单图生成": "Single image",
+    "图层拆分": "Layer decomposition",
+    "填入官方像素分档价": "Apply official pixel-tier prices",
     "编辑本地价格": "Edit local pricing",
     "按受理时价格结算。供应商返回计费 token 时按 token 结算；按时长结算时优先用供应商报告时长，固定时长订单缺少报告时沿用订购时长。参考视频缺少计费用量时进入核对。": "Pricing is frozen at admission. Reported billable tokens are used for token tariffs. Duration-based settlement uses reported duration when available, otherwise the ordered fixed duration. Missing billable reference video usage requires reconciliation.",
     "使用平台的 /v1 地址、视频模型 ID 和 API Key。": "Use the platform /v1 base URL, a video model ID, and an API key.",

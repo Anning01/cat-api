@@ -1,6 +1,6 @@
 export type ImageApiProtocol = 'novelvids' | 'openai_compatible' | 'openrouter_compatible' | 'volcengine_ark' | 'minimax' | 'autodl' | 'dashscope' | 'volcengine_mediakit' | 'volcengine_openspeech'
 
-export type ImageModelType = 'seedream_5_lite' | 'seedream_5_pro' | 'seedream_5_flash' | 'gpt_image_2' | 'gpt_image_2_5' | 'gpt_image_2_6' | 'gpt_image_2_6_sunburst' | 'gpt_image_2_6_flare'
+export type ImageModelType = 'seedream_5_5' | 'seedream_5_lite' | 'seedream_5_pro' | 'seedream_5_flash' | 'gpt_image_2' | 'gpt_image_2_5' | 'gpt_image_2_6' | 'gpt_image_2_6_sunburst' | 'gpt_image_2_6_flare'
 
 export type VideoGenerationModelType = 'seedance_2' | 'seedance_2_fast' | 'seedance_2_mini' | 'seedance_2_5' | 'minimax_h3' | 'minimax_h3_autodl' | 'wan_3'
 
@@ -14,7 +14,7 @@ export interface ModelPricing {
   prices?: Record<string, number>
   input_image?: { first_free: number; price_per_image: number }
   video_reference_prices?: Record<string, number>
-  billing_unit?: 'token' | 'second' | 'minute'
+  billing_unit?: 'pixel_tier' | 'token' | 'second' | 'minute'
   tiers?: Array<{ short_side_max: number; fps_max: number; price: number }>
   discount?: number
   discount_description?: string
@@ -25,6 +25,7 @@ export interface GenerationCapabilities {
   audio_recognition?: { base_url: string; model: string; api_protocol: ImageApiProtocol; pricing: ModelPricing }
   media_processing?: { base_url: string; model: string; api_protocol: ImageApiProtocol; processing_options: Record<string, unknown>; pricing: ModelPricing; resolutions?: Array<{ value: string; short_side: number }> }
   image: Record<string, string[]>
+  image_pricing?: Record<string, ModelPricing>
   image_protocols?: Partial<Record<ImageModelType, ImageApiProtocol[]>>
   video: Record<string, string[]>
   video_protocols?: Partial<Record<VideoGenerationModelType, Array<{ value: ImageApiProtocol; label: string; resolutions: string[] }>>>

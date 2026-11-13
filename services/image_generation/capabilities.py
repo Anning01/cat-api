@@ -135,7 +135,10 @@ CAPABILITIES: dict[ImageModelTypeEnum, ImageModelCapabilities] = {
        for model_type in GIF_IMAGE_MODELS},
 }
 
+CAPABILITIES[ImageModelTypeEnum.seedream_5_5] = CAPABILITIES[ImageModelTypeEnum.seedream_5_pro]
+
 PROTOCOLS: dict[ImageModelTypeEnum, tuple[ImageApiProtocol, ...]] = {
+    ImageModelTypeEnum.seedream_5_5: (ImageApiProtocol.volcengine_ark,),
     ImageModelTypeEnum.seedream_5_pro: (
         ImageApiProtocol.volcengine_ark,
         ImageApiProtocol.openrouter_compatible,

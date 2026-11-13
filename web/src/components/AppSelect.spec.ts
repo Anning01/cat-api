@@ -1,8 +1,8 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AppSelect from './AppSelect.vue'
 
-afterEach(() => { document.body.innerHTML = '' })
+afterEach(() => { document.body.innerHTML = ''; vi.restoreAllMocks() })
 
 it('associates labels with the trigger and supports keyboard selection and dismissal', async () => {
   const wrapper = mount(AppSelect, {
@@ -29,5 +29,24 @@ it('associates labels with the trigger and supports keyboard selection and dismi
   await flushPromises()
   expect(document.querySelector('[role=listbox]')).toBeNull()
   expect(document.activeElement).toBe(trigger.element)
+  wrapper.unmount()
+})
+
+it('matches the trigger width by default and updates it on resize', async () => {
+  const wrapper=mount(AppSelect,{props:{modelValue:'a',options:['a','b'],ariaLabel:'Width'},attachTo:document.body})
+  const rect=vi.spyOn(wrapper.element,'getBoundingClientRect').mockReturnValue(new DOMRect(20,40,320,36))
+  await wrapper.get('button').trigger('click');await flushPromises()
+  const list=document.querySelector<HTMLElement>('[role=listbox]')!
+  expect(list.style.width).toBe('320px')
+  rect.mockReturnValue(new DOMRect(20,40,440,36))
+  window.dispatchEvent(new Event('resize'));await flushPromises()
+  expect(list.style.width).toBe('440px')
+  wrapper.unmount()
+})
+
+it.each([['auto','max-content'],[260,'260px']] as const)('honors an explicit menu width of %s', async(menuWidth,expected)=>{
+  const wrapper=mount(AppSelect,{props:{modelValue:'a',options:['a','b'],ariaLabel:'Width',menuWidth},attachTo:document.body})
+  await wrapper.get('button').trigger('click');await flushPromises()
+  expect(document.querySelector<HTMLElement>('[role=listbox]')!.style.width).toBe(expected)
   wrapper.unmount()
 })

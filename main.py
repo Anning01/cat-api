@@ -67,7 +67,7 @@ async def lifespan(_app):
 
 app = FastAPI(title="Cat API", lifespan=lifespan, docs_url="/console-docs")
 app.add_middleware(CORSMiddleware, allow_origins=settings.ALLOWED_ORIGINS,
-                   allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Request-Id", "X-Novelvids-Request-Id"])
+                   allow_methods=["*"], allow_headers=["*"], expose_headers=["*"])
 if settings.SECURITY_HEADERS_ENABLED:
     app.add_middleware(SecurityHeadersMiddleware, content_security_policy=settings.CONTENT_SECURITY_POLICY,
                        docs_content_security_policy=settings.DOCS_CONTENT_SECURITY_POLICY)
@@ -89,7 +89,16 @@ app.include_router(user_router, prefix="/api/users")
 developer_api = FastAPI(title="Cat API", version="1", docs_url="/docs", redoc_url=None,
                         exception_handlers=DEVELOPER_EXCEPTION_HANDLERS)
 developer_api.include_router(developer_router)
+from services.platform.openapi import public_openapi
+def developer_openapi():
+    if developer_api.openapi_schema is None:
+        developer_api.openapi_schema = public_openapi(developer_api)
+    return developer_api.openapi_schema
+developer_api.openapi = developer_openapi
 app.mount("/v1", developer_api)
+# Native SDKs can retain their official paths and replace only the origin.
+from api.native import router as native_router
+app.include_router(native_router)
 
 
 @app.get("/health")

@@ -1,9 +1,8 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from tortoise.timezone import now
 
 from auth.deps import AuthContext, get_auth_context
 from auth.models import BalanceTransaction, RechargeOrder, User, UserWallet, UserAdminEvent
@@ -70,11 +69,19 @@ async def test_admin_routes_and_personal_ledger_do_not_cross_account_boundaries(
 async def test_order_filters_use_exact_owner_and_inclusive_dates():
     owner = await User.create(username='similar-name')
     other = await User.create(username='similar-name-2')
-    for user in (owner, other):
-        await RechargeOrder.create(account_user_id=user.id, user_id=user.id, amount=10, out_trade_no=f'order-{user.id}', status='paid')
-    today = now().astimezone(__import__('config').settings.tz).date()
+    today = date(2026, 11, 14)
+    midnight = datetime(2026, 11, 13, 16, tzinfo=timezone.utc)
+    for index, (user, created) in enumerate([
+        (owner, midnight - timedelta(microseconds=1)),
+        (owner, midnight),
+        (other, midnight),
+        (owner, midnight + timedelta(days=1)),
+    ]):
+        await RechargeOrder.create(account_user_id=user.id, user_id=user.id, amount=10,
+            out_trade_no=f'order-{index}', status='paid', created_at=created)
     result = await account_controller.list_orders(owner.id, True, account_user_id=owner.id, start_date=today, end_date=today)
     assert result['pagination']['total'] == 1
+    assert result['items'][0]['out_trade_no'] == 'order-1'
     assert result['items'][0]['account_user_id'] == owner.id
     with pytest.raises(Exception) as error:
         await account_controller.list_orders(owner.id, False, account_user_id=other.id)
@@ -83,7 +90,7 @@ async def test_order_filters_use_exact_owner_and_inclusive_dates():
         await account_controller.list_orders(owner.id, True, end_date=date.max)
     assert error.value.status_code == 422
     result = await account_controller.list_orders(owner.id, True, end_date=today-timedelta(days=1))
-    assert result['pagination']['total'] == 0
+    assert [item['out_trade_no'] for item in result['items']] == ['order-0']
 
 
 async def test_audit_schema_upgrade_is_repeatable_and_keeps_records():

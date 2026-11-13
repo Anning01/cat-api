@@ -32,6 +32,9 @@ class Settings:
     DEBUG: bool = _env_bool("DEBUG", True)
     GENERATE_SCHEMAS: bool = _env_bool("GENERATE_SCHEMAS", True)
 
+    API_DOCUMENTATION_URL: str = os.getenv("API_DOCUMENTATION_URL", "")
+    PUBLIC_API_BASE_URL: str = os.getenv("PUBLIC_API_BASE_URL", "")
+
     # HTTP 安全配置：开发态保持兼容，生产环境通过环境变量收紧。
     SECURITY_HEADERS_ENABLED: bool = _env_bool(
         "SECURITY_HEADERS_ENABLED", not DEBUG
@@ -124,6 +127,7 @@ class Settings:
     QILING_SIGNUP_ENABLED: bool = _env_bool("QILING_SIGNUP_ENABLED", False)
     SUPER_ADMIN_USERNAME: str = os.getenv("SUPER_ADMIN_USERNAME", "")
     SUPER_ADMIN_PASSWORD: str = os.getenv("SUPER_ADMIN_PASSWORD", "")
+    API_KEY_ENCRYPTION_KEY: str = os.getenv("API_KEY_ENCRYPTION_KEY", "").strip()
 
 
     # 会话有效期（小时）

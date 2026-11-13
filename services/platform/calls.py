@@ -2,6 +2,8 @@
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import logging
+from types import SimpleNamespace
 from math import isfinite
 import re
 from uuid import uuid4
@@ -15,10 +17,11 @@ from models.config import AiModelConfig
 from models.usage_record import ModelUsageRecord
 from services.balance import consume, ensure_solvent
 from services.platform.access import authorize_model
-from services.billing.pricing import compute_image_cost, compute_input_image_cost, compute_text_cost
+from services.billing.pricing import compute_image_cost, compute_input_image_cost, compute_pixel_tier_cost, compute_text_cost
 from utils.enums import AiTaskTypeEnum
 from utils.messages import localized_message
 
+logger = logging.getLogger(__name__)
 CALL_TIMEOUT = 600
 
 
@@ -110,14 +113,24 @@ async def settle(receipt_id):
         r = await PlatformCallReceipt.get(id=receipt_id).using_db(db)
         kind = r.pricing["type"]
         if kind == "image":
-            cost = compute_image_cost(r.usage["image_count"], r.usage["clarity"], r.pricing)
+            if r.pricing.get("billing_unit") == "pixel_tier":
+                cost = compute_pixel_tier_cost(r.usage["output_tier_counts"], r.pricing)
+            else:
+                cost = compute_image_cost(r.usage["image_count"], r.usage["clarity"], r.pricing)
             cost += compute_input_image_cost(r.usage["input_image_count"], r.pricing)
         elif kind == "video":
             from services.platform.videos import video_cost
             cost = video_cost(r.usage, r.pricing)
+        elif kind == "asr":
+            from services.billing.pricing import compute_asr_cost
+            cost = compute_asr_cost(r.usage["seconds"], r.pricing)
+        elif kind == "media_processing":
+            from services.video_enhancement.contract import enhancement_cost
+            cost = enhancement_cost(r.usage["seconds"], r.usage["short_side"], r.usage["fps"], r.pricing)
         else:
             cost = compute_text_cost(r.usage, r.pricing)
-        record = await ModelUsageRecord.create(using_db=db, novel_id=0, task_type={"image":AiTaskTypeEnum.reference_image,"video":AiTaskTypeEnum.video,"text":AiTaskTypeEnum.creation_agent}[kind],
+        record = await ModelUsageRecord.create(using_db=db, novel_id=0, task_type={"image":AiTaskTypeEnum.reference_image,"video":AiTaskTypeEnum.video,"text":AiTaskTypeEnum.creation_agent, "asr":AiTaskTypeEnum.audio_recognition,
+                "media_processing":AiTaskTypeEnum.video_enhancement}[kind],
             billing_type=kind, model_config_id=r.model_config_id, model_name=r.model_name, model=r.model,
             pricing_snapshot=r.pricing, usage={**r.usage, "platform_request_id":str(r.public_id)},
             cost=cost, platform_cost=cost, local_charge=0, settlement_status="settled",
@@ -127,7 +140,9 @@ async def settle(receipt_id):
 
 
 async def finish(receipt, usage, provider_id):
-    if usage is None or any(type(v) is not int or v < 0 for v in (usage.prompt_tokens, usage.completion_tokens)):
+    if isinstance(usage, dict):
+        usage = SimpleNamespace(**{**usage, "prompt_tokens_details":SimpleNamespace(**(usage.get("prompt_tokens_details") or {}))})
+    if usage is None or any(type(v) is not int or v < 0 for v in (getattr(usage, "prompt_tokens", None), getattr(usage, "completion_tokens", None))):
         await PlatformCallReceipt.filter(id=receipt.id, state="submitted").update(state="review", provider_id=provider_id)
         raise ValueError("Missing provider token counts")
     from services.llm.usage import completion_cache_usage
@@ -141,7 +156,22 @@ async def record_measurement(receipt, usage, provider_id):
     await settle(receipt.id)
 
 
+async def preserve_result(receipt, operation):
+    """Accounting must never turn an already successful provider result into a client failure."""
+    try:
+        await operation
+    except Exception:
+        logger.error("Settlement deferred receipt=%s", receipt.public_id)
+        try:
+            await PlatformCallReceipt.filter(id=receipt.id, state__in=["submitted", "processing"]).update(state="review")
+        except Exception:
+            logger.error("Settlement state update deferred receipt=%s", receipt.public_id)
+
+
 async def recover_measured():
     for receipt_id in await PlatformCallReceipt.filter(state="measured").values_list("id", flat=True):
-        await settle(receipt_id)
+        try:
+            await settle(receipt_id)
+        except Exception:
+            logger.error("Settlement retry deferred receipt_id=%s", receipt_id)
     await PlatformCallReceipt.filter(state="submitted", created_at__lt=datetime.now(timezone.utc)-timedelta(seconds=CALL_TIMEOUT+15)).update(state="review")

@@ -83,6 +83,11 @@ def compute_image_cost(image_count: int, clarity: str | None, pricing: dict | No
     return _money(_as_decimal(prices[clarity]) * Decimal(int(image_count or 0)) * _discount(pricing))
 
 
+def compute_pixel_tier_cost(tier_counts: dict, pricing: dict) -> Decimal:
+    subtotal = sum(_as_decimal(pricing["prices"][tier]) * count for tier, count in tier_counts.items())
+    return _money(subtotal * _discount(pricing))
+
+
 def compute_input_image_cost(input_image_count: int, pricing: dict | None) -> Decimal:
     """图生图输入参考图费用：前 first_free 张免费，超出按 price_per_image 计。"""
     if not isinstance(pricing, dict):

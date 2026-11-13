@@ -5,13 +5,18 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import AccountPage from './AccountPage.vue'
 import UserManagementPage from './UserManagementPage.vue'
 import { useAuthStore } from '@/features/auth/authStore'
-import { request } from '@/api'
+import { api, request } from '@/api'
+import { rechargeOpen } from '@/shared/console'
 import { i18n, setLocale } from '@/i18n'
 vi.mock('@/api',()=>({API_BASE:'/api',getAuthToken:()=> 'fixture',request:vi.fn(),api:{me:vi.fn()}}))
-beforeEach(()=>{vi.mocked(request).mockReset();setLocale('zh')})
-async function mountPage(section:'users'|'orders'|'billing'){
+beforeEach(()=>{vi.mocked(request).mockReset();vi.mocked(api.me).mockReset();rechargeOpen.value=false;setLocale('zh')})
+async function mountPage(section:'users'|'orders'|'billing'|'profile',profile?:{provider:'password'|'qiling';bound:boolean}){
   const pinia=createPinia();setActivePinia(pinia)
   const auth=useAuthStore(pinia);auth.user={id:1,username:'admin',nickname:'管理员',avatar_url:'',is_super_admin:true};auth.token='fixture'
+  if(section==='profile'){
+    auth.provider=profile?.provider??'qiling'
+    vi.mocked(api.me).mockResolvedValue({code:0,message:'ok',data:{user:{...auth.user,username:'qiling-long-account-identifier-for-layout-check',created_at:'2026-11-08T12:17:24Z'},balance:'41.419717',total_cost:149.746573,is_super_admin:true,qiling_bound:profile?.bound??true}})
+  }
   const router=createRouter({history:createMemoryHistory(),routes:[{path:'/',component:{template:'<div/>'}}]});await router.push('/');await router.isReady()
   return mount(section==='users'?UserManagementPage:AccountPage,{props:section==='users'?{}:{section},global:{plugins:[pinia,router,i18n],stubs:{ElDialog:{template:'<div/>'}}}})
 }
@@ -22,6 +27,36 @@ it('shows user balances without team or member columns',async()=>{
   expect(wrapper.text()).toContain('12.123456');expect(wrapper.text()).not.toMatch(/团队|成员/)
   expect(request).toHaveBeenCalledWith(expect.stringMatching(/^\/users\?/))
   wrapper.unmount()
+})
+
+it('groups profile identity, wallet and settings without duplicate editing actions',async()=>{
+  const wrapper=await mountPage('profile');await flushPromises()
+  expect(wrapper.find('.profile-layout').exists()).toBe(true)
+  expect(wrapper.get('.profile-account').text()).toContain('qiling-long-account-identifier-for-layout-check')
+  expect(wrapper.get('.profile-wallet').text()).toContain('41.419717')
+  expect(wrapper.get('.profile-wallet').text()).toContain('149.746573')
+  expect(wrapper.findAll('button').filter(button=>button.text()==='编辑昵称')).toHaveLength(1)
+  expect(wrapper.findAll('button').some(button=>button.text()==='编辑资料')).toBe(false)
+  expect(wrapper.get('.profile-settings').text()).toContain('已绑定器灵')
+  expect(wrapper.find('.profile-password-form').exists()).toBe(false)
+  expect(wrapper.find('input[type=file]').exists()).toBe(true)
+  expect(wrapper.find('a[href="/orders"]').exists()).toBe(true)
+  expect(wrapper.find('a[href="/billing"]').exists()).toBe(true)
+  expect(wrapper.find('a[href="/platform/keys"]').exists()).toBe(true)
+  await wrapper.findAll('button').find(button=>button.text()==='立即充值')!.trigger('click')
+  expect(rechargeOpen.value).toBe(true)
+  wrapper.unmount()
+})
+
+it('keeps password controls or Qiling linking available for the matching login mode',async()=>{
+  const password=await mountPage('profile',{provider:'password',bound:false});await flushPromises()
+  expect(password.findAll('.profile-password-form input[type=password]')).toHaveLength(2)
+  expect(password.get('.profile-settings').text()).toContain('密码登录')
+  password.unmount()
+  const qiling=await mountPage('profile',{provider:'qiling',bound:false});await flushPromises()
+  expect(qiling.findAll('button').some(button=>button.text()==='绑定账号')).toBe(true)
+  expect(qiling.find('.profile-password-form').exists()).toBe(false)
+  qiling.unmount()
 })
 it('shows request failure and lets the user retry',async()=>{
   vi.mocked(request).mockRejectedValueOnce(new Error('连接失败')).mockImplementation(async path=>({code:0,message:'ok',data:String(path).includes('/parties')?{users:[]}:{items:[],pagination:{total:0,page:1,page_size:20,pages:0}}}))
@@ -45,6 +80,24 @@ it('submits the selected account ID and order status from component filters',asy
   Array.from(document.querySelectorAll<HTMLButtonElement>('[role=option]')).find(option=>option.textContent?.trim()==='已支付')!.click();await flushPromises()
   await wrapper.get('form.console-filterbar').trigger('submit');await flushPromises()
   expect(request).toHaveBeenCalledWith(expect.stringMatching(/\/account\/orders\?.*status=paid.*account_user_id=42/))
+  wrapper.unmount()
+})
+
+it('switches order scope inside the filters and preserves other query conditions',async()=>{
+  vi.mocked(request).mockImplementation(async path=>({code:0,message:'ok',data:String(path).includes('/parties')?{users:[]}:{items:[],pagination:{total:0,page:1,page_size:20,pages:0}}}))
+  const wrapper=await mountPage('orders');await flushPromises()
+  expect(wrapper.find('.console-tabs').exists()).toBe(false)
+  await wrapper.get('input[type=search]').setValue('TEST-20')
+  await wrapper.get('button[aria-label="查看范围"]').trigger('click');await flushPromises()
+  Array.from(document.querySelectorAll<HTMLButtonElement>('[role=option]')).find(option=>option.textContent?.trim()==='我的')!.click();await flushPromises()
+  expect(wrapper.find('button[aria-label="账户用户"]').exists()).toBe(false)
+  expect(request).toHaveBeenCalledWith(expect.stringMatching(/\/account\/orders\?.*search=TEST-20.*account_user_id=1/))
+  await wrapper.get('button[aria-label="查看范围"]').trigger('click');await flushPromises()
+  Array.from(document.querySelectorAll<HTMLButtonElement>('[role=option]')).find(option=>option.textContent?.trim()==='全平台')!.click();await flushPromises()
+  const lastOrderCall=vi.mocked(request).mock.calls.filter(([path])=>String(path).startsWith('/account/orders?')).at(-1)!
+  expect(String(lastOrderCall[0])).toContain('search=TEST-20')
+  expect(String(lastOrderCall[0])).not.toContain('account_user_id=')
+  expect(wrapper.find('button[aria-label="账户用户"]').exists()).toBe(true)
   wrapper.unmount()
 })
 
@@ -75,6 +128,29 @@ it('shows billing usage and references directly without detail actions, includin
   expect(wrapper.find('.table-link').exists()).toBe(false)
   expect(wrapper.findAll('button').some(button=>button.text()==='详情')).toBe(false)
   expect(wrapper.findAll('th[scope=col]').some(header=>header.text()==='操作')).toBe(false)
+  wrapper.unmount()
+})
+
+it('keeps billing totals in the list toolbar and switches scope without losing dates',async()=>{
+  vi.mocked(request).mockImplementation(async path=>({code:0,message:'ok',data:String(path).includes('/parties')?{users:[]}:{items:[],summary:{total_cost:'570.900045',total_transactions:1324},pagination:{total:1324,page:1,page_size:20,pages:67}}}))
+  const wrapper=await mountPage('billing');await flushPromises()
+  expect(wrapper.classes()).toContain('account-records')
+  expect(wrapper.find('.console-tabs').exists()).toBe(false)
+  expect(wrapper.find('.console-summary').exists()).toBe(false)
+  expect(wrapper.get('.console-table-toolbar .billing-summary').text()).toContain('570.900045')
+  expect(wrapper.get('.billing-summary').text()).toContain('1324')
+  await wrapper.get('input[type=date]').setValue('2026-11-01')
+  await wrapper.get('button[aria-label="查看范围"]').trigger('click');await flushPromises()
+  Array.from(document.querySelectorAll<HTMLButtonElement>('[role=option]')).find(option=>option.textContent?.trim()==='我的')!.click();await flushPromises()
+  expect(wrapper.find('button[aria-label="账户用户"]').exists()).toBe(false)
+  expect(wrapper.find('button[aria-label="操作用户"]').exists()).toBe(false)
+  expect(request).toHaveBeenCalledWith(expect.stringMatching(/\/billing\/mine\?.*start_date=2026-11-01.*account_user_id=1/))
+  expect(wrapper.findAll('button').some(button=>button.text()==='导出当前筛选')).toBe(false)
+  await wrapper.get('button[aria-label="查看范围"]').trigger('click');await flushPromises()
+  Array.from(document.querySelectorAll<HTMLButtonElement>('[role=option]')).find(option=>option.textContent?.trim()==='全平台')!.click();await flushPromises()
+  expect(request).toHaveBeenCalledWith(expect.stringMatching(/\/billing\/statements\?.*start_date=2026-11-01/))
+  expect(wrapper.find('button[aria-label="操作用户"]').exists()).toBe(true)
+  expect(wrapper.findAll('button').some(button=>button.text()==='导出当前筛选')).toBe(true)
   wrapper.unmount()
 })
 

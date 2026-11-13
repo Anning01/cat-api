@@ -5,7 +5,7 @@ from utils.messages import localized_message
 import json
 import logging
 import uuid
-from datetime import date, datetime, time, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -16,6 +16,7 @@ from tortoise.transactions import in_transaction
 
 from auth.models import RechargeOrder, User, UserAdminEvent
 from config import settings
+from services.billing.dates import billing_day_start
 from services import balance
 from services.wechat_pay import WeChatPayError, wechat_pay_service
 
@@ -215,9 +216,9 @@ class AccountController:
         if start_date and end_date and start_date > end_date or end_date == date.max:
             raise HTTPException(422, '无效的日期范围')
         if start_date:
-            query = query.filter(created_at__gte=datetime.combine(start_date, time.min, settings.tz))
+            query = query.filter(created_at__gte=billing_day_start(start_date))
         if end_date:
-            query = query.filter(created_at__lt=datetime.combine(end_date + timedelta(days=1), time.min, settings.tz))
+            query = query.filter(created_at__lt=billing_day_start(end_date + timedelta(days=1)))
 
         if status:
             query = query.filter(status=status)

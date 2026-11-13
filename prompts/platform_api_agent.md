@@ -2,7 +2,7 @@
 
 Base URL：`{{BASE_URL}}`
 
-公共对话接口遵循 OpenAI Chat Completions，图片和视频使用标准 JSON 结果与任务结构。文件由客户端直接上传临时 OSS，猫影只接收元数据和 URL。
+公共对话和 URL 图片接口保留上游返回。新视频、识别和增强接入使用下方各供应商原生协议；历史统一视频接口仅作兼容。文件由客户端直接上传临时 OSS，猫影只接收元数据和 URL。
 
 ## 认证与模型
 
@@ -73,7 +73,7 @@ for chunk in stream:
         print(chunk.choices[0].delta.content or "", end="")
 ```
 
-返回标准 ChatCompletion 或 ChatCompletionChunk SSE 与 `[DONE]`，不包裹 data/result。保留 tools、tool_choice、response_format、tool_calls、tool_call_id 与模型扩展字段。多模态图片使用 image_url.url 中的 HTTPS 链接。对话音频 Base64 输出模式不开放。
+返回上游原始 ChatCompletion 或 SSE 事件与 `[DONE]`，不包裹 data/result，不重写返回 model。建议显式请求 include_usage；平台不会修改该选项，缺少 usage 时仅将账单记为待核对，不影响成功结果。保留 tools、tool_choice、response_format、tool_calls、tool_call_id 与模型扩展字段。多模态图片使用 image_url.url 中的 HTTPS 链接。对话音频 Base64 输出模式不开放。
 
 ## 图片：POST /images/generations
 
@@ -99,9 +99,9 @@ image = client.images.generate(
 )
 ```
 
-`POST /images/edits` 同样接收 JSON：model、prompt、image（HTTPS URL 数组）和所选模型支持的参数。需要 URL 参考图能力，不接收 multipart image/mask 文件。
+`POST /images/edits` 接收官方 URL JSON：`model`、`prompt`、`images: [{"image_url":"https://..."}]`，可选 `mask: {"image_url":"https://..."}`。旧 `image` URL 数组仍兼容。OpenRouter 原生接口为 `POST /images`，参考图使用 `input_references: [{"type":"image_url","image_url":{"url":"https://..."}}]`。数量 n 原样传递，由上游校验；不接收 multipart、file_id 或内联图片。
 
-## 视频：POST /videos，GET /videos/{id}
+## 历史统一视频兼容接口：POST /videos，GET /videos/{id}
 
 ```python
 video = client.videos.create(
@@ -150,3 +150,39 @@ input_reference 的 URL 放入 extra_body，避免 SDK 将文件参数编码为 
 - [完整 OpenAPI]({{BASE_URL}}/openapi.json)
 - [AI 文档索引]({{BASE_URL}}/llms.txt)
 - 本文可公开读取，不包含密钥。
+
+## 原生视频、识别和增强协议（新接入优先）
+
+下列路径可直接接在平台域名后，也可接在本文 Base URL 后（Base URL 已含 /v1）。JSON 原生参数原样传递，只将选择的模型映射到通道模型；不修改 prompt、任务 ID、状态、返回结果字段或供应商错误。鉴权使用平台 API Key，不使用供应商密钥。限流、供应商追踪等响应头保留；Cookie、认证密钥与 HTTP 逐跳／压缩头不转发。
+
+| 供应商 | 提交 POST | 查询 GET（ASR 除外） |
+| --- | --- | --- |
+| 火山 Seedance | `/api/v3/contents/generations/tasks` | `/api/v3/contents/generations/tasks/{task_id}` |
+| MiniMax H3 | `/v2/video_generation` | `/v2/query/video_generation/{task_id}` |
+| Wan | `/api/v1/services/aigc/video-generation/video-synthesis` | `/api/v1/tasks/{task_id}` |
+| AutoDL | `/api/v1/comfyui/comfyui_workflow/{model_id}` | `/api/v1/comfyui/comfyui_workflow/result/{task_id}` |
+| MediaKit 增强 | `/api/v1/tools/enhance-video-generative` | `/api/v1/tasks/{task_id}` |
+| SeedASR | `/api/v3/auc/bigmodel/submit` | **POST** `/api/v3/auc/bigmodel/query`，body `{}` |
+
+有 model 的原生请求填目录的 nv-ID；没有 model 字段的协议或同名多通道，使用 `X-Cat-Model: nv-ID` 选择。AutoDL 路径中的 model_id 也可填 nv-ID。任务查询只允许任务所属用户与有对应模型权限的 Key；同一任务 ID 在多个通道冲突时，查询也须附 X-Cat-Model。
+
+SeedASR 保留原生 user/audio/request JSON，audio.url 使用临时上传的链接。发送 `X-Api-Key: 平台Key`（也可 Authorization Bearer）、`X-Api-Resource-Id: volc.seedasr.auc`、`X-Api-Request-Id: 客户端UUID`；查询继续使用任务 ID。ASR 的 X-Api-Status-Code、X-Api-Message、X-Tt-Logid 原样保留。
+
+MediaKit 保留 `video_url`、`resolution`、`fps`、`client_token` 等原生参数；增强计费采用结果确认的时长、分辨率与帧率。ASR 采用结果 audio_info.duration（毫秒）计费。无法确认用量则 review，不推测扣费。
+
+平台回执 ID 在 `X-Cat-Request-Id`（兼容 X-Novelvids-Request-Id）；它与供应商任务 ID 独立。使用 `/requests/{平台回执ID}` 查询账单，任务查询仍使用原生 task_id。已计费任务重复查询不会再次扣费，通道配置变化后不会改投其他供应商查询。
+
+```python
+import uuid
+import requests
+headers = {"Authorization": "Bearer " + API_KEY, "X-Cat-Model": MODEL_ID}
+created = requests.post(BASE_URL + "/api/v3/contents/generations/tasks", headers=headers, json={
+    "model": MODEL_ID, "content": [{"type": "text", "text": "缓慢推进的镜头"}],
+    "duration": 4, "resolution": "720p", "ratio": "16:9",
+})
+created.raise_for_status()
+task_id = created.json()["id"]
+result = requests.get(BASE_URL + "/api/v3/contents/generations/tasks/" + task_id, headers=headers)
+result.raise_for_status()
+print(result.json())  # 官方原生 status / content.video_url / usage 等字段
+```

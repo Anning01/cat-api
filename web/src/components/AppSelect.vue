@@ -63,12 +63,14 @@ const menuStyle = computed(() => {
     maxHeight: `${props.maxMenuHeight}px`,
     top: `${menuPosition.value.top}px`,
     left: `${menuPosition.value.left}px`,
+    maxWidth: 'calc(100vw - 16px)',
   }
-  if (props.menuWidth && props.menuWidth !== 'auto') {
+  if (props.menuWidth === undefined) {
+    style.width = `${menuPosition.value.width}px`
+  } else if (props.menuWidth !== 'auto') {
     style.width = typeof props.menuWidth === 'number' ? `${props.menuWidth}px` : props.menuWidth
   } else {
     style.width = 'max-content'
-    style.maxWidth = 'calc(100vw - 16px)'
   }
   return style
 })
@@ -135,9 +137,9 @@ function updatePlacement() {
   const roomBelow = window.innerHeight - rect.bottom
   opensUp.value = roomBelow < menuHeight + 12 && rect.top > roomBelow
   const measuredMenuWidth = menu.value?.getBoundingClientRect().width || 0
-  const width = (props.menuWidth && props.menuWidth !== 'auto')
-    ? (typeof props.menuWidth === 'number' ? props.menuWidth : Number.parseFloat(props.menuWidth) || rect.width)
-    : (measuredMenuWidth || rect.width)
+  const desiredWidth = props.menuWidth === undefined ? rect.width
+    : typeof props.menuWidth === 'number' ? props.menuWidth : measuredMenuWidth || rect.width
+  const width = Math.min(desiredWidth, Math.max(0, window.innerWidth - 16))
   const left = props.align === 'end' ? rect.right - width : rect.left
   menuPosition.value = {
     top: opensUp.value ? rect.top - menuHeight - 7 : rect.bottom + 7,
@@ -343,6 +345,7 @@ onUnmounted(() => {
 }
 
 .app-select__menu {
+  box-sizing: border-box;
   position: fixed;
   z-index: 1000;
   overflow-x: hidden;
@@ -384,7 +387,7 @@ onUnmounted(() => {
   text-align: left;
 }
 
-.app-select__option > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-select__option > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
 
 .app-select__option:hover {
   color: var(--app-text);

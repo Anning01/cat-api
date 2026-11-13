@@ -35,15 +35,26 @@ def redact_secret(content: bytes, secret: str) -> bytes:
     return content
 
 
+# Decoded response bodies need new framing; provider cookies and credentials must not cross tenants.
+HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer",
+               "transfer-encoding", "upgrade", "content-length", "content-encoding", "set-cookie",
+               "authorization", "x-api-key", "x-api-access-key", "x-api-app-key"}
+
+
+def response_headers(response, request_id, secret=""):
+    blocked = HOP_HEADERS | {v.strip().lower() for v in response.headers.get("connection", "").split(",")}
+    result = {name:value for name,value in response.headers.items() if name.lower() not in blocked and not name.lower().startswith("access-control-")
+              and (not secret or secret not in value)}
+    result.setdefault("x-request-id", str(request_id))
+    result.update({"x-novelvids-request-id":str(request_id), "x-cat-request-id":str(request_id), "cache-control":"no-store"})
+    return result
+
+
 class UpstreamResponseError(Exception):
     def __init__(self, response: httpx.Response, request_id: str, secret: str = ""):
         self.status = response.status_code
         self.content = redact_secret(response.content, secret)
-        self.headers = {name: response.headers[name] for name in ("content-type", "retry-after", "x-request-id")
-                        if name in response.headers}
-        self.headers.setdefault("x-request-id", request_id)
-        self.headers["x-novelvids-request-id"] = request_id
-        self.headers["cache-control"] = "no-store"
+        self.headers = response_headers(response, request_id, secret)
         super().__init__(f"Upstream HTTP {self.status}")
 
 

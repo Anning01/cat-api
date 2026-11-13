@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElConfigProvider } from 'element-plus'
-import { Cat, Layers, BookOpen, ChartNoAxesCombined, KeyRound, Receipt, UserRound, Users, Settings, LogOut, PanelLeftClose, Menu, ChevronDown } from 'lucide-vue-next'
+import { Layers, BookOpen, ChartNoAxesCombined, KeyRound, Receipt, UserRound, Users, Settings, LogOut, PanelLeftClose, Menu, ChevronDown } from 'lucide-vue-next'
 import { useAuthStore } from '@/features/auth/authStore'
 import { useAppThemeController } from '@/shared/appTheme'
 import { rechargeOpen, money } from '@/shared/console'
@@ -49,7 +49,7 @@ watch(() => route.fullPath, () => {
     <a href="#console-page-title" class="console-skip-link" @click.prevent="focusContent">{{ tr('跳转到内容') }}</a>
   <div class="console-shell" :class="{ 'is-collapsed': collapsed, 'is-nav-open': mobileNav }" @keydown.esc="mobileNav = false">
     <aside id="console-navigation" class="console-nav">
-      <RouterLink class="console-brand" to="/platform/models"><Cat :size="30" aria-hidden="true"/><span>Cat API</span></RouterLink>
+      <RouterLink class="console-brand" to="/platform/models"><img src="/logo.png" alt="" width="36" height="36"/><span>Cat API</span></RouterLink>
       <nav :aria-label="tr('主导航')"><section v-for="group in groups" :key="group.title" class="console-nav-group"><h2>{{ tr(group.title) }}</h2><RouterLink v-for="link in group.links" :key="link.path" :to="link.path" :title="tr(link.label)"><component :is="link.icon" :size="18" aria-hidden="true"/><span>{{ tr(link.label) }}</span></RouterLink></section></nav>
       <div class="console-nav-footer"><RouterLink v-if="auth.user" to="/profile" class="console-user"><AppAvatar :name="name" :src="auth.user.avatar_url"/><span>{{ tr(auth.isSuperAdmin ? '超级管理员' : '普通用户') }}</span></RouterLink><button class="console-collapse" type="button" :aria-label="tr(collapsed ? '展开导航' : '收起导航')" :aria-expanded="!collapsed" @click="collapsed = !collapsed"><PanelLeftClose :size="17"/><span>{{ tr('收起导航') }}</span></button></div>
     </aside>

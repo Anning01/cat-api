@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useId, computed, onBeforeUnmount, ref, watch } from 'vue'
-import AppDialog from '@/components/AppDialog.vue'
-import { Copy, Plus, RefreshCw } from 'lucide-vue-next'
+import { Copy, Eye, EyeOff, Plus, RefreshCw } from 'lucide-vue-next'
 import ConsolePage from '@/components/ConsolePage.vue'
 import UsageMetric from '@/components/UsageMetric.vue'
 import UsageDistribution from '@/features/platform/UsageDistribution.vue'
@@ -29,7 +28,8 @@ const descriptions:Record<Section,string>={usage:'查看模型用量、费用与
 const loading=ref(false),error=ref(''),summary=ref<BillingSummary>(),models=ref<CatalogModel[]>([]),keys=ref<KeyRow[]>([]),days=ref(7)
 const usageRevision=ref(0)
 const modelSearch=ref(''),modelSort=ref('cost-desc'),keySearch=ref(''),keyStatus=ref(''),keyPage=ref(1),keyPageSize=ref(20),selected=ref<number[]>([])
-const drawerOpen=ref(false),secret=ref(''),revoking=ref(false)
+const drawerOpen=ref(false),revoking=ref(false)
+const revealedKeys=ref<Record<number,string>>({}),keySecretBusy=ref<Record<number,boolean>>({}),keySecretErrors=ref<Record<number,string>>({})
 let epoch=0
 const apiBase=computed(()=>new URL(API_BASE,location.href).origin+'/v1')
 const modelStats=computed(()=>(summary.value?.by_model??[]).filter(row=>row.model.toLowerCase().includes(modelSearch.value.toLowerCase())).slice().sort((a,b)=>modelSort.value==='name'?a.model.localeCompare(b.model,dateLocale.value):modelSort.value==='records'?(b.record_count??0)-(a.record_count??0):b.cost-a.cost))
@@ -40,7 +40,7 @@ const visibleKeys=computed(()=>filteredKeys.value.slice((keyPage.value-1)*keyPag
 const allSelected=computed(()=>visibleKeys.value.length>0&&visibleKeys.value.every(key=>selected.value.includes(key.id)))
 watch([keySearch,keyStatus],()=>{keyPage.value=1;selected.value=[]})
 async function load(){
- const current=++epoch;loading.value=true;error.value=''
+ const current=++epoch;loading.value=true;error.value='';revealedKeys.value={};keySecretBusy.value={};keySecretErrors.value={}
  try{
   if(props.section==='usage'){const result=await request<SingleResponse<BillingSummary>>('/platform/usage?days='+days.value);if(current===epoch){summary.value=result.data;usageRevision.value++}}
   else if(props.section==='models'){const result=await request<SingleResponse<CatalogModel[]>>('/platform/catalog');if(current===epoch)models.value=result.data}
@@ -49,8 +49,26 @@ async function load(){
  finally{if(current===epoch)loading.value=false}
 }
 function changeDays(){days.value=Math.max(1,Math.min(90,Math.trunc(Number(days.value)||7)));void load()}
-async function copy(value:string){try{await navigator.clipboard.writeText(value);notice.success(tr('已复制'))}catch{notice.error(tr('复制失败，请手动复制'))}}
-function created(key:CreatedApiKey){secret.value=key.key;keys.value=[key,...keys.value];keyPage.value=1}
+function created(result:CreatedApiKey){
+ const {key,...row}=result;keys.value=[row,...keys.value];revealedKeys.value[row.id]=key
+ keySearch.value='';keyStatus.value='';keyPage.value=1
+ notice.success(tr('API Key 已创建，可随时查看或复制。'))
+}
+async function accessKeySecret(key:KeyRow,action:'view'|'copy'){
+ if(!key.can_reveal||keySecretBusy.value[key.id])return
+ delete keySecretErrors.value[key.id]
+ if(action==='view'&&revealedKeys.value[key.id]){delete revealedKeys.value[key.id];return}
+ const current=epoch;keySecretBusy.value[key.id]=true
+ try{
+  let value=revealedKeys.value[key.id]
+  if(!value)value=(await request<SingleResponse<{key:string}>>('/platform/keys/'+key.id+'/secret',{cache:'no-store'})).data.key
+  if(current!==epoch||!keys.value.some(row=>row.id===key.id))return
+  if(action==='view'){revealedKeys.value[key.id]=value;return}
+  try{await navigator.clipboard.writeText(value)}catch{revealedKeys.value[key.id]=value;throw new Error(tr('复制失败，密钥已显示，可手动复制。'))}
+  notice.success(tr('已复制'))
+ }catch(cause){if(current===epoch)keySecretErrors.value[key.id]=cause instanceof Error?cause.message:tr('读取密钥失败，请重试')}
+ finally{if(current===epoch)keySecretBusy.value[key.id]=false}
+}
 function toggleSelection(id:number){selected.value=selected.value.includes(id)?selected.value.filter(value=>value!==id):[...selected.value,id]}
 function toggleAll(){selected.value=allSelected.value?selected.value.filter(id=>!visibleKeys.value.some(key=>key.id===id)):[...new Set([...selected.value,...visibleKeys.value.map(key=>key.id)])]}
 async function revoke(ids:number[]){
@@ -58,12 +76,12 @@ async function revoke(ids:number[]){
  const current=epoch
  if(!await appConfirm({title:tr('停用 API Key'),message:tr('将停用 {p0} 个密钥，使用这些密钥的应用将无法继续调用。',{p0:ids.length}),confirmLabel:tr('停用')})||current!==epoch)return
  revoking.value=true
- try{for(const id of ids){await request('/platform/keys/'+id,{method:'DELETE'});if(current!==epoch)return;keys.value=keys.value.filter(key=>key.id!==id);selected.value=selected.value.filter(value=>value!==id)}notice.success(tr('密钥已停用'))}
+ try{for(const id of ids){await request('/platform/keys/'+id,{method:'DELETE'});if(current!==epoch)return;keys.value=keys.value.filter(key=>key.id!==id);selected.value=selected.value.filter(value=>value!==id);delete revealedKeys.value[id];delete keySecretErrors.value[id]}notice.success(tr('密钥已停用'))}
  catch(cause){notice.error(cause instanceof Error?cause.message:tr('操作失败'))}
  finally{if(current===epoch){revoking.value=false;keyPage.value=Math.min(keyPage.value,Math.max(1,Math.ceil(filteredKeys.value.length/keyPageSize.value)))}}
 }
-watch(()=>props.section,()=>{++epoch;summary.value=undefined;models.value=[];keys.value=[];selected.value=[];secret.value='';drawerOpen.value=false;revoking.value=false;void load()},{immediate:true})
-onBeforeUnmount(()=>{++epoch;secret.value=''})
+watch(()=>props.section,()=>{++epoch;summary.value=undefined;models.value=[];keys.value=[];selected.value=[];revealedKeys.value={};keySecretBusy.value={};keySecretErrors.value={};drawerOpen.value=false;revoking.value=false;void load()},{immediate:true})
+onBeforeUnmount(()=>{++epoch;revealedKeys.value={};keySecretErrors.value={}})
 const formId=useId()
 </script>
 <template>
@@ -82,7 +100,7 @@ const formId=useId()
    <section class="console-table-panel"><div class="console-table-toolbar"><h2>{{ tr('按模型统计') }}</h2><div class="console-inline"><input v-model="modelSearch" :placeholder="tr('搜索模型名称')" :aria-label="tr('搜索模型名称')"/><AppSelect v-model="modelSort" :ariaLabel="tr('模型统计排序')" :options="[{value:'cost-desc',label:tr('按费用从高到低')},{value:'records',label:tr('按计费记录排序')},{value:'name',label:tr('按名称排序')}]"/></div></div><ConsoleTable :caption="tr('按模型统计')"><thead><tr><th scope="col">{{ tr('模型名称') }}</th><th scope="col" class="numeric">{{ tr('计费记录') }}</th><th scope="col" class="numeric">{{ tr('总费用') }}</th><th scope="col" class="numeric">{{ tr('占比') }}</th></tr></thead><tbody><tr v-for="row in modelStats" :key="row.model"><th scope="row">{{ row.model }}</th><td class="numeric">{{ row.record_count??'—' }}</td><td class="numeric">¥ {{ money(row.cost) }}</td><td class="numeric">{{ summary.total_cost>0?(row.cost/summary.total_cost*100).toFixed(1)+'%':'—' }}</td></tr></tbody></ConsoleTable><p v-if="!modelStats.length" class="console-empty">{{ tr('所选期间暂无计费记录') }}</p></section>
   </template>
   <ModelCatalog v-else-if="section==='models'&&!error" :models="models" :can-manage="auth.isSuperAdmin" :logged-in="auth.isLoggedIn"/>
-  <PlatformApiDocs v-else-if="section==='docs'" :base-url="apiBase"/>
+  <PlatformApiDocs v-else-if="section==='docs'" :base-url="apiBase" :can-manage="auth.isSuperAdmin"/>
   <template v-else-if="section==='keys'">
    <section class="console-table-panel key-table-panel" :aria-busy="loading">
     <div class="console-table-toolbar"><h2>API Keys <small>{{ filteredKeys.length }}</small></h2>
@@ -92,8 +110,12 @@ const formId=useId()
       <AppButton variant="secondary" :disabled="!selected.length||revoking" :loading="revoking" @click="revoke([...selected])">{{ tr('停用所选') }} ({{ selected.length }})</AppButton>
      </form></search>
     </div>
-    <ConsoleTable v-if="filteredKeys.length" caption="API Keys"><thead><tr><th scope="col"><input type="checkbox" :checked="allSelected" :aria-label="tr('选择当前页')" @change="toggleAll"/></th><th scope="col">{{ tr('名称') }}</th><th scope="col">{{ tr('密钥前缀') }}</th><th scope="col">{{ tr('可用模型') }}</th><th scope="col">{{ tr('有效期') }}</th><th scope="col">{{ tr('创建时间') }}</th><th scope="col" class="row-actions">{{ tr('操作') }}</th></tr></thead>
-     <tbody><tr v-for="key in visibleKeys" :key="key.id"><td><input type="checkbox" :checked="selected.includes(key.id)" :aria-label="tr('选择 {p0}',{p0:key.name})" @change="toggleSelection(key.id)"/></td><th scope="row">{{ key.name }}</th><td><code>{{ key.preview }}</code></td>
+    <ConsoleTable v-if="filteredKeys.length" caption="API Keys"><thead><tr><th scope="col"><input type="checkbox" :checked="allSelected" :aria-label="tr('选择当前页')" @change="toggleAll"/></th><th scope="col">{{ tr('名称') }}</th><th scope="col">API Key</th><th scope="col">{{ tr('可用模型') }}</th><th scope="col">{{ tr('有效期') }}</th><th scope="col">{{ tr('创建时间') }}</th><th scope="col" class="row-actions">{{ tr('操作') }}</th></tr></thead>
+     <tbody><tr v-for="key in visibleKeys" :key="key.id"><td><input type="checkbox" :checked="selected.includes(key.id)" :aria-label="tr('选择 {p0}',{p0:key.name})" @change="toggleSelection(key.id)"/></td><th scope="row">{{ key.name }}</th><td class="key-secret-cell"><code class="key-token">{{ revealedKeys[key.id]||key.preview }}</code>
+       <div v-if="key.can_reveal" class="key-secret-actions"><AppButton size="xs" :loading="keySecretBusy[key.id]" :aria-label="tr(revealedKeys[key.id]?'隐藏密钥 {p0}':'查看密钥 {p0}',{p0:key.name})" :aria-pressed="Boolean(revealedKeys[key.id])" @click="accessKeySecret(key,'view')"><component :is="revealedKeys[key.id]?EyeOff:Eye" :size="13" aria-hidden="true"/>{{ tr(revealedKeys[key.id]?'隐藏':'查看') }}</AppButton><AppButton size="xs" :disabled="keySecretBusy[key.id]" :aria-label="tr('复制密钥 {p0}',{p0:key.name})" @click="accessKeySecret(key,'copy')"><Copy :size="13" aria-hidden="true"/>{{ tr('复制') }}</AppButton></div>
+       <small v-else class="muted">{{ tr('旧密钥尚无可恢复副本') }}</small>
+       <small v-if="keySecretErrors[key.id]" role="alert" class="text-danger">{{ keySecretErrors[key.id] }}</small>
+      </td>
       <td><span v-if="key.allowed_model_ids==null">{{ tr('全部模型') }}</span><details v-else class="key-model-scope"><summary>{{ tr('指定 {p0} 个模型',{p0:key.allowed_model_ids.length}) }}</summary><ul><li v-for="modelId in key.allowed_model_ids" :key="modelId">{{ modelNames.get(modelId)||modelId }}<code v-if="modelNames.has(modelId)">{{ modelId }}</code></li></ul></details></td>
       <td class="date-cell"><strong v-if="isExpired(key)" class="text-danger">{{ tr('已过期') }}</strong><span v-else-if="!key.expires_at">{{ tr('永不过期') }}</span><span v-if="key.expires_at">{{ dateTime(key.expires_at) }}</span></td>
       <td class="date-cell">{{ dateTime(key.created_at) }}</td><td class="row-actions"><AppButton variant="danger" size="sm" :disabled="revoking" @click="revoke([key.id])">{{ tr('停用') }}</AppButton></td>
@@ -104,6 +126,13 @@ const formId=useId()
    </section>
   </template>
   <ApiKeyCreateDialog v-model="drawerOpen" @created="created"/>
-  <AppDialog class="console-dialog" :model-value="Boolean(secret)" :title="tr('请保存 API Key')" width="560px" :close-on-click-modal="false" @update:model-value="value=>{if(!value)secret=''}"><p>{{ tr('完整密钥仅显示一次，请妥善保存。') }}</p><code class="key-secret">{{ secret }}</code><div class="console-inline"><AppButton variant="primary" @click="copy(secret)"><Copy :size="16"/>{{ tr('复制密钥') }}</AppButton><AppButton variant="secondary" @click="secret=''">{{ tr('已保存，关闭') }}</AppButton></div></AppDialog>
+
  </ConsolePage>
 </template>
+
+<style scoped>
+.key-secret-cell { min-width:180px; max-width:300px; }
+.key-token { display:block; max-width:280px; overflow-wrap:anywhere; white-space:normal; font:12px/1.5 ui-monospace,monospace; user-select:all; }
+.key-secret-actions { display:flex; align-items:center; gap:4px; margin-top:3px; }
+.key-secret-cell > small { max-width:280px; font-size:11px; }
+</style>

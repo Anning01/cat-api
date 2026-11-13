@@ -152,6 +152,7 @@ class PlatformApiKey(AbstractBaseModel):
     revoked_at = fields.DatetimeField(null=True)
     allowed_model_ids = fields.JSONField(null=True)
     expires_at = fields.DatetimeField(null=True)
+    encrypted_token = fields.TextField(null=True)
 
 
     class Meta:

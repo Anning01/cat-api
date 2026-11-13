@@ -209,7 +209,7 @@ async def test_ambiguous_model_alias_never_selects_an_arbitrary_channel(sdk_api)
         await sdk.chat.completions.create(model=original.model, messages=[{"role":"user","content":"hello"}])
     assert result.value.status_code == 400 and not state.seen
     response = await sdk.chat.completions.create(model=f"nv-{original.id}", messages=[{"role":"user","content":"hello"}])
-    assert response.model == f"nv-{original.id}"
+    assert response.model == original.model
 
 
 async def test_url_video_retry_returns_original_task(sdk_api):
@@ -374,8 +374,149 @@ async def test_chat_stream_preserves_long_content_reasoning_and_provider_finish(
     assert received[0].choices[0].delta.model_extra["reasoning_content"] == reasoning
     assert received[0].choices[0].delta.model_extra["encrypted_content"] == "opaque-provider-state"
     assert [choice.finish_reason for chunk in received for choice in chunk.choices if choice.finish_reason] == [finish_reason]
-    assert all(chunk.model == f"nv-{models[0].id}" for chunk in received)
+    assert all(chunk.model == "vendor-model" for chunk in received)
     assert received[-1].usage.completion_tokens == 17301
     assert received[-1].usage.completion_tokens_details.reasoning_tokens == 5301
     receipt = await PlatformCallReceipt.get()
     assert receipt.state == "completed" and receipt.usage["output_tokens"] == 17301
+
+
+@pytest.mark.parametrize(("kind", "layered", "sizes", "expected"), [
+    ("seedream_5_5", False, ["2610x1000"], "0.115"),
+    ("seedream_5_5", True, ["2611x1000", "4630x1000"], "0.28"),
+    ("seedream_5_pro", False, ["2048x2048"], "0.31"),
+    ("seedream_5_pro", True, ["1024x1024", "2048x2048"], "0.235"),
+])
+async def test_seedream_pixel_settlement(sdk_api, kind, layered, sizes, expected):
+    from decimal import Decimal
+    from models.usage_record import ModelUsageRecord
+    from services.billing.catalog import IMAGE_PRICING
+
+    sdk, state, (_, image, _) = sdk_api
+    await AiModelConfig.filter(id=image.id).update(image_model_type=kind, api_protocol="volcengine_ark",
+        pricing={**IMAGE_PRICING[kind], "discount": 0.5})
+    items = [{"url": "https://cdn.example/result.png", "size": size} for size in sizes]
+    state.failure = 200, json.dumps({"data": items}).encode(), {"content-type": "application/json"}
+    await sdk.images.generate(model=image.model, prompt="pan", extra_body={
+        "image": ["https://cdn.example/a.png", "https://cdn.example/b.png"], "layer_decomposition": layered})
+    record = await ModelUsageRecord.get()
+    assert record.cost == Decimal(expected)
+    assert sum(record.usage["output_tier_counts"].values()) == len(items)
+
+
+@pytest.mark.parametrize("size", [None, "4631x1000"])
+async def test_unpriced_seedream_output_requires_review(sdk_api, size):
+    from services.billing.catalog import IMAGE_PRICING
+
+    sdk, state, (_, image, _) = sdk_api
+    await AiModelConfig.filter(id=image.id).update(image_model_type="seedream_5_5", api_protocol="volcengine_ark",
+        pricing=IMAGE_PRICING["seedream_5_5"])
+    state.failure = 200, json.dumps({"data": [{"url": "https://cdn.example/result.png", "size": size}]}).encode(), {}
+    result = await sdk.images.generate(model=image.model, prompt="pan")
+    assert result.data[0].url == "https://cdn.example/result.png"
+    assert (await PlatformCallReceipt.get()).state == "review"
+    from models.usage_record import ModelUsageRecord
+    assert not await ModelUsageRecord.all().exists()
+
+
+async def test_success_body_and_headers_survive_settlement_error(sdk_api, monkeypatch):
+    sdk, state, _ = sdk_api
+    content = b'{ "id":"original", "model":"vendor-real", "choices":[], "usage":{"prompt_tokens":1,"completion_tokens":2}, "custom":true }'
+    state.failure = 201, content, {'content-type':'application/json','x-request-id':'original-trace',
+        'x-ratelimit-remaining-tokens':'123','retry-after':'3','set-cookie':'provider-session=secret'}
+    async def unavailable(*args):
+        raise RuntimeError('simulated database failure')
+    monkeypatch.setattr('services.platform.chat.finish', unavailable)
+    response = await sdk._client.post('https://platform.example/v1/chat/completions',
+        json={'model':'official-chat','messages':[{'role':'user','content':'hello'}]},
+        headers={'Authorization':'Bearer '+sdk.api_key})
+    assert response.status_code == 201 and response.content == content
+    assert response.headers['x-ratelimit-remaining-tokens'] == '123'
+    assert response.headers['x-request-id'] == 'original-trace'
+    assert 'set-cookie' not in response.headers
+    assert (await PlatformCallReceipt.get()).state == 'review'
+
+
+async def test_stream_keeps_exact_wire_and_does_not_override_options(sdk_api):
+    sdk, state, _ = sdk_api
+    wire = b': provider heartbeat\r\n\r\ndata: {"id":"original","object":"chat.completion.chunk","model":"real","choices":[{"index":0,"delta":{"content":"ok"}}]}\r\n\r\ndata: [DONE]\r\n\r\n'
+    state.failure = 200, wire, {'content-type':'text/event-stream','x-provider-id':'kept'}
+    response = await sdk._client.post('https://platform.example/v1/chat/completions',
+        json={'model':'official-chat','messages':[{'role':'user','content':'hello'}],'stream':True,
+              'stream_options':{'include_usage':False}},headers={'Authorization':'Bearer '+sdk.api_key})
+    assert response.status_code == 200 and response.content == wire
+    assert json.loads(state.seen[-1].content)['stream_options'] == {'include_usage':False}
+    assert response.headers['x-provider-id'] == 'kept'
+    assert (await PlatformCallReceipt.get()).state == 'review'
+
+
+async def test_official_url_image_edit_preserves_parameters_and_count(sdk_api):
+    sdk, state, _ = sdk_api
+    body = {'model':'official-image','prompt':'replace','images':[{'image_url':'https://cdn.example/ref.png'}],
+            'n':5,'size':'1536x1024','mask':{'image_url':'https://cdn.example/mask.png'},'background':'transparent',
+            'safety_identifier':'original','output_compression':80}
+    response = await sdk._client.post('https://platform.example/v1/images/edits',json=body,
+        headers={'Authorization':'Bearer '+sdk.api_key})
+    assert response.status_code == 200, response.text
+    sent = json.loads(state.seen[-1].content)
+    assert sent == {**body,'response_format':'url'}
+    assert state.seen[-1].url.path == '/v1/images/edits'
+    assert (await PlatformCallReceipt.get()).usage['input_image_count'] == 1
+
+
+async def test_openrouter_url_references_use_native_endpoint_and_fields(sdk_api):
+    sdk, state, models = sdk_api
+    await AiModelConfig.filter(id=models[1].id).update(api_protocol='openrouter_compatible')
+    body = {'model':'official-image','prompt':'replace','input_references':[{'type':'image_url',
+        'image_url':{'url':'https://cdn.example/ref.png'}}], 'n':12,'provider':{'order':['specific']}}
+    content = b'{ "created":1,"data":[{"url":"https://cdn.example/result.png"}],"unknown":{"keep":true} }'
+    state.failure = 200, content, {'content-type':'application/json','x-ratelimit-remaining':'8'}
+    response = await sdk._client.post('https://platform.example/v1/images',json=body,
+        headers={'Authorization':'Bearer '+sdk.api_key})
+    assert response.status_code == 200 and response.content == content
+    sent = json.loads(state.seen[-1].content)
+    assert sent == {**body,'response_format':'url'}
+    assert state.seen[-1].url.path == '/v1/images'
+
+
+async def test_image_success_is_preserved_when_accounting_is_unavailable(sdk_api, monkeypatch):
+    sdk,state,_ = sdk_api
+    content = b'{"created":1,"data":[{"url":"https://cdn.example/result.png"}],"usage":{"total_tokens":4}}'
+    state.failure=200,content,{'content-type':'application/json','x-ratelimit-remaining':'3'}
+    async def fail(*args):
+        raise RuntimeError('accounting unavailable')
+    monkeypatch.setattr('services.platform.images.record_measurement',fail)
+    response=await sdk._client.post('https://platform.example/v1/images/generations',json={'model':'official-image','prompt':'fixture'},headers={'Authorization':'Bearer '+sdk.api_key})
+    assert response.status_code==200 and response.content==content
+    assert response.headers['x-ratelimit-remaining']=='3'
+    assert (await PlatformCallReceipt.get()).state=='review'
+
+
+async def test_unrequested_extra_images_are_returned_but_not_charged(sdk_api):
+    sdk,state,_=sdk_api
+    content=json.dumps({'data':[{'url':'https://cdn.example/one.png'},{'url':'https://cdn.example/two.png'}]}).encode()
+    state.failure=200,content,{'content-type':'application/json'}
+    response=await sdk._client.post('https://platform.example/v1/images/generations',json={'model':'official-image','prompt':'one image','n':1},headers={'Authorization':'Bearer '+sdk.api_key})
+    assert response.status_code==200 and response.content==content
+    assert (await PlatformCallReceipt.get()).state=='review'
+    from models.usage_record import ModelUsageRecord
+    assert not await ModelUsageRecord.all().exists()
+
+
+async def test_studio_capabilities_leave_legacy_and_external_clients_independent(sdk_api):
+    sdk, state, (_, image, _) = sdk_api
+    image.image_model_type = "seedream_5_5"
+    image.pricing = {"type":"image", "billing_unit":"pixel_tier", "prices":{"low":.13,"high_capped":.23}}
+    await image.save()
+    user = await User.get(username="sdk-client")
+    key = (await create_key(AuthContext(user=user), "older-workbench", studio=True))["key"]
+    client = sdk.with_options(api_key=key)
+    target = f"nv-{image.id}"
+    assert target in [item.id for item in (await sdk.models.list()).data]
+    assert target not in [item.id for item in (await client.models.list()).data]
+    assert target in [item.id for item in (await client.models.list(extra_headers={
+        "X-NovelVids-Capabilities":"pixel_tier_images"})).data]
+    with pytest.raises(APIStatusError) as failure:
+        await client.images.generate(model=target, prompt="test")
+    assert failure.value.status_code == 409
+    assert not state.seen

@@ -62,3 +62,35 @@ it('shows key model permissions and expiry instead of purpose',async()=>{
   expect(wrapper.text()).toContain('永不过期')
   wrapper.unmount()
 })
+
+it('can reveal, hide, reveal after refresh, and copy an owned key',async()=>{
+  const writeText=vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator,'clipboard',{value:{writeText},configurable:true})
+  vi.mocked(request).mockImplementation(async path=>({code:0,message:'ok',data:String(path).endsWith('/secret')?{key:'nv_fixture_not_a_real_credential'}:String(path).includes('/catalog')?[]:[
+    {id:8,name:'Reusable',preview:'nv_masked',created_at:'2026-11-13T00:00:00Z',can_reveal:true},
+  ]}))
+  const wrapper=mount(PlatformConsolePage,{props:{section:'keys'},global:{plugins:[createPinia()]}});await flushPromises()
+  expect(wrapper.get('.key-token').text()).toBe('nv_masked')
+  await wrapper.get('button[aria-label="查看密钥 Reusable"]').trigger('click');await flushPromises()
+  expect(wrapper.get('.key-token').text()).toBe('nv_fixture_not_a_real_credential')
+  await wrapper.get('button[aria-label="隐藏密钥 Reusable"]').trigger('click');await flushPromises()
+  expect(wrapper.get('.key-token').text()).toBe('nv_masked')
+  await wrapper.findAll('button').find(button=>button.text()==='刷新')!.trigger('click');await flushPromises()
+  await wrapper.get('button[aria-label="查看密钥 Reusable"]').trigger('click');await flushPromises()
+  await wrapper.get('button[aria-label="复制密钥 Reusable"]').trigger('click');await flushPromises()
+  expect(writeText).toHaveBeenCalledWith('nv_fixture_not_a_real_credential')
+  expect(wrapper.text()).not.toContain('仅显示一次')
+  wrapper.unmount()
+})
+
+it('shows a failed read without displaying a false secret',async()=>{
+  vi.mocked(request).mockImplementation(async path=>{
+    if(String(path).endsWith('/secret'))throw new Error('读取失败')
+    return {code:0,message:'ok',data:String(path).includes('/catalog')?[]:[{id:8,name:'Reusable',preview:'nv_masked',created_at:'',can_reveal:true}]}
+  })
+  const wrapper=mount(PlatformConsolePage,{props:{section:'keys'},global:{plugins:[createPinia()]}});await flushPromises()
+  await wrapper.get('button[aria-label="查看密钥 Reusable"]').trigger('click');await flushPromises()
+  expect(wrapper.get('[role=alert]').text()).toContain('读取失败')
+  expect(wrapper.get('.key-token').text()).toBe('nv_masked')
+  wrapper.unmount()
+})

@@ -36,7 +36,11 @@ class SecurityHeadersMiddleware:
                 )
                 headers["Cross-Origin-Opener-Policy"] = "same-origin"
                 headers["X-Frame-Options"] = "DENY"
-                headers["Content-Security-Policy"] = self._policy_for(path)
+                policy = self._policy_for(path)
+                if "text/html" in headers.get("content-type", ""):
+                    from services.platform.docs_settings import documentation_origin, with_documentation_frame
+                    policy = with_documentation_frame(policy, await documentation_origin())
+                headers["Content-Security-Policy"] = policy
                 status = int(message.get("status", 0))
                 if (
                     status in {200, 206}

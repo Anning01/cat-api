@@ -1,14 +1,15 @@
 """OpenAI-compatible text transport. Content stays in memory; durable receipts contain costs only."""
 import asyncio
 import json
+import codecs
 import logging
 
 from fastapi import HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from openai import APIError, APIStatusError, AsyncOpenAI
 from auth.models import PlatformCallReceipt
-from services.platform.calls import CALL_TIMEOUT, admit, finish, recover_measured
-from services.platform.http_contract import UpstreamResponseError, error_body, redact_secret
+from services.platform.calls import CALL_TIMEOUT, admit, finish, recover_measured, preserve_result
+from services.platform.http_contract import UpstreamResponseError, error_body, redact_secret, response_headers
 
 logger = logging.getLogger(__name__)
 _streams = set()
@@ -16,10 +17,6 @@ _streams = set()
 
 def provider_client(config):
     return AsyncOpenAI(base_url=config.base_url, api_key=config.api_key, max_retries=0, timeout=CALL_TIMEOUT)
-
-
-def public_completion(message, public_model):
-    return {**message.model_dump(mode="json", exclude_unset=True), "model":public_model}
 
 
 async def mark_failure(receipt, exc):
@@ -31,12 +28,12 @@ RESULT_UNCONFIRMED = "平台未能确认完整模型结果，请凭请求编号�
 
 
 class ChatStream(StreamingResponse):
-    def __init__(self, client, stream, receipt, model, include_usage, deadline, secret=""):
+    def __init__(self, client, stream, receipt, deadline, secret=""):
         self.queue = asyncio.Queue(maxsize=32)
         self.detached = False
         super().__init__(self.events(), media_type="text/event-stream",
-            headers={"X-Request-Id":str(receipt.public_id),"Cache-Control":"no-store","X-Accel-Buffering":"no"})
-        task = asyncio.create_task(self.drain(client, stream, receipt, model, include_usage, deadline, secret))
+            headers={**response_headers(stream, receipt.public_id, secret), "X-Accel-Buffering":"no"}, status_code=stream.status_code)
+        task = asyncio.create_task(self.drain(client, stream, receipt, deadline, secret))
         _streams.add(task)
         task.add_done_callback(_streams.discard)
 
@@ -57,25 +54,43 @@ class ChatStream(StreamingResponse):
             while not self.queue.empty():
                 self.queue.get_nowait()
 
-    async def drain(self, client, stream, receipt, model, include_usage, deadline, secret):
+    async def drain(self, client, stream, receipt, deadline, secret):
         usage = None
         provider_id = None
+        decoder = codecs.getincrementaldecoder("utf-8")()
+        pending = ""
+        done = False
+        failed = False
         try:
             async with asyncio.timeout_at(deadline):
-                async for chunk in stream:
-                    if provider_id is None and chunk.id:
-                        provider_id = chunk.id
-                        await PlatformCallReceipt.filter(id=receipt.id, state="submitted").update(provider_id=provider_id)
-                    if chunk.usage is not None:
-                        usage = chunk.usage
-                    data = public_completion(chunk, model)
-                    if not include_usage:
-                        data.pop("usage", None)
-                        if not chunk.choices:
+                async for chunk in stream.aiter_bytes():
+                    # Forward original SSE bytes, including event names, comments and extensions.
+                    await self.put(chunk)
+                    pending += decoder.decode(chunk)
+                    lines = pending.split("\n")
+                    pending = lines.pop()
+                    for line in lines:
+                        if not line.startswith("data:"):
                             continue
-                    await self.put("data: " + json.dumps(data, ensure_ascii=False) + "\n\n")
-            await finish(receipt, usage, provider_id)
-            await self.put("data: [DONE]\n\n")
+                        value = line[5:].strip()
+                        if value == "[DONE]":
+                            done = True
+                            continue
+                        try:
+                            data = json.loads(value)
+                            provider_id = data.get("id") or provider_id
+                            usage = data.get("usage") or usage
+                            failed = failed or bool(data.get("error"))
+                        except (ValueError, AttributeError):
+                            pass
+                    if len(pending) > 1024 * 1024:
+                        pending = ""
+            if failed:
+                await mark_failure(receipt, ValueError("provider stream error"))
+            elif done:
+                await preserve_result(receipt, finish(receipt, usage, provider_id))
+            else:
+                await mark_failure(receipt, ValueError("incomplete stream"))
         except asyncio.CancelledError as exc:
             await mark_failure(receipt, exc)
             raise
@@ -106,8 +121,6 @@ async def complete(ctx, body, key):
         params.setdefault("stream", False)
         if config.max_tokens and not (body.max_tokens or body.max_completion_tokens):
             params["max_tokens"] = config.max_tokens
-        if body.stream:
-            params["stream_options"] = {**(body.stream_options or {}), "include_usage":True}
         extra = {name: params.pop(name) for name in (body.model_extra or {}) if name in params}
         if body.thinking is not None:
             extra["thinking"] = params.pop("thinking")
@@ -118,14 +131,15 @@ async def complete(ctx, body, key):
             if not body.stream and raw_result.http_response.json().get("error"):
                 await PlatformCallReceipt.filter(id=receipt.id, state="submitted").update(state="rejected")
                 raise UpstreamResponseError(raw_result.http_response, str(receipt.public_id), config.api_key)
-            result = raw_result.parse()
         if body.stream:
-            response = ChatStream(client, result, receipt, body.model,
-                                  bool((body.stream_options or {}).get("include_usage")), deadline, config.api_key)
+            response = ChatStream(client, raw_result.http_response, receipt, deadline, config.api_key)
             client = None  # Stream owns its transport until usage is collected.
             return response
-        await finish(receipt, result.usage, result.id)
-        return JSONResponse(public_completion(result, body.model), headers=headers)
+        raw = raw_result.http_response
+        result = raw.json()
+        await preserve_result(receipt, finish(receipt, result.get("usage"), result.get("id")))
+        from fastapi import Response
+        return Response(raw.content, status_code=raw.status_code, headers=response_headers(raw, receipt.public_id, config.api_key))
     except asyncio.CancelledError as exc:
         await mark_failure(receipt, exc)
         raise

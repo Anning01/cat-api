@@ -96,21 +96,41 @@ const formId=useId()
 const editDialog=ref<InstanceType<typeof AppDialog>>()
 </script>
 <template>
- <ConsolePage :title="tr(heading.title)" :description="tr(heading.description)" :class="'account-'+section">
-  <template #actions><AppButton variant="secondary" :loading="loading" @click="load"><RefreshCw :size="16"/>{{ tr('刷新') }}</AppButton><AppButton v-if="section==='profile'" variant="secondary" @click="nickname=name;profileError='';editOpen=true">{{ tr('编辑资料') }}</AppButton><AppButton v-if="section==='orders'" variant="primary" @click="rechargeOpen=true">{{ tr('充值') }}</AppButton><AppButton v-if="section==='billing'&&auth.isSuperAdmin&&scope==='all'" variant="secondary" :loading="exportBusy" :disabled="loading||!data" @click="exportCSV">{{ tr('导出当前筛选') }}</AppButton></template>
+ <ConsolePage :title="tr(heading.title)" :description="tr(heading.description)" :class="['account-'+section,{'account-records':section!=='profile'}]">
+  <template #actions><AppButton variant="secondary" :loading="loading" @click="load"><RefreshCw :size="16"/>{{ tr('刷新') }}</AppButton><AppButton v-if="section==='orders'" variant="primary" @click="rechargeOpen=true">{{ tr('充值') }}</AppButton><AppButton v-if="section==='billing'&&auth.isSuperAdmin&&scope==='all'" variant="secondary" :loading="exportBusy" :disabled="loading||!data" @click="exportCSV">{{ tr('导出当前筛选') }}</AppButton></template>
   <p v-if="error" class="console-error" role="alert">{{ error }} <button @click="load">{{ tr('重试') }}</button></p>
   <template v-if="section==='profile'">
-   <div class="console-summary account-balance-band"><div><span>{{ tr('可用余额') }}</span><strong>¥ {{ money(auth.balance) }}</strong></div><div class="account-balance-actions"><AppButton variant="primary" size="lg" @click="rechargeOpen=true">{{ tr('立即充值') }}<ArrowUpRight :size="16"/></AppButton><RouterLink to="/orders">{{ tr('查看充值订单') }}</RouterLink></div><div><span>{{ tr('累计消费') }}</span><strong>¥ {{ money(auth.totalCost) }}</strong></div><RouterLink to="/billing">{{ tr('查看消费账单') }}</RouterLink></div>
-   <div class="profile-grid"><section class="console-section"><div class="section-heading"><h2>{{ tr('个人资料') }}</h2><AppButton @click="nickname=name;profileError='';editOpen=true">{{ tr('编辑昵称') }}</AppButton></div><div class="profile-identity"><div class="profile-avatar"><AppAvatar :name="name" :src="auth.user?.avatar_url" :size="72"/><label :for="formId+'-field-1'" class="upload-avatar">{{ tr('更换头像') }}<input name="field-1" :id="formId+'-field-1'" type="file" accept="image/png,image/jpeg,image/webp" :disabled="profileBusy" @change="avatar"/></label><span v-if="profileBusy" role="status" class="muted">{{ tr('处理中…') }}</span></div><dl class="detail-fields"><div><dt>{{ tr('昵称') }}</dt><dd>{{ name }}</dd></div><div><dt>{{ tr('用户名') }}</dt><dd>{{ auth.user?.username }}</dd></div><div><dt>{{ tr('用户编号') }}</dt><dd>#{{ auth.user?.id }}</dd></div><div><dt>{{ tr('创建时间') }}</dt><dd>{{ dateTime(auth.user?.created_at) }}</dd></div><div><dt>{{ tr('身份') }}</dt><dd><AppStatusBadge>{{ tr(auth.isSuperAdmin?'超级管理员':'普通用户') }}</AppStatusBadge></dd></div></dl></div></section><section class="console-section"><div class="section-heading"><h2>{{ tr('偏好设置') }}</h2></div><ConsolePreferences expanded/><p class="muted">{{ tr('语言和外观只影响你的界面，不改变平台设置。') }}</p><div class="preference-note"><strong>{{ tr('金额显示') }}</strong><span class="muted">{{ tr('账单明细保留实际计费精度。') }}</span></div></section></div>
-   <section class="console-section"><div class="section-heading"><h2>{{ tr('账户安全') }}</h2><RouterLink to="/platform/keys">{{ tr('管理 API Key') }}</RouterLink></div><div class="security-row"><div><strong>{{ tr('登录方式') }}</strong><p class="muted">{{ tr(auth.provider==='password'?'密码登录':'器灵扫码登录') }}</p></div><AppStatusBadge>{{ tr(auth.qilingBound?'已绑定器灵':'独立账户') }}</AppStatusBadge></div><form v-if="auth.provider==='password'" class="console-filterbar" @submit.prevent="changePassword"><label :for="formId+'-field-2'">{{ tr('当前密码') }}<input name="field-2" :id="formId+'-field-2'" v-model="oldPassword" type="password" autocomplete="current-password" required/></label><label :for="formId+'-field-3'">{{ tr('新密码') }}<input name="field-3" :id="formId+'-field-3'" v-model="newPassword" type="password" autocomplete="new-password" minlength="8" required/></label><AppButton type="submit" variant="secondary" :loading="profileBusy">{{ tr('修改密码') }}</AppButton></form><div v-if="auth.provider==='qiling'&&!auth.qilingBound" class="security-row"><div><strong>{{ tr('器灵账号') }}</strong><p class="muted">{{ tr('绑定后可使用器灵扫码登录此账户，保留现有余额和记录。') }}</p></div><AppButton variant="secondary" @click="bindOpen=true">{{ tr('绑定账号') }}</AppButton></div><p v-if="profileError&&!editOpen" role="alert" class="console-error">{{ profileError }}</p></section>
-   <footer class="console-legal"><a href="/api/auth/legal/terms" target="_blank" rel="noopener">{{ tr('用户协议') }}</a><a href="/api/auth/legal/privacy" target="_blank" rel="noopener">{{ tr('隐私政策') }}</a><a href="/api/auth/legal/privacy#account-data-requests" target="_blank" rel="noopener">{{ tr('账号与数据申请') }}</a></footer>
+   <div class="profile-layout">
+    <div class="profile-account-column">
+     <section class="profile-surface profile-account" :aria-label="tr('个人资料')">
+      <div class="profile-account-heading"><AppAvatar :name="name" :src="auth.user?.avatar_url" :size="64"/><div><h2>{{ name||'—' }}</h2><AppStatusBadge>{{ tr(auth.isSuperAdmin?'超级管理员':'普通用户') }}</AppStatusBadge></div></div>
+      <div class="profile-account-actions"><label :for="formId+'-field-1'" class="upload-avatar">{{ tr('更换头像') }}<input name="field-1" :id="formId+'-field-1'" type="file" accept="image/png,image/jpeg,image/webp" :disabled="profileBusy" @change="avatar"/></label><AppButton size="sm" variant="secondary" @click="nickname=name;profileError='';editOpen=true">{{ tr('编辑昵称') }}</AppButton></div>
+      <span v-if="profileBusy" role="status" class="muted">{{ tr('处理中…') }}</span>
+      <dl class="profile-facts"><div class="profile-username"><dt>{{ tr('用户名') }}</dt><dd>{{ auth.user?.username||'—' }}</dd></div><div><dt>{{ tr('用户编号') }}</dt><dd>#{{ auth.user?.id }}</dd></div><div><dt>{{ tr('创建时间') }}</dt><dd>{{ dateTime(auth.user?.created_at) }}</dd></div></dl>
+     </section>
+     <footer class="profile-legal"><a href="/api/auth/legal/terms" target="_blank" rel="noopener">{{ tr('用户协议') }}</a><a href="/api/auth/legal/privacy" target="_blank" rel="noopener">{{ tr('隐私政策') }}</a><a href="/api/auth/legal/privacy#account-data-requests" target="_blank" rel="noopener">{{ tr('账号与数据申请') }}</a></footer>
+    </div>
+    <div class="profile-workspace">
+     <section class="profile-surface profile-wallet" :aria-label="tr('账户余额')">
+      <div class="profile-wallet-main"><div><h2>{{ tr('可用余额') }}</h2><strong class="profile-balance" :class="{'text-danger':Number(auth.balance)<0}">¥ {{ money(auth.balance) }}</strong></div><AppButton variant="primary" size="lg" @click="rechargeOpen=true">{{ tr('立即充值') }}<ArrowUpRight :size="16"/></AppButton></div>
+      <div class="profile-wallet-footer"><div class="profile-total"><span>{{ tr('累计消费') }}</span><strong>¥ {{ money(auth.totalCost) }}</strong></div><nav class="profile-money-links" :aria-label="tr('账户与费用')"><RouterLink to="/orders">{{ tr('充值订单') }}</RouterLink><RouterLink to="/billing">{{ tr('消费账单') }}</RouterLink></nav></div>
+     </section>
+     <section class="profile-surface profile-settings">
+      <h2>{{ tr('偏好与安全') }}</h2>
+      <ConsolePreferences expanded/>
+      <div class="profile-setting-row"><div><strong>{{ tr('登录方式') }}</strong><p>{{ tr(auth.provider==='password'?'密码登录':'器灵扫码登录') }}</p></div><AppStatusBadge>{{ tr(auth.qilingBound?'已绑定器灵':'独立账户') }}</AppStatusBadge></div>
+      <form v-if="auth.provider==='password'" class="profile-password-form" @submit.prevent="changePassword"><label :for="formId+'-field-2'">{{ tr('当前密码') }}<input name="field-2" :id="formId+'-field-2'" v-model="oldPassword" type="password" autocomplete="current-password" required/></label><label :for="formId+'-field-3'">{{ tr('新密码') }}<input name="field-3" :id="formId+'-field-3'" v-model="newPassword" type="password" autocomplete="new-password" minlength="8" required/></label><AppButton type="submit" variant="secondary" :loading="profileBusy">{{ tr('修改密码') }}</AppButton></form>
+      <div v-if="auth.provider==='qiling'&&!auth.qilingBound" class="profile-setting-row"><div><strong>{{ tr('器灵账号') }}</strong><p>{{ tr('绑定后可使用器灵扫码登录此账户，保留现有余额和记录。') }}</p></div><AppButton size="sm" variant="secondary" @click="bindOpen=true">{{ tr('绑定账号') }}</AppButton></div>
+      <div class="profile-setting-row profile-key-row"><strong>API Key</strong><RouterLink to="/platform/keys">{{ tr('管理 API Key') }} <ArrowUpRight :size="14" aria-hidden="true"/></RouterLink></div>
+      <p v-if="profileError&&!editOpen" role="alert" class="console-error">{{ profileError }}</p>
+     </section>
+    </div>
+   </div>
   </template>
   <template v-else>
-   <div v-if="auth.isSuperAdmin" class="console-tabs" role="group" :aria-label="tr('查看范围')"><button v-for="view in [{value:'all',label:'全平台'},{value:'mine',label:'我的'}]" :key="view.value" :class="{'is-active':scope===view.value}" :aria-pressed="scope===view.value" @click="scope=view.value;data=undefined;apply()">{{ tr(view.label) }}</button></div>
-   <search><form class="console-filterbar" @submit.prevent="apply"><label :for="formId+'-field-4'" v-if="section==='orders'">{{ tr('搜索') }}<input name="field-4" :id="formId+'-field-4'" v-model="search" type="search" autocorrect="off" :placeholder="tr('订单号或用户')"/></label><label :for="formId+'-field-5'" v-if="section==='orders'">{{ tr('订单状态') }}<AppSelect :id="formId+'-field-5'" v-model="status" :ariaLabel="tr('订单状态')" :options="[{value:'',label:tr('全部状态')},...Object.entries(orderLabels).map(([value,text])=>({value,label:tr(text)}))]"/></label><label :for="formId+'-field-6'" v-if="auth.isSuperAdmin&&scope==='all'">{{ tr('账户用户') }}<AppSelect :id="formId+'-field-6'" v-model="accountId" :ariaLabel="tr('账户用户')" :options="[{value:'',label:tr('全部用户')},...parties.map(user=>({value:String(user.id),label:user.name+' · #'+user.id}))]" searchable/></label><label :for="formId+'-field-7'" v-if="section==='billing'&&auth.isSuperAdmin&&scope==='all'">{{ tr('操作用户') }}<AppSelect :id="formId+'-field-7'" v-model="actorId" :ariaLabel="tr('操作用户')" :options="[{value:'',label:tr('全部用户')},...parties.map(user=>({value:String(user.id),label:user.name+' · #'+user.id}))]" searchable/></label><label :for="formId+'-field-8'">{{ tr('开始日期') }}<input name="field-8" :id="formId+'-field-8'" v-model="start" type="date" :max="end||undefined"/></label><label :for="formId+'-field-9'">{{ tr('结束日期') }}<input name="field-9" :id="formId+'-field-9'" v-model="end" type="date" :min="start||undefined"/></label><AppButton type="submit" variant="primary" :disabled="loading">{{ tr('查询') }}</AppButton><AppButton variant="secondary" @click="reset">{{ tr('重置') }}</AppButton></form></search>
-   <div v-if="data?.summary" class="console-summary"><div><span>{{ tr('实际消费') }}</span><strong>¥ {{ money(data.summary.total_cost) }}</strong></div><div><span>{{ tr('计费记录') }}</span><strong>{{ data.summary.total_transactions }}</strong></div><div><span>{{ tr('查看范围') }}</span><strong class="summary-text">{{ tr(auth.isSuperAdmin&&scope==='all'?'全平台':'我的账户') }}</strong></div></div>
-   <section class="console-table-panel" :aria-busy="loading">
-    <div class="console-table-toolbar"><h2>{{ tr(section==='orders'?'订单列表':'消费明细') }} <small>{{ tr('共 {p0} 条',{p0:data?.pagination.total??'—'}) }}</small></h2><span class="muted">{{ tr('时间：北京时间（UTC+8）') }}</span></div>
+   <search><form class="console-filterbar" @submit.prevent="apply"><label v-if="auth.isSuperAdmin" class="account-scope" :for="formId+'-scope'">{{ tr('查看范围') }}<AppSelect :id="formId+'-scope'" :model-value="scope" :ariaLabel="tr('查看范围')" :options="[{value:'all',label:tr('全平台')},{value:'mine',label:tr('我的')}]" @update:model-value="value=>{scope=value;data=undefined;apply()}"/></label><label :for="formId+'-field-4'" v-if="section==='orders'">{{ tr('搜索') }}<input name="field-4" :id="formId+'-field-4'" v-model="search" type="search" autocorrect="off" :placeholder="tr('订单号或用户')"/></label><label :for="formId+'-field-5'" v-if="section==='orders'">{{ tr('订单状态') }}<AppSelect :id="formId+'-field-5'" v-model="status" :ariaLabel="tr('订单状态')" :options="[{value:'',label:tr('全部状态')},...Object.entries(orderLabels).map(([value,text])=>({value,label:tr(text)}))]"/></label><label :for="formId+'-field-6'" v-if="auth.isSuperAdmin&&scope==='all'">{{ tr('账户用户') }}<AppSelect :id="formId+'-field-6'" v-model="accountId" :ariaLabel="tr('账户用户')" :options="[{value:'',label:tr('全部用户')},...parties.map(user=>({value:String(user.id),label:user.name+' · #'+user.id}))]" searchable/></label><label :for="formId+'-field-7'" v-if="section==='billing'&&auth.isSuperAdmin&&scope==='all'">{{ tr('操作用户') }}<AppSelect :id="formId+'-field-7'" v-model="actorId" :ariaLabel="tr('操作用户')" :options="[{value:'',label:tr('全部用户')},...parties.map(user=>({value:String(user.id),label:user.name+' · #'+user.id}))]" searchable/></label><label :for="formId+'-field-8'">{{ tr('开始日期') }}<input name="field-8" :id="formId+'-field-8'" v-model="start" type="date" :max="end||undefined"/></label><label :for="formId+'-field-9'">{{ tr('结束日期') }}<input name="field-9" :id="formId+'-field-9'" v-model="end" type="date" :min="start||undefined"/></label><AppButton type="submit" variant="primary" :disabled="loading">{{ tr('查询') }}</AppButton><AppButton variant="secondary" @click="reset">{{ tr('重置') }}</AppButton></form></search>
+   <section class="console-table-panel is-compact" :class="{'has-records':Boolean(data?.items.length)}" :aria-busy="loading">
+    <div class="console-table-toolbar"><div class="account-list-heading"><h2>{{ tr(section==='orders'?'订单列表':'消费明细') }} <small v-if="!data?.summary">{{ tr('共 {p0} 条',{p0:data?.pagination.total??'—'}) }}</small></h2><dl v-if="data?.summary" class="billing-summary"><div><dt>{{ tr('实际消费') }}</dt><dd>¥ {{ money(data.summary.total_cost) }}</dd></div><div><dt>{{ tr('计费记录') }}</dt><dd>{{ data.summary.total_transactions }}</dd></div></dl></div><span class="muted">{{ tr('时间：北京时间（UTC+8）') }}</span></div>
     <ConsoleTable :caption="tr(section==='orders'?'订单列表':'消费明细')" :class="{'billing-table':section==='billing'}">
      <thead><tr>
       <th scope="col">{{ tr(section==='orders'?'订单号':'流水 / 创建时间') }}</th>
@@ -150,6 +170,85 @@ const editDialog=ref<InstanceType<typeof AppDialog>>()
 </template>
 
 <style scoped>
+
+.account-profile { padding:20px 24px 32px; }
+.account-profile :deep(.console-page-header) { min-height:0; align-items:center; margin-bottom:16px; padding-bottom:0; border:0; }
+.account-profile :deep(.console-page-heading) { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 16px; }
+.account-profile :deep(.console-page-heading h1) { margin:0; }
+.account-profile :deep(.console-page-heading p) { font-size:13px; }
+.profile-layout { display:grid; grid-template-columns:300px minmax(0,1fr); align-items:start; gap:20px; }
+.profile-workspace { display:grid; gap:16px; min-width:0; }
+.profile-surface { min-width:0; padding:20px; border:1px solid var(--app-border); border-radius:12px; background:var(--app-surface); }
+.profile-account-heading { display:flex; align-items:center; gap:14px; }
+.profile-account-heading > div { min-width:0; }
+.profile-account-heading h2 { margin:0 0 6px; font-size:18px; overflow-wrap:anywhere; }
+.profile-account-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-block:16px 20px; }
+.profile-account-actions .upload-avatar { min-height:32px; border-color:var(--app-border); background:var(--app-surface-muted); }
+.profile-facts { display:grid; grid-template-columns:70px minmax(0,1fr); gap:16px 12px; margin:0; }
+.profile-facts > div { min-width:0; }
+.profile-facts .profile-username { grid-column:1 / -1; }
+.profile-facts dt { margin-bottom:5px; color:var(--app-text-secondary); font-size:12px; }
+.profile-facts dd { margin:0; color:var(--app-text); font-size:12px; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.profile-username dd { font-family:ui-monospace,monospace; line-height:1.6; }
+.profile-legal { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:12px; padding-inline:4px; font-size:11px; }
+.profile-legal a { color:var(--app-text-secondary); }
+.profile-wallet-main { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+.profile-wallet-main h2 { font-size:13px; font-weight:500; color:var(--app-text-secondary); }
+.profile-balance { display:block; margin-top:6px; font-size:32px; font-weight:650; line-height:1.25; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.profile-wallet-footer { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-top:18px; padding-top:14px; border-top:1px solid var(--app-border); }
+.profile-total { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; font-size:12px; color:var(--app-text-secondary); }
+.profile-total strong { color:var(--app-text); font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
+.profile-money-links { display:flex; flex-wrap:wrap; gap:16px; font-size:13px; }
+.profile-settings > h2 { margin-bottom:10px; font-size:15px; }
+.profile-settings :deep(.console-preferences.is-expanded label) { min-height:48px; font-size:13px; }
+.profile-settings :deep(.console-preferences.is-expanded .app-select) { width:176px; min-width:150px; max-width:176px; }
+.profile-setting-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding-block:14px; border-bottom:1px solid var(--app-border); }
+.profile-setting-row strong { font-size:13px; font-weight:500; }
+.profile-setting-row p { margin:4px 0 0; color:var(--app-text-secondary); font-size:12px; }
+.profile-key-row { border-bottom:0; padding-bottom:0; }
+.profile-key-row a { display:inline-flex; align-items:center; gap:5px; font-size:13px; }
+.profile-password-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:end; gap:12px; padding-block:14px; border-bottom:1px solid var(--app-border); }
+.profile-password-form label { display:grid; gap:7px; min-width:0; font-size:12px; color:var(--app-text-secondary); }
+.profile-password-form input { width:100%; }
+.profile-password-form .app-button { grid-column:1 / -1; justify-self:start; }
+@media(max-width:1000px) { .profile-layout { grid-template-columns:260px minmax(0,1fr); gap:16px; } .profile-surface { padding:16px; } .profile-facts { grid-template-columns:60px minmax(0,1fr); } }
+@media(max-width:800px) { .profile-layout { grid-template-columns:minmax(0,1fr); } .profile-account-column { min-width:0; } }
+@media(max-width:767px) { .account-profile { padding:16px; } .account-profile :deep(.console-page-heading p) { display:none; } .profile-password-form { grid-template-columns:minmax(0,1fr); } .profile-balance { font-size:28px; } }
+@media(pointer:coarse) { .profile-account-actions .upload-avatar { min-height:44px; } }
+
+.account-records { display:flex; flex-direction:column; height:100%; min-height:100%; }
+.account-records > search,.account-records :deep(.console-page-header) { flex-shrink:0; }
+.account-records .console-filterbar { gap:8px; margin-bottom:12px; }
+.account-records .console-filterbar > label { flex:1 1 116px; min-width:0; max-width:none; gap:4px; font-size:12px; }
+.account-records .console-filterbar > label:has(input[type=search]) { flex:1.4 1 160px; }
+.account-records .console-filterbar > label:has(input[type=date]) { flex:1 1 136px; }
+.account-records .console-filterbar > .account-scope { flex:0 0 104px; }
+.account-records .console-table-panel { display:flex; flex:1; flex-direction:column; min-height:240px; margin-bottom:0; }
+.account-records .console-table-toolbar,.account-records :deep(.app-pagination) { flex-shrink:0; }
+.account-records :deep(.console-table-scroll) { flex:1; min-height:0; max-height:none; }
+.account-records :deep(.console-data-table) { min-width:880px; }
+.account-records .console-table-panel:not(.has-records) :deep(.console-table-scroll) { flex:none; }
+.account-records .console-empty,.account-records .console-skeleton { flex:1; }
+@media(min-width:768px) and (max-width:1199px) {
+ .account-records .console-filterbar { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
+ .account-records .console-filterbar > .app-button { justify-self:start; }
+}
+@media(max-width:767px) {
+ .account-records { height:auto; }
+ .account-records .console-filterbar { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .account-records .console-filterbar > .account-scope,.account-records .console-filterbar > label:has(input[type=search]) { grid-column:1 / -1; }
+ .account-records .console-table-toolbar { gap:4px; }
+ .account-records .console-table-toolbar > .muted { font-size:11px; }
+ .account-records :deep(.console-table-scroll) { flex:none; max-height:65dvh; }
+ .account-records :deep(.app-pagination) { flex-wrap:wrap; }
+}
+
+.account-list-heading { display:flex; align-items:center; flex-wrap:wrap; gap:8px 20px; min-width:0; }
+.billing-summary { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 20px; margin:0; }
+.billing-summary > div { display:inline-flex; align-items:baseline; gap:6px; }
+.billing-summary dt { color:var(--app-text-secondary); font-size:12px; }
+.billing-summary dd { margin:0; font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; }
+
 .billing-identity { min-width:150px; white-space:nowrap; }
 .billing-identity strong { font-weight:500; }
 .billing-identity small { display:block; margin-top:3px; color:var(--app-text-secondary); font-size:11px; font-weight:400; }

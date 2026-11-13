@@ -27,7 +27,7 @@ from auth.deps import AuthContext, get_auth_context
 from auth.models import PlatformApiKey, User, UserWallet
 from controllers.account import account_controller
 from main import app
-from models.config import AiModelConfig
+from models.config import AiModelConfig, GeneralConfig
 from schemas.billing import StatementFilters
 from services.balance import consume
 from services.billing.statements import billing_statements
@@ -50,14 +50,19 @@ async def main():
             'timezone': 'Asia/Shanghai', 'use_tz': True,
         })
         await Tortoise.generate_schemas()
+        await GeneralConfig.create(id=1, prompt_language='zh')
+        await Tortoise.get_connection('default').execute_script('ALTER TABLE general_configs DROP COLUMN api_docs_url;')
+        await ensure_billing_integration_schema()
+        assert (await GeneralConfig.get(id=1)).api_docs_url is None
+        assert (await GeneralConfig.get(id=1)).prompt_language == 'zh'
         admin = await User.create(username='postgres-admin', is_super_admin=True)
         legacy = await create_key(AuthContext(user=admin), 'Existing PostgreSQL key')
         await Tortoise.get_connection('default').execute_script(
-            'ALTER TABLE account_api_keys DROP COLUMN allowed_model_ids; ALTER TABLE account_api_keys DROP COLUMN expires_at;')
+            'ALTER TABLE account_api_keys DROP COLUMN allowed_model_ids; ALTER TABLE account_api_keys DROP COLUMN expires_at; ALTER TABLE account_api_keys DROP COLUMN encrypted_token;')
         await ensure_billing_integration_schema()
         await ensure_billing_integration_schema()
         preserved = await PlatformApiKey.get(id=legacy['id'])
-        assert preserved.allowed_model_ids is None and preserved.expires_at is None
+        assert preserved.allowed_model_ids is None and preserved.expires_at is None and preserved.encrypted_token is None
         user = await User.create(username='postgres-user')
         await UserWallet.create(user=admin, balance=100)
         await account_controller.top_up(user.id, Decimal('12.12'), admin.id, 'Isolated PostgreSQL test')
@@ -73,6 +78,10 @@ async def main():
                 'expires_at':(datetime.now(timezone.utc)+timedelta(days=7)).isoformat(),
             })).json()['data']
             headers = {'Authorization':'Bearer '+policy['key']}
+            for _ in range(2):
+                revealed = await client.get(f"/api/platform/keys/{policy['id']}/secret")
+                assert revealed.json()['data']['key'] == policy['key']
+                assert revealed.headers['cache-control'] == 'no-store'
             assert (await client.get('/v1/models', headers=headers)).json()['data'][0]['id'] == f'nv-{model.id}'
             assert (await PlatformApiKey.get(id=policy['id'])).allowed_model_ids == [f'nv-{model.id}']
             await PlatformApiKey.filter(id=policy['id']).update(expires_at=datetime.now(timezone.utc)-timedelta(seconds=1))
@@ -113,3 +122,44 @@ async def main():
 asyncio.run(main())
 '''
     subprocess.run([sys.executable, '-c', script], check=True, env={**os.environ, 'AUTH_PROVIDER':'password'})
+
+
+@pytest.mark.skipif(not os.environ.get('CAT_API_POSTGRES_TEST_URL'), reason='Requires a local PostgreSQL test URL')
+def test_postgres_native_task_forwarding():
+    script = r'''
+import asyncio
+import os
+from urllib.parse import unquote, urlsplit
+from uuid import uuid4
+import asyncpg
+import pytest
+from tortoise import Tortoise
+from test.test_native_forwarding import native_api, test_native_requests_responses_and_exactly_once_billing
+
+async def main():
+    url = urlsplit(os.environ['CAT_API_POSTGRES_TEST_URL'])
+    schema = 'native_test_' + uuid4().hex
+    control = await asyncpg.connect(os.environ['CAT_API_POSTGRES_TEST_URL'])
+    await control.execute(f'CREATE SCHEMA "{schema}"')
+    patches = pytest.MonkeyPatch()
+    try:
+        await Tortoise.init(config={
+            'connections': {'default': {'engine':'tortoise.backends.asyncpg','credentials':{
+                'host':url.hostname,'port':url.port or 5432,'user':unquote(url.username),'password':unquote(url.password),
+                'database':url.path.lstrip('/'),'schema':schema}}},
+            'apps':{'models':{'models':['auth.models','models.config','models.usage_record']}},
+            'timezone':'Asia/Shanghai','use_tz':True})
+        await Tortoise.generate_schemas()
+        fixture = native_api.__wrapped__(patches)
+        async for context in fixture:
+            await test_native_requests_responses_and_exactly_once_billing(context,'minimax',
+                '/v2/video_generation','/v2/query/video_generation/up-task',4)
+        print('PostgreSQL native task ownership and exactly-once billing passed.')
+    finally:
+        patches.undo()
+        await Tortoise.close_connections()
+        await control.execute(f'DROP SCHEMA "{schema}" CASCADE')
+        await control.close()
+asyncio.run(main())
+'''
+    subprocess.run([sys.executable, '-c', script], check=True, env=os.environ.copy())

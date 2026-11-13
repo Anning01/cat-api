@@ -105,6 +105,8 @@ class GeneralConfig(AbstractBaseModel):
         description="新生成提示词使用的语言：zh/en",
     )
 
+    api_docs_url = fields.CharField(max_length=2048, null=True, description="Apifox 公开在线文档地址")
+
     class Meta:
         table = "general_configs"
         table_description = "应用级通用配置表"

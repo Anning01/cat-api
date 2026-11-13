@@ -19,6 +19,16 @@ PUBLIC_KINDS = {
     AiTaskTypeEnum.prompt_optimization: "text",
 }
 
+NATIVE_APIS = {
+    "volcengine_ark":{"submit":"/api/v3/contents/generations/tasks", "query":"/api/v3/contents/generations/tasks/{task_id}"},
+    "minimax":{"submit":"/v2/video_generation", "query":"/v2/query/video_generation/{task_id}"},
+    "dashscope":{"submit":"/api/v1/services/aigc/video-generation/video-synthesis", "query":"/api/v1/tasks/{task_id}"},
+    "autodl":{"submit":"/api/v1/comfyui/comfyui_workflow/{model_id}", "query":"/api/v1/comfyui/comfyui_workflow/result/{task_id}"},
+    "volcengine_mediakit":{"submit":"/api/v1/tools/enhance-video-generative", "query":"/api/v1/tasks/{task_id}"},
+    "volcengine_openspeech":{"submit":"/api/v3/auc/bigmodel/submit", "query":"/api/v3/auc/bigmodel/query"},
+}
+
+
 # Deliberately independent of the provider configuration's private fields.
 PUBLIC_PROCESSING_OPTIONS = {
     "input_short_side_min", "input_short_side_max", "input_long_side_max",
@@ -44,7 +54,7 @@ def public_tariff(raw):
     data["currency"] = "CNY"
     if raw.get("type") in {"text", "image", "video", "asr", "media_processing"}:
         data["type"] = raw["type"]
-    if raw.get("billing_unit") in {"token", "second", "minute"}:
+    if raw.get("billing_unit") in {"token", "second", "minute", "pixel_tier"}:
         data["billing_unit"] = raw["billing_unit"]
     for k in ("prices","video_reference_prices"):
         if isinstance(raw.get(k), dict):
@@ -71,10 +81,12 @@ async def model_catalog():
             "task_types": [task for task in task_types if task in PUBLIC_KINDS],
             "created": int(row["created_at"].timestamp()),
             "image_model_type": row["image_model_type"], "video_model_type": row["video_model_type"],
-            "reference_image_urls": bool(row["image_model_type"] and row["api_protocol"] in {"volcengine_ark", "openrouter_compatible"}),
+            "reference_image_urls": bool(row["image_model_type"] and row["api_protocol"] in {"openai_compatible", "volcengine_ark", "openrouter_compatible"}),
             "pricing": public_tariff(row["pricing"]), "tool_calls": row["supports_tool_calls"],
             "json_output": row["supports_json_output"],
             "concurrency": max(1, row["concurrency"]),
+            **({"native_api":NATIVE_APIS[row["api_protocol"]]} if row["api_protocol"] in NATIVE_APIS
+               and any(kind in kinds for kind in ("video", "asr", "media_processing")) else {}),
             **({"processing_options": public_processing_options(row["processing_options"])}
                if AiTaskTypeEnum.video_enhancement in task_types else {}),
         })

@@ -221,6 +221,12 @@ def video_cost(usage,rates):
 
 
 async def refresh_job(job, receipt, *, renew=False):
+    if job.inputs.get("native_protocol"):
+        from services.platform.native import reconcile
+        claimed = await PlatformVideoJob.filter(id=job.id, poll_after__lte=int(time.time())).update(poll_after=int(time.time())+CALL_TIMEOUT+15)
+        if claimed:
+            await reconcile(job, receipt)
+        return
     now = int(time.time())
     token = uuid4()
     statuses = ["completed"] if renew else ["queued", "in_progress"]

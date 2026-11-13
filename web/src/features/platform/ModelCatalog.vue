@@ -11,11 +11,12 @@ export interface CatalogModel {
   tool_calls?: boolean
   json_output?: boolean
   pricing: ModelPricing
+  concurrency?: number
 }
 </script>
 
 <script setup lang="ts">
-import { computed, ref, useId } from 'vue'
+import { computed, ref } from 'vue'
 import {
   ArrowRight,
   Braces,
@@ -31,21 +32,19 @@ import {
   Monitor,
   RotateCcw,
   Search,
-  SlidersHorizontal,
   X,
 } from 'lucide-vue-next'
 import { tr } from '@/i18n'
 import { notice } from '@/shared/notice'
 import AppUnitPrice from '@/components/AppUnitPrice.vue'
 import AppSelect from '@/components/AppSelect.vue'
+import { getModelDiscount, getDiscountRate, pricingRows } from './modelPricing'
 
 const props = defineProps<{ models: CatalogModel[]; canManage?: boolean; loggedIn?: boolean }>()
 const kind = ref('all')
 const query = ref('')
 const sort = ref('default')
-const filtersOpen = ref(false)
 const viewMode = ref<'grid' | 'compact' | 'list'>('grid')
-const filterPanelId = useId()
 const copiedId = ref('')
 const selectedSeries = ref<string[]>([])
 const selectedResolutions = ref<string[]>([])
@@ -92,8 +91,10 @@ function getModelResolutions(model: CatalogModel): Set<string> {
     if (l.endsWith('p')) return l
     return s
   }
-  for (const k of Object.keys(model.pricing.prices ?? {})) {
-    set.add(norm(k))
+  if (model.pricing.billing_unit === 'pixel_tier') {
+    for (const size of ['1K', '1.5K', '2K']) set.add(size)
+  } else {
+    for (const k of Object.keys(model.pricing.prices ?? {})) set.add(norm(k))
   }
   for (const tier of model.pricing.tiers ?? []) {
     if (tier.short_side_max != null) set.add(`${tier.short_side_max}p`)
@@ -161,8 +162,6 @@ const hasSidebarFilter = computed(() => (
   selectedResolutions.value.length > 0 ||
   selectedFeatures.value.length > 0
 ))
-const selectedFilterCount = computed(() => selectedSeries.value.length + selectedResolutions.value.length + selectedFeatures.value.length)
-
 function resetSidebarFilters() {
   selectedSeries.value = []
   selectedResolutions.value = []
@@ -173,19 +172,6 @@ function resetAllFilters() {
   resetSidebarFilters()
   query.value = ''
   kind.value = 'all'
-}
-
-function getModelDiscount(m: CatalogModel): number {
-  if (m.pricing?.discount != null && typeof m.pricing.discount === 'number' && m.pricing.discount > 0) {
-    return m.pricing.discount
-  }
-  return 1.0
-}
-
-function getDiscountRate(discount: number | undefined | null): string {
-  if (discount == null) return ''
-  const val = Number((discount * 10).toFixed(1))
-  return String(val)
 }
 
 const filtered = computed(() => {
@@ -251,33 +237,6 @@ function isResolution(label: string): boolean {
   return /^\d+p|4k|\d+(\.\d+)?k$/i.test(label)
 }
 
-function compareTiers(left: string, right: string) {
-  const size = (value: string) => Number.parseFloat(value) * (/k$/i.test(value) ? 1000 : 1)
-  return size(left) - size(right) || collator.compare(left, right)
-}
-
-function pricingRows(model: CatalogModel) {
-  const pricing = model.pricing
-  const rows: Array<{ label: string; value: number; unit: string; reference?: boolean }> = []
-  const unit = model.kinds.includes('image') ? tr('张') : pricing.billing_unit === 'second' ? tr('秒')
-    : pricing.billing_unit === 'minute' ? tr('分钟') : tr('百万 token')
-  for (const [field, label] of [
-    ['input_price_per_1m', tr('输入单价')], ['output_price_per_1m', tr('输出单价')], ['cache_input_price_per_1m', tr('缓存输入')],
-  ] as const) {
-    const value = pricing[field]
-    if (value != null) rows.push({ label, value, unit: tr('百万 token') })
-  }
-  for (const [label, value] of Object.entries(pricing.prices ?? {}).sort(([a], [b]) => compareTiers(a, b))) {
-    rows.push({ label, value, unit })
-  }
-  if (pricing.price_per_minute != null) rows.push({ label: tr('标准单价'), value: pricing.price_per_minute, unit: tr('分钟') })
-  for (const tier of pricing.tiers ?? []) rows.push({ label: `≤${tier.short_side_max}p · ≤${tier.fps_max}fps`, value: tier.price, unit: tr('分钟') })
-  for (const [tier, value] of Object.entries(pricing.video_reference_prices ?? {}).sort(([a], [b]) => compareTiers(a, b))) {
-    rows.push({ label: `${tr('参考视频')} · ${tier}`, value, unit, reference: true })
-  }
-  return rows
-}
-
 async function copyId(id: string) {
   try {
     await navigator.clipboard.writeText(id)
@@ -336,16 +295,14 @@ function onModelAction(model: CatalogModel) {
           <AppSelect v-model="sort" :options="sortOptions" :ariaLabel="tr('模型排序')" density="compact" />
         </div>
 
-        <button type="button" class="catalog-filter-toggle" :class="{ 'is-active': filtersOpen || hasSidebarFilter }" :aria-expanded="filtersOpen" :aria-controls="filterPanelId" @click="filtersOpen = !filtersOpen">
-          <SlidersHorizontal :size="15" aria-hidden="true"/>{{ tr('筛选') }}<span v-if="selectedFilterCount">{{ selectedFilterCount }}</span>
-        </button>
+
       </div>
     </div>
 
-    <!-- Optional filters and model cards -->
+    <!-- Persistent filters and model cards -->
     <div class="catalog-layout">
       <!-- Detailed filters -->
-      <aside v-if="filtersOpen" :id="filterPanelId" class="catalog-sidebar" :aria-label="tr('筛选')">
+      <aside class="catalog-sidebar" :aria-label="tr('筛选')">
         <div class="sidebar-header">
           <span class="sidebar-title">{{ tr('筛选') }}</span>
           <button
@@ -353,9 +310,10 @@ function onModelAction(model: CatalogModel) {
             type="button"
             class="sidebar-quick-reset"
             :title="tr('重置筛选')"
+            :aria-label="tr('重置筛选')"
             @click="resetSidebarFilters"
           >
-            <SlidersHorizontal :size="14" aria-hidden="true" />
+            <RotateCcw :size="14" aria-hidden="true" />
           </button>
         </div>
 
@@ -520,7 +478,7 @@ function onModelAction(model: CatalogModel) {
                       <div class="price-line"><dt>{{ row.label }}</dt><dd><AppUnitPrice :amount="row.value" :multiplier="getModelDiscount(model)" :unit="row.unit"/></dd></div>
                     </template>
                   </dl>
-                  <p v-if="model.pricing.input_image">{{ tr('输入图前 {p0} 张免费，之后', { p0: model.pricing.input_image.first_free }) }} <AppUnitPrice :amount="model.pricing.input_image.price_per_image" :multiplier="getModelDiscount(model)" :unit="tr('张')"/></p>
+                  <p v-if="model.pricing.input_image">{{ model.pricing.input_image.first_free === 0 ? tr('输入参考图片') : tr('输入图前 {p0} 张免费，之后', { p0: model.pricing.input_image.first_free }) }} <AppUnitPrice :amount="model.pricing.input_image.price_per_image" :multiplier="getModelDiscount(model)" :unit="tr('张')"/></p>
                 </details>
               </article>
             </div>
@@ -540,7 +498,7 @@ function onModelAction(model: CatalogModel) {
 </template>
 
 <style scoped>
-.model-directory { min-width: 0; width: 100%; }
+.model-directory { min-width: 0; width: 100%; container:model-directory / inline-size; }
 .catalog-initial-empty { display:flex; flex-direction:column; align-items:flex-start; gap:16px; padding:32px; border:1px solid var(--app-border); border-radius:12px; background:var(--app-surface); color:var(--app-text-secondary); }
 .catalog-initial-empty h2 { margin:0; color:var(--app-text); font-size:20px; }
 .catalog-initial-empty p { max-width:64ch; margin:0; }
@@ -561,22 +519,21 @@ function onModelAction(model: CatalogModel) {
 .catalog-search button { display:grid; place-items:center; min-width:24px; min-height:24px; padding:0; border:0; background:transparent; color:inherit; cursor:pointer; }
 .catalog-sort-box { flex:0 0 auto; }
 .catalog-sort-box :deep(.app-select__trigger) { min-height:36px; border-color:var(--app-border); }
-.catalog-filter-toggle { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:36px; padding:0 10px; border:1px solid var(--app-border); border-radius:8px; background:var(--app-surface-muted); color:var(--app-text); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; }
-.catalog-filter-toggle.is-active { background:var(--app-accent-soft); color:var(--app-accent); border-color:var(--app-accent); }
-.catalog-filter-toggle span { font-size:11px; font-variant-numeric:tabular-nums; }
 
-.catalog-layout { min-width:0; }
-.catalog-sidebar { padding:16px; margin-block-end:16px; border:1px solid var(--app-border); border-radius:12px; background:var(--app-surface); }
+.catalog-layout { min-width:0; display:grid; grid-template-columns:220px minmax(0,1fr); align-items:start; gap:16px; }
+.catalog-sidebar { position:sticky; inset-block-start:12px; min-width:0; max-block-size:calc(100dvh - 200px); overflow-y:auto; overscroll-behavior:contain; padding:16px; border:1px solid var(--app-border); border-radius:12px; background:var(--app-surface); }
 .sidebar-header, .catalog-view-settings { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .sidebar-header { margin-block-end:12px; }
 .sidebar-title { font-size:14px; font-weight:600; }
-.sidebar-quick-reset { display:grid; place-items:center; min-width:32px; min-height:32px; background:transparent; color:var(--app-accent); cursor:pointer; }
-.catalog-view-settings { justify-content:flex-start; margin-block-end:16px; font-size:13px; color:var(--app-text-secondary); }
+.sidebar-quick-reset { display:grid; place-items:center; min-width:32px; min-height:32px; background:transparent; color:var(--app-accent); border-radius:6px; cursor:pointer; }
+.sidebar-quick-reset:hover { background:var(--app-accent-soft); }
+.catalog-view-settings { justify-content:flex-start; flex-wrap:wrap; gap:8px; margin-block-end:16px; font-size:13px; color:var(--app-text-secondary); }
+.catalog-view-settings > span { white-space:nowrap; }
 .catalog-view-modes { display:inline-flex; gap:4px; padding:3px; border-radius:8px; background:var(--app-surface-muted); }
 .view-mode-btn { display:grid; place-items:center; width:32px; height:32px; border:0; border-radius:6px; background:transparent; color:var(--app-text-secondary); cursor:pointer; }
 .view-mode-btn:hover { color:var(--app-accent); }
 .view-mode-btn.is-active { background:var(--app-surface); color:var(--app-accent); }
-.sidebar-body { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); gap:16px 24px; }
+.sidebar-body { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; }
 .sidebar-group-title { margin:0 0 8px; font-size:13px; font-weight:600; }
 .sidebar-checkbox-label { display:flex; align-items:center; gap:8px; min-height:30px; font-size:13px; cursor:pointer; }
 .sidebar-checkbox-label input { position:absolute; opacity:0; width:0; height:0; }
@@ -584,7 +541,8 @@ function onModelAction(model: CatalogModel) {
 .sidebar-checkbox-label input:checked + .checkbox-indicator { background:var(--app-primary); border-color:var(--app-primary); }
 .sidebar-checkbox-label input:checked + .checkbox-indicator::after { content:''; width:4px; height:8px; border:solid var(--app-on-primary); border-width:0 2px 2px 0; transform:rotate(45deg) translate(-.5px,-.5px); }
 .sidebar-checkbox-label input:focus-visible + .checkbox-indicator { outline:2px solid var(--app-accent); outline-offset:2px; }
-.checkbox-count { color:var(--app-text-secondary); font-size:12px; font-variant-numeric:tabular-nums; }
+.checkbox-text { flex:1; min-width:0; overflow-wrap:anywhere; }
+.checkbox-count { flex-shrink:0; color:var(--app-text-secondary); font-size:12px; font-variant-numeric:tabular-nums; }
 .reset-filters-btn { display:inline-flex; align-items:center; gap:6px; grid-column:1 / -1; justify-self:start; min-height:32px; padding:0 10px; border:1px solid var(--app-border); border-radius:6px; background:var(--app-surface-muted); color:var(--app-text-secondary); font:inherit; font-size:12px; cursor:pointer; }
 
 .catalog-content { min-width:0; container:catalog-content / inline-size; }
@@ -631,6 +589,10 @@ function onModelAction(model: CatalogModel) {
   .catalog.is-list .model-card > .model-prices { grid-column:2; grid-row:1 / span 3; border:0; margin:0; padding:0; }
   .catalog.is-list .reference-prices { grid-column:2; }
 }
+@container model-directory (max-width:640px) {
+  .catalog-layout { grid-template-columns:minmax(0,1fr); gap:12px; }
+  .catalog-sidebar { position:static; max-block-size:240px; }
+}
 .catalog-empty { padding:40px 16px; text-align:center; color:var(--app-text-secondary); }
 .catalog-empty h2 { margin:12px 0 6px; }
 .catalog-empty button { padding:8px 16px; border:1px solid var(--app-border); border-radius:6px; background:var(--app-surface-muted); color:var(--app-accent); cursor:pointer; }
@@ -642,12 +604,12 @@ button:focus-visible, summary:focus-visible { outline:2px solid var(--app-accent
   .catalog-search svg { display:none; }
   .model-directory .catalog-search input { font-size:16px; }
   .catalog-sort-box :deep(.app-select__trigger) { font-size:12px!important; padding-inline:6px; }
-  .catalog-filter-toggle { padding-inline:8px; }
   .model-card { padding:16px; }
 }
 @media (pointer:coarse) {
-  .filter-pill, .catalog-filter-toggle, .model-action-btn, .model-id, .view-mode-btn, .reference-prices summary, .sidebar-checkbox-label { min-height:44px; }
+  .filter-pill, .model-action-btn, .model-id, .view-mode-btn, .reference-prices summary, .sidebar-checkbox-label { min-height:44px; }
   .view-mode-btn { min-width:44px; }
+  .sidebar-quick-reset { min-width:44px; min-height:44px; }
 }
 @media (prefers-reduced-motion:no-preference) {
   .model-card { transition:border-color 160ms ease-out; }

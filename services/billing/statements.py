@@ -2,7 +2,7 @@
 
 import csv
 import io
-from datetime import datetime, time, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from tortoise.functions import Count, Sum
@@ -10,6 +10,7 @@ from tortoise.expressions import Subquery
 
 from auth.models import BalanceTransaction, UserWallet, User
 from config import settings
+from services.billing.dates import billing_day_start
 from models.usage_record import ModelUsageRecord
 from schemas.billing import StatementFilters, StatementRowOut
 from utils.enums import AiTaskTypeEnum, TaskStatusEnum
@@ -17,7 +18,7 @@ from utils.messages import localized_message
 
 
 SAFE_USAGE_FIELDS = ('input_tokens', 'output_tokens', 'image_count', 'input_image_count',
-                     'seconds', 'resolution', 'clarity', 'fps', 'duration_seconds', 'missing_usage')
+                     'output_tier_counts', 'layer_decomposition', 'seconds', 'resolution', 'clarity', 'fps', 'duration_seconds', 'missing_usage')
 EXPORT_BATCH_SIZE = 500
 
 
@@ -50,9 +51,9 @@ class BillingStatements:
             usages = ModelUsageRecord.filter(user_id=filters.user_id)
             query = query.filter(usage_record_id__in=Subquery(usages.values('id')))
         if filters.start_date:
-            query = query.filter(created_at__gte=datetime.combine(filters.start_date, time.min, settings.tz))
+            query = query.filter(created_at__gte=billing_day_start(filters.start_date))
         if filters.end_date:
-            query = query.filter(created_at__lt=datetime.combine(filters.end_date + timedelta(days=1), time.min, settings.tz))
+            query = query.filter(created_at__lt=billing_day_start(filters.end_date + timedelta(days=1)))
         return query, snapshot_id
 
     async def rows(self, transactions: list[BalanceTransaction]) -> list[StatementRowOut]:

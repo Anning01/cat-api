@@ -3,11 +3,14 @@ import { tr } from '@/i18n'
 import ConsolePage from '@/components/ConsolePage.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppDialog from '@/components/AppDialog.vue'
+import ConsoleTable from '@/components/ConsoleTable.vue'
+import AppStatusBadge from '@/components/AppStatusBadge.vue'
+import AppUnitPrice from '@/components/AppUnitPrice.vue'
+import { pricingRows, getDiscountRate, pixelTierLabel } from '@/features/platform/modelPricing'
 
 import { computed, onMounted, ref } from 'vue'
 import {
   Bot,
-  CheckCircle2,
   Eye,
   EyeOff,
   Image,
@@ -16,7 +19,6 @@ import {
   Plus,
   Power,
   Server,
-  Settings2,
   Trash2,
   Video,
   Zap,
@@ -166,7 +168,17 @@ const tierPrices = ref<Record<string, number>>({})
 const inputImagePricing = ref({ first_free: 1, price_per_image: 0 })
 const videoRefPrices = ref<Record<string, number>>({})
 const discountPricing = ref({ discount: 1, description: '' })
+const imagePreset = computed(() => generationCapabilities.value.image_pricing?.[form.value.image_model_type])
+const pixelBilling = ref(false)
+function applyImagePreset() {
+  const preset = imagePreset.value
+  if (!preset?.prices || !preset.input_image) return
+  pixelBilling.value = true
+  tierPrices.value = { ...preset.prices }
+  inputImagePricing.value = { ...preset.input_image }
+}
 const pricingTierOptions = computed<string[]>(() => {
+  if (selectedCategoryId.value === 'image' && pixelBilling.value) return Object.keys(imagePreset.value?.prices ?? {})
   if (selectedCategoryId.value === 'image') return generationCapabilities.value.image[form.value.image_model_type] || []
   if (selectedCategoryId.value === 'video') return selectedVideoProtocol.value?.resolutions
     || generationCapabilities.value.video[form.value.video_model_type] || []
@@ -203,8 +215,9 @@ function configsFor(category: ModelCategory) {
   return configs.value.filter(item => configTaskTypes(item).some(value => category.taskTypes.includes(value)))
 }
 
-function activeCount(category: ModelCategory) {
-  return configsFor(category).filter(item => item.is_active).length
+const enabledCount = computed(() => selectedConfigs.value.filter(item => item.is_active).length)
+function configPrices(item: AiModelConfig) {
+  return item.pricing ? pricingRows({ kinds: [selectedCategoryId.value], pricing: item.pricing }) : []
 }
 
 function taskLabel(value: number) {
@@ -270,6 +283,7 @@ async function load() {
 
 function openCreate(categoryId: ModelCategoryId = selectedCategoryId.value) {
   editingSyncedPricing.value = false
+  pixelBilling.value = false
   selectedCategoryId.value = categoryId
   const category = categories.find(item => item.id === categoryId) ?? categories[0]
   form.value = { task_types: [String(category.taskTypes[0])], name: '', base_url: category.id === 'video' ? 'https://ark.cn-beijing.volces.com/api/v3' : '', api_key: '', model: '', api_protocol: category.id === 'image' || category.id === 'video' ? 'volcengine_ark' : 'openai_compatible', image_model_type: category.id === 'image' ? 'seedream_5_lite' : '', video_model_type: category.id === 'video' ? 'seedance_2' : '', concurrency: 1, supports_json_output: false, supports_tool_calls: false, max_context_characters: '' as number | '', thinking: '' as 'enabled' | 'disabled' | '', max_tokens: '' as number | '' }
@@ -300,6 +314,7 @@ function openCreate(categoryId: ModelCategoryId = selectedCategoryId.value) {
 
 function openEdit(item: AiModelConfig) {
   editingSyncedPricing.value = item.scope === 'studio_platform'
+  pixelBilling.value = item.pricing?.billing_unit === 'pixel_tier'
   syncedVideoBillingUnit.value = item.pricing?.billing_unit
   const category = categories.find(value => value.taskTypes.includes(item.task_type)) ?? categories[0]
   selectedCategoryId.value = category.id
@@ -370,8 +385,13 @@ function selectVideoProtocol(value: string) {
 }
 
 function selectImageModelType(value: string) {
+  if (form.value.image_model_type === value) return
   form.value.image_model_type = value as ImageModelType | ''
   changeImageModelType()
+  pixelBilling.value = false
+  tierPrices.value = defaultPricing('image', pricingTierOptions.value).prices ?? {}
+  inputImagePricing.value = { first_free: 1, price_per_image: 0 }
+  if (imagePreset.value) applyImagePreset()
 }
 
 function selectVideoModelType(value: string) {
@@ -433,6 +453,7 @@ async function saveConfig() {
     } else if (selectedCategoryId.value === 'image') {
       pricing = {
         type: 'image',
+        ...(pixelBilling.value ? { billing_unit: 'pixel_tier' as const } : {}),
         currency: 'CNY',
         prices: tierPriceEntries(tierPrices.value),
         input_image: {
@@ -530,75 +551,29 @@ onMounted(()=>{void load()})
   <ConsolePage class="model-settings-page" :title="tr('模型配置')" :description="tr('统一管理文本、图片、视频与画质增强模型。')">
     <template #actions><AppButton variant="primary" type="button" @click="openCreate()"><Plus :size="16" />{{ tr('添加模型') }}</AppButton></template>
 
-    <section class="model-category-grid" :aria-label="tr('模型能力分类')">
-      <AppButton
-        v-for="category in categories"
-        :key="category.id"
-        type="button"
-        variant="ghost"
-        :active="selectedCategoryId === category.id"
-        class="model-category-card"
-        :class="[`is-${category.id}`, { 'is-active': selectedCategoryId === category.id }]"
-        :aria-pressed="selectedCategoryId === category.id"
-        @click="selectedCategoryId = category.id"
-      >
-        <AppIconTile :tone="iconTone(category.id)" size="lg"><component :is="category.icon" :size="22" /></AppIconTile>
-        <span class="category-copy"><strong>{{ category.label }}</strong></span>
-        <span class="category-status"><i :class="{ 'is-ready': activeCount(category) }" />{{ activeCount(category) ? tr('{p0} 个模型运行中', { p0: activeCount(category) }) : tr('尚未启用') }}</span>
+    <div class="model-category-grid" role="group" :aria-label="tr('模型能力分类')">
+      <AppButton v-for="category in categories" :key="category.id" variant="ghost" class="model-category-card" :active="selectedCategoryId===category.id" :aria-pressed="selectedCategoryId===category.id" @click="selectedCategoryId=category.id">
+        <component :is="category.icon" :size="16" aria-hidden="true"/><span>{{ category.label }}</span><span class="category-count">{{ configsFor(category).length }}</span>
       </AppButton>
-    </section>
+    </div>
 
-    <section class="model-config-section">
-      <header>
-        <div>
-
-          <h2>{{ selectedCategory.label }}</h2>
-          <p>{{ selectedCategory.description }}</p>
-        </div>
-        <AppButton variant="secondary" size="sm" type="button" @click="openCreate(selectedCategory.id)"><Plus :size="15" />{{ tr('添加 {p0}', { p0: selectedCategory.label }) }}</AppButton>
+    <section class="model-config-section console-table-panel">
+      <header class="console-table-toolbar">
+        <div class="model-list-heading"><h2>{{ selectedCategory.label }}</h2><span class="model-list-count">{{ tr('共 {p0} 条',{p0:selectedConfigs.length}) }}<span aria-hidden="true"> · </span>{{ tr('已启用') }} {{ enabledCount }}</span></div>
       </header>
-
-      <div v-if="loading" class="model-state">{{ tr('正在读取模型配置…') }}</div>
-      <div v-else-if="selectedConfigs.length" class="model-config-list">
-        <article v-for="item in selectedConfigs" :key="item.id" class="model-config-card" :class="{ 'is-active': item.is_active }">
-          <AppIconTile :tone="iconTone(selectedCategory.id)"><component :is="selectedCategory.icon" :size="19" /></AppIconTile>
-          <div class="config-main">
-            <div class="config-title">
-              <h3>{{ item.name }}</h3>
-              <span :class="{ 'is-active': item.is_active }">{{ item.is_active ? tr('已启动') : tr('未启动') }}</span>
-            </div>
-            <p>{{ configTaskTypes(item).filter(taskType => selectedCategory.taskTypes.includes(taskType)).map(taskLabel).join(' · ') }}</p>
-            <div class="config-metadata">
-              <span><Settings2 :size="13" />{{ item.model || tr('未设置模型名称') }}</span>
-              <span><Zap :size="13" />{{ tr('并发') }} {{ item.concurrency }}</span>
-              <span v-if="selectedCategory.id === 'image'">{{ protocolLabel(item.api_protocol) }}</span>
-              <span v-if="selectedCategory.id === 'image'">{{ imageModelTypes.find(type => type.value === item.image_model_type)?.label || tr('未选择受支持类型') }}</span>
-              <span v-if="selectedCategory.id === 'video'">{{ videoModelTypes.find(type => type.value === item.video_model_type)?.label || tr('未选择受支持类型') }}</span>
-              <span v-if="selectedCategory.id === 'llm'">{{ item.supports_json_output ? tr('JSON 格式化') : tr('提示词 JSON') }}</span>
-            </div>
-          </div>
-          <div class="config-actions">
-            <template v-if="canManage(item)">
-              <AppButton v-if="!item.is_active" variant="soft" size="sm" type="button" :title="tr('启用配置')" @click="activate(item)"><Power :size="15" /><span>{{ tr('启用') }}</span></AppButton>
-              <template v-else>
-                <span class="active-check"><CheckCircle2 :size="16" />{{ tr('运行中') }}</span>
-                <AppButton variant="soft" size="sm" type="button" :title="tr('停用配置')" @click="deactivate(item)"><Power :size="15" /><span>{{ tr('停用') }}</span></AppButton>
-              </template>
-              <span class="config-icon-actions">
-                <AppButton variant="secondary" size="sm" icon-only type="button" :aria-label="tr('编辑配置')" :title="tr('编辑配置')" @click="openEdit(item)"><Pencil :size="15" /></AppButton>
-                <AppButton variant="danger" size="sm" icon-only type="button" :aria-label="tr('删除配置')" :title="tr('删除配置')" @click="remove(item)"><Trash2 :size="15" /></AppButton>
-              </span>
-            </template>
-            <span v-else class="official-badge" :title="tr('此配置仅可读取')">{{ tr('只读') }}</span>
-          </div>
-        </article>
-      </div>
-      <div v-else class="model-empty-state">
-        <span><component :is="selectedCategory.icon" :size="25" /></span>
-        <h3>{{ tr('还没有') }}{{ selectedCategory.label }}</h3>
-        <p>{{ selectedCategory.description }}</p>
-        <AppButton variant="primary" size="sm" type="button" @click="openCreate(selectedCategory.id)"><Plus :size="15" />{{ tr('添加第一个配置') }}</AppButton>
-      </div>
+      <div v-if="loading" class="model-state" role="status">{{ tr('正在读取模型配置…') }}</div>
+      <ConsoleTable v-else-if="selectedConfigs.length" class="model-config-list" :caption="tr('模型配置列表')">
+        <thead><tr><th scope="col">{{ tr('模型名称') }}</th><th scope="col">{{ tr('能力与协议') }}</th><th scope="col">{{ tr('计费价格') }}</th><th scope="col" class="numeric">{{ tr('并发') }}</th><th scope="col">{{ tr('状态') }}</th><th scope="col" class="row-actions">{{ tr('操作') }}</th></tr></thead>
+        <tbody><tr v-for="item in selectedConfigs" :key="item.id" class="model-config-row">
+          <th scope="row"><div class="config-identity"><AppIconTile :tone="iconTone(selectedCategory.id)" size="sm"><component :is="selectedCategory.icon" :size="18"/></AppIconTile><div><div class="config-name"><strong>{{ item.name }}</strong><span v-if="item.pricing?.discount&&item.pricing.discount<1" class="config-discount">{{ tr('{p0} 折',{p0:getDiscountRate(item.pricing.discount)}) }}</span></div><code>{{ item.model||tr('未设置模型名称') }}</code><small>#{{ item.id }}</small></div></div></th>
+          <td><div class="config-capabilities"><span>{{ configTaskTypes(item).filter(taskType=>selectedCategory.taskTypes.includes(taskType)).map(taskLabel).join(' · ') }}</span><small>{{ protocolLabel(item.api_protocol) }}<template v-if="selectedCategory.id==='llm'"> · {{ item.supports_json_output?tr('JSON 格式化'):tr('提示词 JSON') }}</template><template v-if="selectedCategory.id==='image'"> · {{ imageModelTypes.find(type=>type.value===item.image_model_type)?.label||tr('未选择受支持类型') }}</template><template v-if="selectedCategory.id==='video'"> · {{ videoModelTypes.find(type=>type.value===item.video_model_type)?.label||tr('未选择受支持类型') }}</template></small></div></td>
+          <td><dl v-if="configPrices(item).length" class="config-prices"><div v-for="(price,index) in configPrices(item)" :key="index"><dt>{{ price.label }}</dt><dd><AppUnitPrice :amount="price.value" :multiplier="item.pricing?.discount??1" :unit="price.unit"/></dd></div></dl><span v-else class="muted">{{ tr('未配置价格') }}</span></td>
+          <td class="numeric">{{ item.concurrency }}</td>
+          <td><AppStatusBadge :tone="item.is_active?'success':'neutral'">{{ tr(item.is_active?'已启用':'已停用') }}</AppStatusBadge></td>
+          <td class="row-actions"><div class="config-actions"><template v-if="canManage(item)"><AppButton variant="ghost" size="sm" :title="tr(item.is_active?'停用配置':'启用配置')" @click="item.is_active?deactivate(item):activate(item)"><Power :size="14"/>{{ tr(item.is_active?'停用':'启用') }}</AppButton><AppButton variant="ghost" size="sm" :aria-label="tr('编辑配置')" @click="openEdit(item)"><Pencil :size="14"/>{{ tr('编辑') }}</AppButton><AppButton variant="ghost" size="sm" icon-only class="config-delete" :aria-label="tr('删除配置')" :title="tr('删除配置')" @click="remove(item)"><Trash2 :size="15"/></AppButton></template><span v-else class="official-badge" :title="tr('此配置仅可读取')">{{ tr('只读') }}</span></div></td>
+        </tr></tbody>
+      </ConsoleTable>
+      <div v-else class="model-empty-state"><component :is="selectedCategory.icon" :size="28" aria-hidden="true"/><h3>{{ tr('还没有') }}{{ selectedCategory.label }}</h3><p>{{ selectedCategory.description }}</p><AppButton variant="primary" size="sm" @click="openCreate(selectedCategory.id)"><Plus :size="15"/>{{ tr('添加第一个配置') }}</AppButton></div>
     </section>
     <AppDialog ref="configDialog" v-model="showCreate" class="model-editor-dialog" :title="editingSyncedPricing ? tr('编辑本地价格') : (isEditing ? tr('编辑') : tr('添加')) + selectedCategory.label" width="900px" guard-changes :show-close="!creating" :close-on-click-modal="!creating" :close-on-press-escape="!creating">
       <form class="model-modal" autocomplete="off" @submit.prevent="saveConfig">
@@ -738,9 +713,10 @@ onMounted(()=>{void load()})
         </section>
         <section v-else-if="selectedCategoryId === 'image' && pricingTierOptions.length" class="pricing-editor">
           <span class="pricing-title">{{ tr('输出图费用（元 / 张）') }}</span>
+          <AppButton v-if="imagePreset" variant="secondary" size="sm" type="button" @click="applyImagePreset">{{ tr('填入官方像素分档价') }}</AppButton>
           <div class="pricing-grid">
             <label v-for="tier in pricingTierOptions" :key="tier">
-              <span>{{ tr('清晰度') }} {{ tier }}</span>
+              <span>{{ pixelBilling ? pixelTierLabel(tier) : tr('清晰度') + ' ' + tier }}</span>
               <input v-model.number="tierPrices[tier]" type="number" min="0" step="0.01" required />
             </label>
           </div>
@@ -794,68 +770,42 @@ onMounted(()=>{void load()})
 </template>
 
 <style scoped>
-.model-settings-page { color:var(--app-text); }
-.model-settings-header { display: flex; width: 100%; align-items: flex-start; justify-content: space-between; gap: 24px; margin: 0 0 28px; padding-bottom: 28px; border-bottom: 1px solid var(--app-border); }
-.model-settings-header > div, .model-config-section > header > div { display: grid; gap: 5px; }
-.model-settings-header > .model-header-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
-.platform-connection { display:grid; gap:10px; padding:18px 22px 22px; color:var(--app-text); }
-.platform-connection input { width:100%; min-width:0; border:1px solid var(--app-border); border-radius:8px; background:var(--app-surface-muted); color:inherit; padding:10px 12px; }
-.platform-connection input:focus-visible { outline:2px solid var(--app-accent); outline-offset:2px; }
-.platform-connection footer { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; margin-top:10px; }
-.platform-connection-error { color:var(--app-danger); margin:0; }
-.model-settings-header span, .model-config-section > header > div > span { color: var(--app-accent); font-size: 12px; font-weight: 750; letter-spacing: .16em; }
-.model-settings-header h1 { margin: 0; color: var(--app-text); font-size: clamp(28px, 3vw, 38px); letter-spacing: -.035em; }
-.model-settings-header p, .model-config-section > header p { margin: 0; color: var(--app-text-muted); font-size: 12px; line-height: 1.6; }
-
-
-.model-source-banner { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--app-border); border-radius: 12px; background: var(--app-surface-muted); }
-.model-source-copy strong { font-size: 13px; color: var(--app-text); }
-.model-source-copy p { margin: 4px 0 0; font-size: 12px; color: var(--app-text-muted); }
-.scope-badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-.scope-badge.is-official { color: var(--app-accent); background: var(--app-accent-soft); }
-
-.official-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; color: var(--app-accent); background: var(--app-accent-soft); font-size: 12px; font-weight: 600; white-space: nowrap; }
-.model-category-grid { display: grid; width: 100%; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0; }
-.model-category-card { position: relative; display: grid; min-height: 96px; white-space:normal; grid-template-columns: 38px minmax(0, 1fr); align-content: start; gap: 10px; padding: 14px; overflow: hidden; border: 1px solid var(--app-border); border-radius: 8px; color: var(--app-text); background: var(--app-surface); cursor: pointer; text-align: left; box-shadow: none; transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease; }
-.model-category-card:hover { border-color: var(--app-border); box-shadow: none; transform: none; }
-.model-category-card.is-active { border-color: var(--app-accent); box-shadow: none; }
-.category-copy { display: grid; gap: 4px; min-width:0; align-content:center; }
-.category-copy small { color: var(--app-text-muted); font-size: 12px; font-weight: 750; letter-spacing: .14em; }
-.category-copy strong { font-size: 14px; }
-.category-copy p { margin: 1px 0 0; color: var(--app-text-muted); font-size: 12px; line-height: 1.55; }
-.category-status { display: inline-flex; grid-column: 1 / -1; align-items: center; gap: 6px; align-self: end; color: var(--app-text-muted); font-size: 12px; }
-.category-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--app-border); }
-.category-status i.is-ready { background: var(--creation-success); box-shadow: 0 0 0 3px var(--app-success-soft); }
-.model-config-section { width: 100%; margin: 38px 0 0; }
-.model-config-section > header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 14px; }
-.model-config-section > header h2 { margin: 0; font-size: 18px; }
-.model-config-section > header > button { min-height: 36px; border-color: var(--app-border); color: var(--app-text-secondary); background: var(--app-surface); box-shadow: none; }
-.model-config-section > header > button:hover { border-color: var(--app-border); color: var(--app-text); background: var(--app-surface-hover); }
-.model-config-list { display: grid; gap: 9px; }
-.model-config-card { display: grid; min-height: 96px; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 15px 16px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface); transition: border-color .15s ease, box-shadow .15s ease; }
-.model-config-card.is-active { border-color: var(--app-border-strong); box-shadow: none; }
-.config-main { display: grid; min-width: 0; gap: 5px; }
-.config-title { display: flex; align-items: center; gap: 8px; }
-.config-title h3 { margin: 0; font-size: 13px; }
-.config-title span { padding: 3px 6px; border-radius: 999px; color: var(--app-text-muted); background: var(--app-surface-muted); font-size: 12px; }
-.config-title span.is-active { color: var(--creation-success); background: var(--app-success-soft); }
-.config-main > p { margin: 0; color: var(--app-accent); font-size: 12px; }
-.config-metadata { display: flex; min-width: 0; flex-wrap: wrap; gap: 8px 14px; color: var(--app-text-muted); font-size: 12px; }
-.config-metadata span { display: inline-flex; min-width: 0; align-items: center; gap: 5px; }
-.config-metadata span:first-child { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.config-actions { display: flex; align-items: center; gap: 7px; }
-.config-icon-actions { display: inline-flex; align-items: center; gap: 5px; }
-.config-actions button { font-size:13px; }
-.config-actions button:hover { border-color: var(--app-border); background: var(--app-surface-hover); }
-.config-actions .icon-only-action { width: 34px; padding: 0; }
-.config-actions .delete-config { width: 34px; padding: 0; color: var(--creation-danger); }
-.config-actions .delete-config:hover { color: var(--creation-danger); background: var(--app-danger-soft); }
-.active-check { display: inline-flex; align-items: center; gap: 5px; color: var(--creation-success); font-size: 12px; }
-.model-state, .model-empty-state { display: grid; min-height: 260px; place-items: center; align-content: center; gap: 8px; border: 1px dashed var(--app-border); border-radius: 14px; color: var(--app-text-muted); font-size: 12px; text-align: center; }
-.model-empty-state > span { display: grid; width: 50px; height: 50px; margin-bottom: 4px; place-items: center; border-radius: 14px; color: var(--app-accent); background: var(--app-accent-soft); }
-.model-empty-state h3 { margin: 0; color: var(--app-text); font-size: 14px; }
-.model-empty-state p { max-width: 360px; margin: 0 0 8px; color: var(--app-text-muted); font-size: 12px; line-height: 1.6; }
-.model-empty-state button { min-height: 36px; }
+.model-settings-page { display:flex; flex-direction:column; height:100%; min-height:100%; color:var(--app-text); }
+.model-settings-page :deep(.console-page-header) { flex-shrink:0; }
+.official-badge { color:var(--app-text-secondary); font-size:12px; }
+.model-category-grid { display:flex; flex-shrink:0; align-items:center; gap:4px; padding-block:0 12px; margin-bottom:12px; border-bottom:1px solid var(--app-border); overflow-x:auto; }
+.model-category-card { flex-shrink:0; gap:8px; min-height:38px; padding:0 12px; border-radius:6px; font-size:13px; color:var(--app-text-secondary); }
+.category-count { min-width:20px; padding:1px 5px; border-radius:4px; background:var(--app-surface-muted); font-size:11px; font-variant-numeric:tabular-nums; }
+.model-category-card.is-active .category-count { background:var(--app-surface); }
+.model-config-section { display:flex; flex:0 1 auto; flex-direction:column; min-height:0; margin:0; }
+.model-config-section > header { flex-shrink:0; }
+.model-list-heading { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px 14px; }
+.model-list-count { font-size:12px; color:var(--app-text-secondary); }
+.model-config-list { flex:1; min-height:0; max-height:none; }
+.model-config-list :deep(table) { min-width:920px; }
+.model-config-list :deep(th),.model-config-list :deep(td) { padding-block:14px; }
+.model-config-list :deep(th[scope=row]) { min-width:250px; max-width:300px; }
+.config-identity { display:flex; align-items:center; gap:12px; }
+.config-identity > div { min-width:0; }
+.config-name { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.config-name strong { font-size:13px; font-weight:600; white-space:normal; overflow-wrap:anywhere; }
+.config-identity code { display:block; margin-top:4px; max-width:200px; color:var(--app-text-secondary); font-size:11px; white-space:normal; overflow-wrap:anywhere; }
+.config-identity small { display:block; margin-top:3px; color:var(--app-text-secondary); font-size:11px; }
+.config-discount { color:var(--creation-warning); background:var(--app-warning-soft); border-radius:4px; padding:1px 5px; font-size:11px; }
+.config-capabilities { display:grid; gap:6px; min-width:120px; max-width:200px; color:var(--app-text); font-size:12px; }
+.config-capabilities small { font-size:11px; color:var(--app-text-secondary); }
+.config-prices { display:grid; gap:4px; min-width:170px; margin:0; }
+.config-prices > div { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.config-prices dt { font-size:11px; color:var(--app-text-secondary); }
+.config-prices dd { margin:0; }
+.config-prices :deep(strong) { font-size:12px; font-weight:500; }
+.config-actions { display:flex; justify-content:flex-end; align-items:center; gap:2px; }
+.config-actions .config-delete { color:var(--app-text-secondary); }
+.config-actions .config-delete:hover { color:var(--creation-danger); background:var(--app-danger-soft); }
+.model-state,.model-empty-state { display:flex; flex:1; min-height:240px; align-items:center; justify-content:center; flex-direction:column; gap:12px; color:var(--app-text-secondary); }
+.model-empty-state h3,.model-empty-state p { margin:0; }
+.model-empty-state h3 { color:var(--app-text); }
+.model-empty-state p { max-width:360px; text-align:center; font-size:12px; }
 .model-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgb(8 9 12 / 64%); backdrop-filter: blur(8px); }
 .model-modal { display:grid; gap:24px; margin:0; padding:0; color:var(--app-text); background:transparent; }
 .model-modal > header, .model-modal > footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -906,28 +856,12 @@ onMounted(()=>{void load()})
 .pricing-grid label { display: grid; gap: 6px; color: var(--app-text-muted); font-size: 12px; }
 .pricing-grid input { width: 100%; min-height: 36px; padding: 0 10px; border: 1px solid var(--app-border); border-radius: 8px; outline: 0; color: var(--app-text); background: var(--app-surface); font-size: 12px; }
 .pricing-grid input:focus { border-color: var(--app-accent); box-shadow: 0 0 0 3px color-mix(in srgb,var(--app-accent) 10%,transparent); }
-@media (max-width: 860px) {
-  .model-source-banner { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--app-border); border-radius: 12px; background: var(--app-surface-muted); }
-.model-source-copy strong { font-size: 13px; color: var(--app-text); }
-.model-source-copy p { margin: 4px 0 0; font-size: 12px; color: var(--app-text-muted); }
-.scope-badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-.scope-badge.is-official { color: var(--app-accent); background: var(--app-accent-soft); }
-
-.official-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; color: var(--app-accent); background: var(--app-accent-soft); font-size: 12px; font-weight: 600; white-space: nowrap; }
-.model-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .model-category-card { min-height: 130px; }
-}
-@media (max-width: 620px) {
-  .model-modal-backdrop { padding: 12px; }
-  .model-modal { padding: 18px; max-height: calc(100dvh - 24px); gap: 18px; }
-  .model-settings-page { padding: 30px 16px 60px; }
-  .model-category-grid { grid-template-columns: 1fr; }
-  .model-settings-header, .model-config-section > header { align-items: stretch; flex-direction: column; }
-  .settings-primary-button { width: 100%; }
-  .model-config-card { grid-template-columns: 42px minmax(0, 1fr); }
-  .config-actions { grid-column: 1 / -1; justify-content: flex-end; padding-top: 10px; border-top: 1px solid var(--app-surface-muted); }
-  .model-form-grid { grid-template-columns: 1fr; }
-  .model-form-grid label, .model-form-grid label.is-full { grid-column: 1; }
+@media(max-width:767px) {
+ .model-settings-page { height:auto; }
+ .model-config-list { flex:none; max-height:65dvh; }
+ .model-category-card { min-height:44px; }
+ .model-form-grid { grid-template-columns:1fr; }
+ .model-form-grid label,.model-form-grid label.is-full { grid-column:1; }
 }
 .enhancement-resolution-options{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}.enhancement-resolution-options label{display:flex;gap:6px;align-items:center}.enhancement-resolution-options input{width:auto;min-height:auto}
 </style>

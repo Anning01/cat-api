@@ -6,6 +6,7 @@ export interface ApiKeyRow {
   allowed_model_ids?: string[] | null
   expires_at?: string | null
   is_expired?: boolean
+  can_reveal?: boolean
 }
 
 export interface CreatedApiKey extends ApiKeyRow { key: string }

@@ -9,6 +9,19 @@ LLM_PRICING: dict[str, dict] = {
     "glm-5.2": {"input_price_per_1m": 8.00, "output_price_per_1m": 28.00},
 }
 
+IMAGE_PRICING = {
+    "seedream_5_5": {
+        "type": "image", "currency": "CNY", "billing_unit": "pixel_tier",
+        "prices": {"low": 0.13, "high_capped": 0.23},
+        "input_image": {"first_free": 0, "price_per_image": 0.05},
+    },
+    "seedream_5_pro": {
+        "type": "image", "currency": "CNY", "billing_unit": "pixel_tier",
+        "prices": {"single_low": 0.30, "single_high": 0.60, "layer_low": 0.15, "layer_high": 0.30},
+        "input_image": {"first_free": 1, "price_per_image": 0.02},
+    },
+}
+
 VIDEO_PRICING: dict[str, dict] = {
     "seedance_2": {
         "type": "video",

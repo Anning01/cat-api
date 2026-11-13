@@ -25,7 +25,7 @@ it('pairs each billed unit with its original price, including reference material
   wrapper.unmount()
 })
 
-it('starts with model cards and keeps filters and alternate views available on demand', async () => {
+it('always shows the filter sidebar beside model cards without toggle or close controls', async () => {
   setLocale('zh')
   const models: CatalogModel[] = [
     {id:'nv-1',name:'GPT-image',kinds:['image'],pricing:{type:'image' as const,currency:'CNY' as const,prices:{'1K':.04}}},
@@ -33,10 +33,10 @@ it('starts with model cards and keeps filters and alternate views available on d
   ]
   const wrapper=mount(ModelCatalog,{props:{models},global:{plugins:[i18n]}})
   expect(wrapper.findAll('.catalog.is-grid .model-card')).toHaveLength(2)
-  expect(wrapper.find('.catalog-sidebar').exists()).toBe(false)
+  expect(wrapper.find('.catalog-sidebar').exists()).toBe(true)
+  expect(wrapper.find('.catalog-filter-toggle').exists()).toBe(false)
+  expect(wrapper.find('button[aria-label="收起筛选"]').exists()).toBe(false)
   expect(wrapper.find('.catalog-group-title').exists()).toBe(false)
-  await wrapper.get('.catalog-filter-toggle').trigger('click')
-  expect(wrapper.get('.catalog-filter-toggle').attributes('aria-expanded')).toBe('true')
   const family=wrapper.findAll('.sidebar-checkbox-label').find(label=>label.text().includes('GPT-Image'))!
   await family.get('input').setValue(true)
   expect(wrapper.findAll('.model-card')).toHaveLength(1)
@@ -45,7 +45,6 @@ it('starts with model cards and keeps filters and alternate views available on d
   expect(wrapper.find('.catalog.is-list').exists()).toBe(true)
   await wrapper.get('.reset-filters-btn').trigger('click')
   expect(wrapper.findAll('.model-card')).toHaveLength(2)
-  await wrapper.get('.catalog-filter-toggle').trigger('click')
-  expect(wrapper.find('.catalog-sidebar').exists()).toBe(false)
+  expect(wrapper.find('.catalog-sidebar').exists()).toBe(true)
   wrapper.unmount()
 })

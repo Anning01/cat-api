@@ -3,7 +3,7 @@ from utils.messages import localized_message
 import math
 from fastapi import HTTPException
 
-from services.billing.catalog import LLM_PRICING, VIDEO_PRICING, ASR_PRICING
+from services.billing.catalog import IMAGE_PRICING, LLM_PRICING, VIDEO_PRICING, ASR_PRICING
 from models.config import AiModelConfig, GeneralConfig
 from schemas.config import AiModelConfigCreate, AiModelConfigUpdate, GeneralConfigUpdate
 from services.image_generation.capabilities import (
@@ -41,6 +41,12 @@ def _validate_image_pricing(pricing: dict, model_type) -> None:
     if not isinstance(prices, dict):
         raise HTTPException(status_code=400, detail=localized_message('生图费用需要 prices 档位对象'))
     allowed = set(image_capabilities_for(model_type).clarities)
+    if pricing.get("billing_unit") == "pixel_tier":
+        allowed = set(IMAGE_PRICING.get(model_type, {}).get("prices", {}))
+        if not allowed or prices.keys() != allowed:
+            raise HTTPException(400, "请配置该模型的全部像素价格档位")
+    elif model_type == "seedream_5_5":
+        raise HTTPException(400, "Seedream 5.5 需要像素分档价格")
     for tier, value in prices.items():
         if tier not in allowed:
             raise HTTPException(status_code=400, detail=localized_message('生图费用包含不支持的清晰度档位：{p1}', p1=f'{tier}'))
@@ -261,6 +267,7 @@ class AiModelConfigController(CRUDBase[AiModelConfig, AiModelConfigCreate, AiMod
         from services.video_enhancement.contract import ENHANCEMENT_PRESET, RESOLUTION_SHORT_SIDE
         return {
             "image": {model.value: list(image_capabilities_for(model.value).clarities) for model in ImageModelTypeEnum},
+            "image_pricing": IMAGE_PRICING,
             "image_protocols": {model.value: [protocol.value for protocol in protocols] for model, protocols in IMAGE_PROTOCOLS.items()},
             "video": {model.value: list(video_capabilities_for(model.value).resolutions) for model in VideoGenerationModelTypeEnum},
             "video_protocols": video_protocol_options(),
