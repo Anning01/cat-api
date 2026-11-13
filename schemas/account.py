@@ -113,5 +113,3 @@ class BalanceTransactionOut(BaseResponse):
     @field_serializer("change_amount", "balance_after", when_used="json")
     def _ser_amounts(self, value: Decimal) -> str:
         return _serialize_decimal(value)
-
-
