@@ -11,7 +11,7 @@ from fastapi import HTTPException, Response
 from auth.models import PlatformCallReceipt, PlatformVideoJob
 from models.config import AiModelConfig
 from services.platform.access import authorize_model
-from services.platform.calls import CALL_TIMEOUT, admit, digest, preserve_result, settle
+from services.platform.calls import CALL_TIMEOUT, admit, digest, preserve_result, settle, require_video_price, video_price_resolution
 from services.platform.http_contract import redact_secret, response_headers
 from services.platform.images import media_url
 from services.platform.request_data import reject_inline_media
@@ -100,8 +100,21 @@ def validate_native(config, body, protocol):
     pricing = config.pricing or {}
     if pricing.get("type") != kind:
         raise HTTPException(422, "所选模型尚未配置调用价格")
-    if kind == "video" and (not pricing.get("prices") or not all(numeric(v) for v in pricing["prices"].values())):
-        raise HTTPException(422, "所选模型尚未配置视频价格")
+    if kind == "video":
+        parameters = body.get("parameters") or {}
+        resolution = parameters.get("resolution") if protocol == "dashscope" else body.get("resolution")
+        if resolution is None:
+            from services.video.capabilities import capabilities_for
+            if config.video_model_type:
+                resolution = capabilities_for(config.video_model_type, protocol).default_resolution
+            else:
+                # Unregistered test/legacy configurations can only infer a single published tier.
+                tiers = pricing.get("prices") or {}
+                if len(tiers) != 1:
+                    raise HTTPException(422, "请明确指定已配置价格的分辨率")
+                resolution = next(iter(tiers))
+        inputs = accounting_inputs(body, protocol)
+        require_video_price(pricing, resolution, has_video_reference=inputs["has_video_reference"])
     if kind == "asr":
         if not numeric(pricing.get("price_per_minute")):
             raise HTTPException(422, "所选模型尚未配置识别价格")
@@ -197,7 +210,7 @@ def accounting_inputs(body, protocol):
     videos = any(item.get("type") in {"video", "video_url"} for item in content if isinstance(item, dict))
     images += sum(key.startswith("ref_image_") for key in body)
     return {"native_protocol":protocol, "duration":body.get("duration", parameters.get("duration")),
-            "resolution":body.get("resolution", parameters.get("resolution")), "fps":body.get("fps"),
+            "resolution":video_price_resolution(body.get("resolution", parameters.get("resolution"))) if body.get("resolution", parameters.get("resolution")) is not None else None, "fps":body.get("fps"),
             "input_image_count":images, "has_video_reference":videos}
 
 

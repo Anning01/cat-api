@@ -45,6 +45,27 @@ def text_pricing(config):
     return rates
 
 
+def video_price_resolution(value):
+    # AutoDL's documented workflow values can include an orientation suffix.
+    return re.sub(r"(?:横|竖|\(1:1\))$", "", str(value)).lower()
+
+
+def require_video_price(rates, resolution, *, has_video_reference=False):
+    """Missing/zero output tariffs disable a tier; free input references remain legitimate."""
+    prices = rates.get("prices") or {}
+    selected = next((key for key in prices if video_price_resolution(key) == video_price_resolution(resolution)), None)
+    def valid(value, *, zero=False):
+        return type(value) in {int, float} and isfinite(value) and (value >= 0 if zero else value > 0)
+    if rates.get("type") != "video" or selected is None or not valid(prices[selected]):
+        raise HTTPException(422, "该分辨率未配置有效的视频收费价格，暂不可调用")
+    if has_video_reference:
+        references = rates.get("video_reference_prices") or prices
+        reference = next((key for key in references if video_price_resolution(key) == video_price_resolution(resolution)), None)
+        if reference is None or not valid(references[reference], zero=rates.get("billing_unit") == "second"):
+            raise HTTPException(422, "该分辨率未配置有效的参考视频收费价格，暂不可调用")
+    return selected
+
+
 def chat_options(config, body):
     if not set(config.task_types or [config.task_type]).intersection({1,3,5,6,7,10,11}):
         raise HTTPException(422, "该模型不支持对话请求")

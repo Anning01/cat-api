@@ -17,7 +17,7 @@ from tortoise.transactions import in_transaction
 from auth.models import PlatformCallReceipt, PlatformVideoJob
 from models.config import AiModelConfig
 from services.billing.pricing import compute_input_image_cost, compute_video_cost
-from services.platform.calls import CALL_TIMEOUT, admit, digest, settle
+from services.platform.calls import CALL_TIMEOUT, admit, digest, settle, require_video_price
 from services.platform.images import media_url
 from services.platform.http_contract import UpstreamResponseError, public_upstream
 from services.video import get_generator
@@ -97,12 +97,7 @@ def video_options(config, body):
                               or counts["audio"] > caps.max_reference_audios):
         raise HTTPException(422, "参考素材数量超过所选模型限制")
     rates = config.pricing or {}
-    prices = rates.get("prices") or {}
-    tariffs = [prices.get(selected.resolution)]
-    if counts["video"]:
-        tariffs.append((rates.get("video_reference_prices") or prices).get(selected.resolution))
-    if rates.get("type")!="video" or not all(type(v) in {float,int} and isfinite(v) and v>=0 for v in tariffs):
-        raise HTTPException(422, "所选分辨率尚未配置视频价格")
+    require_video_price(rates, selected.resolution, has_video_reference=bool(counts["video"]))
     return rates
 
 

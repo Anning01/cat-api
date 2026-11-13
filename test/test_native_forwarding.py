@@ -238,3 +238,31 @@ def test_asr_split_credentials_never_leak():
     forwarded=raw_response(response,SimpleNamespace(public_id=uuid4()),config)
     assert forwarded.body==b'{"message":"[redacted] rejected"}'
     assert 'x-debug' not in forwarded.headers
+
+
+@pytest.mark.parametrize('protocol,path,body',[
+ ('volcengine_ark','/api/v3/contents/generations/tasks',{'content':[{'type':'text','text':'fixture'}],'resolution':'4K'}),
+ ('minimax','/v2/video_generation',{'content':[{'type':'text','text':'fixture'}],'resolution':'4k'}),
+ ('dashscope','/api/v1/services/aigc/video-generation/video-synthesis',{'input':{'prompt':'fixture'},'parameters':{'resolution':'4k'}}),
+ ('autodl','/api/v1/comfyui/comfyui_workflow/up-model',{'prompt':'fixture','resolution':'4k横'}),
+])
+@pytest.mark.parametrize('tariff',[None,0])
+async def test_native_unpriced_or_zero_output_never_reaches_supplier(native_api,protocol,path,body,tariff):
+ client,state,user=native_api
+ prices={'720p':1}
+ if tariff is not None:prices['4k']=tariff
+ model=await AiModelConfig.create(name='Guarded',task_type=4,api_protocol=protocol,model='up-model',
+  base_url='https://native.example',api_key='fixture-private',is_active=True,pricing={'type':'video','prices':prices})
+ response=await client.post(path,json={'model':f'nv-{model.id}',**body})
+ assert response.status_code==422 and not state.seen
+ assert not await PlatformCallReceipt.all().exists()
+
+
+async def test_zero_video_reference_rate_cannot_make_token_generation_free(native_api):
+ client,state,user=native_api
+ model=await AiModelConfig.create(name='Guarded',task_type=4,api_protocol='volcengine_ark',model='up-model',
+  base_url='https://native.example',api_key='fixture-private',is_active=True,
+  pricing={'type':'video','prices':{'720p':1},'video_reference_prices':{'720p':0}})
+ response=await client.post('/api/v3/contents/generations/tasks',json={'model':f'nv-{model.id}','resolution':'720p',
+  'content':[{'type':'video_url','video_url':{'url':'https://cdn.example/ref.mp4'}}]})
+ assert response.status_code==422 and not state.seen
