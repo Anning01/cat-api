@@ -88,6 +88,20 @@ async def get_config_list(
     return ResponseSchema(data=result)
 
 
+@router.get("/enums/all", summary="模型配置枚举", response_model=ResponseSchema)
+async def get_all_enums(_: AuthContext = _ADMIN):
+    enums = {"task_status":TaskStatusEnum, "asset_type":AssetTypeEnum, "image_source":ImageSourceEnum,
+             "workflow_status":WorkflowStatus, "ai_task_type":AiTaskTypeEnum,
+             "video_model_type":VideoGenerationModelTypeEnum, "image_model_type":ImageModelTypeEnum}
+    return ResponseSchema(data={key:[{"value":item.value,"label":item.nickname,"name":item.name} for item in enum]
+                                for key,enum in enums.items()})
+
+
+@router.get("/generation/capabilities", summary="模型参数能力", response_model=ResponseSchema)
+async def get_generation_capabilities(_: AuthContext = _ADMIN):
+    return ResponseSchema(data=await ai_model_config_controller.list_generation_capabilities())
+
+
 @router.get("/{config_id}", summary="获取模型配置详情", response_model=ResponseSchema[AiModelConfigOut])
 async def get_config(config_id: int, ctx: AuthContext = _ADMIN):
     instance = await ai_model_config_controller.get(config_id)
