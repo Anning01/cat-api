@@ -1,0 +1,20 @@
+from contextvars import ContextVar
+from typing import Literal
+
+PromptLanguage = Literal["zh", "en"]
+DEFAULT_PROMPT_LANGUAGE: PromptLanguage = "en"
+
+
+def normalize_prompt_language(value: str | None) -> PromptLanguage:
+    """Normalize persisted/task values and keep old tasks backward compatible."""
+    return "zh" if value == "zh" else DEFAULT_PROMPT_LANGUAGE
+
+
+def prompt_language_name(value: str | None) -> str:
+    return "简体中文" if normalize_prompt_language(value) == "zh" else "英文"
+
+# Task scopes are separate from request/display scopes.
+task_language: ContextVar[str | None] = ContextVar("task_language", default=None)
+
+# New agent workflows validate structure; creative completeness belongs to skills.
+skill_workflow: ContextVar[bool] = ContextVar("skill_workflow", default=False)

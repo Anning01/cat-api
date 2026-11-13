@@ -1,0 +1,48 @@
+[project]
+name = "novelback"
+version = "0.1.0"
+description = "Self-hosted AI workspace for illustrated stories and short dramas"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "asyncpg>=0.31.0",
+    "configdict>=2.13.4",
+    "cryptography>=50.0.2",
+    "deepagents==0.7.35",
+    "fastapi>=0.128.1",
+    "fields>=5.0.0",
+    "langgraph-checkpoint-sqlite==3.1.3",
+    "openai>=2.17.0",
+    "optional>=0.0.1",
+    "pydantic-ai-slim[ag-ui,openai]==1.66.0",
+    "pypdf>=6.1.1",
+    "python-docx>=1.2.0",
+    "python-multipart>=0.0.22",
+    "scenedetect[opencv-headless]>=0.6.6,<0.7",
+    "tortoise-orm>=0.25.4",
+    "tzdata>=2025.3",
+    "uvicorn[standard]>=0.40.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --cov=models --cov=controllers --cov=api --cov-report=term-missing"
+testpaths = [
+    "test",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = [
+    "real_llm: 需要真实 LLM API 的测试（需配置 test/.test.env）",
+]
+
+[dependency-groups]
+dev = [
+    "aiosqlite>=0.22.1",
+    "httpx>=0.28.1",
+    "pyinstrument>=5.1.2",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+]
