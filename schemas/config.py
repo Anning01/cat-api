@@ -58,12 +58,9 @@ class AiModelConfigProperties(BaseModel):
     processing_options: Optional[dict] = Field(None, description="媒体处理能力与访问设置")
     scope: Optional[str] = Field(
         None,
-        description="配置归属：official 官方配置 / team 团队自定义",
+        description="配置归属：平台模型配置",
     )
-    team_id: Optional[int] = Field(
-        None,
-        description="所属团队；官方配置为 null",
-    )
+
 
 
 # --- 输入 Schema ---
@@ -219,15 +216,3 @@ class GeneralConfigOut(GeneralConfigUpdate, BaseResponse):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(..., description="配置ID")
-
-
-class ModelConfigSourceOut(BaseModel):
-    """团队模型配置来源模式。"""
-
-    source: str = Field(..., description="official 官方配置 / custom 团队自定义")
-
-
-class ModelConfigSourceUpdate(BaseModel):
-    """切换团队模型配置来源。"""
-
-    source: Literal["official", "custom"] = Field(..., description="配置来源模式")

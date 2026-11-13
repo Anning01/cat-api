@@ -82,13 +82,9 @@ class AiModelConfig(AbstractBaseModel):
     scope = fields.CharField(
         max_length=16,
         default="official",
-        description="配置归属：official 官方配置（超管）/ team 团队自定义",
+        description="配置归属：official 官方配置（超管）/ team 账户自定义",
     )
-    team_id = fields.IntField(
-        null=True,
-        db_index=True,
-        description="所属团队；官方配置恒为 NULL（AUTH_ENABLED=true 时启用）",
-    )
+
 
     class Meta:
         table = "ai_model_configs"

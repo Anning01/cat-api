@@ -6,8 +6,8 @@ from fastapi import HTTPException
 from utils.messages import localized_message
 from utils.enums import UserStatusEnum
 
-from auth.models import QilingIdentity, Team, TeamMember, User, UserSession
-from auth.schemas import LoginIn, RegisterIn, LoginOut, MeOut, MembershipOut, UserOut
+from auth.models import QilingIdentity, User, UserSession
+from auth.schemas import LoginIn, RegisterIn, LoginOut, MeOut, UserOut
 from auth.security import hash_password, verify_password, hash_token, new_session_token
 from config import settings
 
@@ -17,7 +17,7 @@ def _now() -> datetime:
 
 
 class AuthService:
-    """发放和撤销本地会话并返回团队成员身份。"""
+    """发放和撤销本地会话并返回账户账户身份。"""
 
     async def login(self, data: LoginIn) -> LoginOut:
         user = await User.get_or_none(username=data.username.strip())
@@ -28,12 +28,10 @@ class AuthService:
         return await self.issue_session(user)
 
     async def register(self, data: RegisterIn) -> LoginOut:
-        """经邀请链接注册：创建账号、加入团队并直接登录。"""
-        from services.invites import register_via_invite
-
-        user, _ = await register_via_invite(
-            data.username, data.password, data.nickname, data.invite_token
-        )
+        if await User.filter(username=data.username.strip()).exists():
+            raise HTTPException(400, "用户名已存在")
+        user = await User.create(username=data.username.strip(), nickname=data.nickname,
+                                 password_hash=hash_password(data.password))
         return await self.issue_session(user)
 
     async def issue_session(self, user: User) -> LoginOut:
@@ -46,40 +44,12 @@ class AuthService:
         return LoginOut(token=token, user=UserOut.model_validate(user))
 
     async def me(self, user: User) -> MeOut:
-        memberships = await (
-            TeamMember.filter(user=user).select_related("team").all()
-        )
-        total = sum(
-            (item.total_cost for item in memberships),
-            Decimal("0"),
-        )
-        return MeOut(
-            user=UserOut.model_validate(user),
-            memberships=[
-                MembershipOut(
-                    team_id=item.team_id,
-                    team_name=item.team.name,
-                    role=item.role,
-                    status=item.status,
-                    team_status=item.team.status,
-                    is_owner=item.team.owner_user_id == user.id,
-                    total_cost=float(item.total_cost),
-                    cost_limit=(
-                        float(item.cost_limit)
-                        if item.cost_limit is not None
-                        else None
-                    ),
-                    team_balance=float(item.team.balance),
-                    joined_at=item.created_at,
-                    member_limit=item.team.member_limit,
-                )
-                for item in memberships
-            ],
-            is_super_admin=user.is_super_admin,
-            qiling_bound=await QilingIdentity.filter(user_id=user.id).exists(),
-            owns_team=await Team.filter(owner_user_id=user.id).exists(),
-            total_cost=float(total),
-        )
+        from services.balance import get_balance
+        from services.billing.aggregation import summary
+        totals = await summary(account_user_id=user.id)
+        return MeOut(user=UserOut.model_validate(user), is_super_admin=user.is_super_admin,
+                     balance=await get_balance(user.id), total_cost=totals["total_cost"],
+                     qiling_bound=await QilingIdentity.filter(user_id=user.id).exists())
 
     async def logout(self, token: str | None) -> None:
         if token:

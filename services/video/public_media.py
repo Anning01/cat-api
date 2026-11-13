@@ -31,9 +31,9 @@ def public_media_url(value: str) -> str:
 class PublicMediaResolver:
     """Upload local inputs once per request; never send Base64 to the video API."""
 
-    def __init__(self, *, team_id: int | None, model_config=None):
+    def __init__(self, *, user_id: int | None, model_config=None):
         self.model_config = model_config
-        self.team_id = team_id
+        self.user_id = user_id
         self._resolved: dict[str, str] = {}
 
     async def resolve(self, source: str) -> str:
@@ -55,7 +55,7 @@ class PublicMediaResolver:
             if not content:
                 raise VideoProviderError(localized_message('参考素材内容为空'))
             suffix = mimetypes.guess_extension(content_type) or ".bin"
-            key = make_upload_key(self.team_id, f"reference{suffix}")
+            key = make_upload_key(self.user_id, f"reference{suffix}")
             try:
                 await oss.put_bytes(key, content, content_type)
             except Exception:
@@ -65,7 +65,7 @@ class PublicMediaResolver:
             path = (root / source.removeprefix("/media/")).resolve()
             if root not in path.parents or not path.is_file():
                 raise VideoProviderError(localized_message('本地参考素材不存在'))
-            key = make_upload_key(self.team_id, path.name)
+            key = make_upload_key(self.user_id, path.name)
             try:
                 await oss.put_file(key, path, mimetypes.guess_type(path.name)[0] or "application/octet-stream")
             except Exception:

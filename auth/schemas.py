@@ -39,7 +39,6 @@ class RegisterIn(BaseModel):
     username: str = Field(min_length=1, max_length=100, description="用户名")
     password: str = Field(min_length=8, max_length=200, description="密码（至少 8 位）")
     nickname: str = Field("", max_length=100, description="昵称")
-    invite_token: str = Field(min_length=1, max_length=64, description="邀请令牌")
 
 
 class ProfileUpdateIn(BaseModel):
@@ -67,35 +66,14 @@ class UserOut(BaseModel):
         return _serialize_datetime(value)
 
 
-class MembershipOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    team_id: int
-    team_name: str = ""
-    role: str
-    status: int = 1
-    team_status: int = 1
-    is_owner: bool = False
-    total_cost: float = 0.0
-    cost_limit: Decimal | float | str | None = None
-    team_balance: Decimal | float | str | None = None
-    joined_at: datetime | str | None = ""
-    member_limit: int | None = None
-
-    @field_serializer("joined_at", when_used="json")
-    def _ser_joined_at(self, value):
-        return _serialize_datetime(value)
-
-
 class MeOut(BaseModel):
-    """当前用户信息 + 团队成员身份 + 累计消耗（用户中心展示）。"""
+    """当前用户信息 + 账户账户身份 + 累计消耗（用户中心展示）。"""
 
     user: UserOut
-    memberships: list[MembershipOut] = []
+    balance: Decimal = Decimal("0")
     is_super_admin: bool = False
     total_cost: float = 0.0
     qiling_bound: bool = False
-    owns_team: bool = False
 
 
 class LoginOut(BaseModel):

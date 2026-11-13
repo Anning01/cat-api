@@ -44,7 +44,7 @@ class UserOut(BaseModel):
     status: int = 1
     created_at: datetime | str | None = ""
     total_cost: Decimal | float | str | None = 0.0
-    team_count: int = 0
+    balance: Decimal = Decimal("0")
 
     @field_serializer("created_at", when_used="json")
     def _ser_created_at(self, value):
@@ -58,5 +58,4 @@ class UserOut(BaseModel):
 class UserStatsOut(BaseModel):
     user_count: int = 0
     user_total_cost: float = 0.0
-    team_count: int = 0
-    team_balance_total: float = 0.0
+    balance_total: Decimal = Decimal("0")

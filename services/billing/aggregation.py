@@ -21,8 +21,7 @@ def _money(value: Decimal) -> float:
 
 async def summary(
     novel_id: int | None = None,
-    team_id: int | None = None,
-    user_id: int | None = None,
+    account_user_id: int | None = None,
     *, cost_source: str | None = None, recent_days: int | None = None,
 ) -> dict:
     query = ModelUsageRecord.all()
@@ -30,10 +29,8 @@ async def summary(
         query = query.filter(cost_source=cost_source)
     if novel_id is not None:
         query = query.filter(novel_id=novel_id)
-    if team_id is not None:
-        query = query.filter(team_id=team_id)
-    if user_id is not None:
-        query = query.filter(user_id=user_id)
+    if account_user_id is not None:
+        query = query.filter(account_user_id=account_user_id)
     days = []
     if recent_days is not None:
         end = datetime.now(settings.tz).date() + timedelta(days=1)

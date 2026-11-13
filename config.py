@@ -109,7 +109,7 @@ class Settings:
     tz = ZoneInfo(TIMEZONE)
     DATETIME_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 
-    # 自建工作台默认启用本地账号与团队。
+    # 自建工作台默认启用本地账号与账户。
     AUTH_ENABLED: bool = True
     AUTH_PROVIDER: str = os.getenv("AUTH_PROVIDER", "password").strip().lower()
     if AUTH_PROVIDER not in {"password", "qiling"}:
@@ -150,7 +150,7 @@ class Settings:
     # Private temporary-object bucket on the platform; the local studio needs only its scoped API key.
     STUDIO_TEMP_BUCKET = os.getenv("STUDIO_TEMP_BUCKET", "")
     STUDIO_TEMP_REGION = os.getenv("STUDIO_TEMP_REGION", "")
-    STUDIO_TEMP_TEAM_BYTES = int(os.getenv("STUDIO_TEMP_TEAM_BYTES", str(20 * 1024**3)))
+    STUDIO_TEMP_ACCOUNT_BYTES = int(os.getenv("STUDIO_TEMP_ACCOUNT_BYTES", str(20 * 1024**3)))
 
     # 视频供应商任务由后端持续收口，不依赖浏览器页面保持打开。
     VIDEO_RECONCILE_INTERVAL_SECONDS: int = max(

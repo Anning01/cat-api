@@ -13,12 +13,12 @@ from tortoise import Tortoise
 
 from api.billing import router as billing_router
 from api.platform import console_router, developer_router
-from api.team import router as team_router
+from api.account import router as account_router
 from api.user import router as user_router
 from auth.api import router as auth_router, public_router
 from auth.bootstrap import ensure_super_admin
 from config import settings
-from controllers.team import team_controller
+from controllers.account import account_controller
 from exceptions.handlers import http_exception_handler, validation_exception_handler
 from services.security.headers import SecurityHeadersMiddleware
 from services.platform.calls import recover_measured
@@ -46,6 +46,8 @@ async def lifespan(_app):
             await Tortoise.generate_schemas(safe=True)
         from services.video.ark_migration import migrate_legacy_video_channels
         await migrate_legacy_video_channels()
+        from services.migrations.user_accounts import migrate_user_accounts
+        await migrate_user_accounts()
         await ensure_super_admin()
         await recover_measured()
         workers = [asyncio.create_task(worker()) for worker in
@@ -80,7 +82,7 @@ app.include_router(console_router, prefix="/api")
 app.include_router(billing_router, prefix="/api/billing")
 app.include_router(public_router, prefix="/api/auth")
 app.include_router(auth_router, prefix="/api/auth")
-app.include_router(team_router, prefix="/api/team")
+app.include_router(account_router, prefix="/api/account")
 app.include_router(user_router, prefix="/api/users")
 
 developer_api = FastAPI(title="Cat API", version="1", docs_url="/docs", redoc_url=None,
@@ -97,7 +99,7 @@ async def health():
 
 @app.post("/api/payment/wechat/notify")
 async def wechat_notify(request: Request):
-    return await team_controller.handle_wechat_notify(await request.body(), headers=request.headers)
+    return await account_controller.handle_wechat_notify(await request.body(), headers=request.headers)
 
 
 media = Path(settings.MEDIA_PATH)

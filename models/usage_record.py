@@ -30,13 +30,10 @@ class ModelUsageRecord(AbstractBaseModel):
     cost_source = fields.CharField(
         max_length=16,
         default="balance",
-        description="消耗来源：balance 平台模型扣团队余额 / team_key 团队自己的 Key",
+        description="消耗来源：balance 平台模型扣账户余额 / team_key 账户自己的 Key",
     )
-    team_id = fields.IntField(
-        null=True,
-        db_index=True,
-        description="归属团队（AUTH_ENABLED=true 时启用；历史数据回填）",
-    )
+
+    account_user_id = fields.IntField(null=True, db_index=True)
     user_id = fields.IntField(
         null=True,
         db_index=True,

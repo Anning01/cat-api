@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from tortoise.timezone import now
 from tortoise.transactions import in_transaction
 
-from auth.models import BalanceTransaction, RechargeOrder, Team
+from auth.models import BalanceTransaction, RechargeOrder, UserWallet
 from services.wechat_pay import WeChatPayError, wechat_pay_service
 
 
@@ -26,15 +26,15 @@ class RechargeRefundService:
             if order.status not in {"paid", "refunding"}:
                 raise HTTPException(400, "仅已支付成功的订单支持退款")
             if order.status == "paid":
-                team = await Team.filter(id=order.team_id).select_for_update().first()
-                if team is None:
-                    raise HTTPException(404, "充值目标团队不存在")
-                if team.balance < order.amount:
-                    raise HTTPException(400, "团队余额不足，不支持退款")
-                team.balance -= order.amount
-                await team.save(update_fields=["balance", "updated_at"])
-                await BalanceTransaction.create(team=team, change_amount=-order.amount,
-                    balance_after=team.balance, type="refund", operator_user_id=operator_user_id,
+                account = await UserWallet.filter(user_id=order.account_user_id).select_for_update().first()
+                if account is None:
+                    raise HTTPException(404, "充值目标账户不存在")
+                if account.balance < order.amount:
+                    raise HTTPException(400, "账户余额不足，不支持退款")
+                account.balance -= order.amount
+                await account.save(update_fields=["balance", "updated_at"])
+                await BalanceTransaction.create(account_user_id=account.user_id, change_amount=-order.amount,
+                    balance_after=account.balance, type="refund", operator_user_id=operator_user_id,
                     note=f"微信订单退款预留 (单号: {order.out_trade_no})")
                 order.status = "refunding"
                 order.refund_reason = reason or "管理员退款"
@@ -73,11 +73,11 @@ class RechargeRefundService:
                 locked.status = "refunded"
                 locked.refunded_at = now()
             elif status == "CLOSED":
-                team = await Team.filter(id=locked.team_id).select_for_update().get()
-                team.balance += Decimal(locked.amount)
-                await team.save(update_fields=["balance", "updated_at"])
-                await BalanceTransaction.create(team=team, change_amount=locked.amount,
-                    balance_after=team.balance, type="adjustment",
+                account = await UserWallet.filter(user_id=locked.account_user_id).select_for_update().get()
+                account.balance += Decimal(locked.amount)
+                await account.save(update_fields=["balance", "updated_at"])
+                await BalanceTransaction.create(account_user_id=account.user_id, change_amount=locked.amount,
+                    balance_after=account.balance, type="adjustment",
                     note=f"微信退款关闭退回预留 (单号: {locked.out_trade_no})")
                 locked.status = "refund_closed"
             # ABNORMAL still holds funds in WeChat's intermediate account.

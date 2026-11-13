@@ -1,0 +1,382 @@
+@import 'element-plus/theme-chalk/base.css';
+@import 'element-plus/theme-chalk/el-overlay.css';
+@import 'element-plus/theme-chalk/el-icon.css';
+@import 'element-plus/theme-chalk/el-dialog.css';
+
+/* Teleported dialogs inherit the global app palette, just like the library page. */
+.console-dialog,
+.console {
+  --app-danger: var(--creation-danger);
+  --app-success: var(--creation-success);
+}
+
+.console-dialog.el-dialog {
+  --el-dialog-bg-color: var(--app-surface);
+  --el-dialog-padding-primary: 0;
+  --el-text-color-primary: var(--app-text);
+  --el-text-color-regular: var(--app-text);
+  --el-text-color-secondary: var(--app-text-muted);
+  --el-border-color: var(--app-border);
+  --el-fill-color-blank: var(--app-surface);
+  --el-bg-color: var(--app-surface);
+  --el-bg-color-overlay: var(--app-surface);
+  --el-color-info: var(--app-text-muted);
+}
+
+.console-dialog {
+  background-color: var(--app-surface);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  box-shadow: var(--app-shadow);
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+}
+
+/* 弹窗遮罩 */
+.el-overlay:has(.console-dialog) {
+  background-color: rgb(0 0 0 / 45%);
+  backdrop-filter: blur(8px);
+}
+
+/* 弹窗头部与关闭按钮 */
+.console-dialog .el-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  margin: 0;
+  border-bottom: 1px solid var(--app-border);
+  background: var(--app-surface-muted);
+}
+
+.console-dialog .el-dialog__title {
+  color: var(--app-text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.console-dialog .el-dialog__headerbtn {
+  position: static;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.console-dialog .el-dialog__headerbtn:hover {
+  background: var(--app-surface-hover);
+}
+
+.console-dialog .el-dialog__headerbtn .el-dialog__close {
+  color: var(--app-text-muted);
+  font-size: 18px;
+}
+
+.console-dialog .el-dialog__headerbtn:hover .el-dialog__close {
+  color: var(--app-text);
+}
+
+.console-dialog .el-dialog__body {
+  padding: 0;
+  color: var(--app-text);
+  background: var(--app-surface);
+}
+
+.console-dialog .el-dialog__footer:empty {
+  display: none;
+}
+
+/* 上传弹窗：标题栏与底部操作栏固定，内容区独立滚动 */
+.console-dialog--upload.el-dialog {
+  --el-dialog-margin-top: 7.5vh;
+  width: 720px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.console-dialog--upload .el-dialog__header {
+  flex-shrink: 0;
+  padding: 16px 28px;
+}
+
+.console-dialog--upload .el-dialog__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.console-dialog--upload .el-dialog__footer {
+  flex-shrink: 0;
+  padding: 14px 28px;
+  border-top: 1px solid var(--app-border);
+  background: var(--app-surface-muted);
+}
+
+/* 上传表单：标签、控件与说明统一对齐 */
+.catalog-upload {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 20px 28px 22px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.catalog-upload__field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.catalog-upload__field > * {
+  min-width: 0;
+}
+
+.catalog-upload__label {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--app-text-secondary);
+}
+
+.catalog-upload__field > input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 9px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font: inherit;
+  font-size: 13px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.catalog-upload__field > input::placeholder {
+  color: var(--app-text-muted);
+}
+
+.catalog-upload__field > input:focus-visible {
+  outline: none;
+  border-color: var(--app-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 14%, transparent);
+}
+
+.catalog-upload__field > input:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.catalog-upload__hint {
+  margin: 0;
+  color: var(--app-text-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.catalog-upload__path {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-surface-muted);
+}
+
+.catalog-upload__path-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--app-text);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.catalog-upload__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 620px) {
+  .console-dialog--upload.el-dialog {
+    --el-dialog-margin-top: 4vh;
+  }
+
+  .console-dialog--upload .el-dialog__header {
+    padding: 14px 18px;
+  }
+
+  .console-dialog--upload .el-dialog__footer {
+    padding: 12px 18px;
+  }
+
+  .catalog-upload {
+    gap: 14px;
+    padding: 16px 18px 18px;
+  }
+}
+
+/* 文件夹 / 重命名 / 移动弹窗：复用上传弹窗的字段排版与底栏操作 */
+.console-dialog.console-dialog--form .el-dialog__header {
+  padding: 16px 24px;
+}
+
+.console-dialog.console-dialog--form .el-dialog__body {
+  padding: 20px 24px 22px;
+}
+
+.console-dialog.console-dialog--form .el-dialog__footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--app-border);
+  background: var(--app-surface-muted);
+}
+
+.console-dialog.console-dialog--form .catalog-form {
+  display: grid;
+  gap: 18px;
+  color: var(--app-text);
+}
+
+.console-dialog.console-dialog--form .catalog-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.console-dialog.console-dialog--form .catalog-form input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 9px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.console-dialog.console-dialog--form .catalog-form input::placeholder {
+  color: var(--app-text-muted);
+}
+
+.console-dialog.console-dialog--form .catalog-form input:focus-visible {
+  outline: none;
+  border-color: var(--app-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 14%, transparent);
+}
+
+.console-dialog.console-dialog--form .catalog-form input:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.console-dialog.console-dialog--form .catalog-form .app-select {
+  width: 100%;
+}
+
+.catalog-dialog__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 620px) {
+  .console-dialog.console-dialog--form .el-dialog__header {
+    padding: 14px 18px;
+  }
+
+  .console-dialog.console-dialog--form .el-dialog__body {
+    padding: 16px 18px 18px;
+  }
+
+  .console-dialog.console-dialog--form .el-dialog__footer {
+    padding: 12px 18px;
+  }
+}
+
+/* Dialogs are mounted outside .app-shell; theme their shared button variants locally. */
+.console-dialog .app-button--secondary {
+  color: var(--app-text-secondary);
+  background: var(--app-surface-muted);
+  box-shadow: inset 0 0 0 1px var(--app-border);
+}
+
+.console-dialog .app-button--secondary:hover:not(:disabled) {
+  color: var(--app-text);
+  background: var(--app-surface-hover);
+}
+
+.console-dialog .app-button--ghost:hover:not(:disabled) {
+  color: var(--app-accent);
+  background: var(--app-accent-soft);
+}
+
+.console-dialog .app-button--danger {
+  color: var(--app-danger);
+  background: color-mix(in srgb,var(--app-danger) 10%,var(--app-surface));
+}
+
+.console-dialog .app-button--danger:hover:not(:disabled) {
+  background: color-mix(in srgb,var(--app-danger) 18%,var(--app-surface));
+}
+
+/* The embedded picker has its own gutters and scroll regions, not page layout. */
+.console-dialog.console-dialog--picker {
+  height: min(760px, calc(100dvh - 64px));
+  display: flex;
+  flex-direction: column;
+}
+.console-dialog--picker .el-dialog__header { flex-shrink: 0; padding: 20px 24px; }
+.console-dialog--picker .el-dialog__body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 20px 24px 24px; overflow: hidden; }
+.console-dialog--picker .el-dialog__headerbtn:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
+.resource-picker-hint { margin: 0 0 16px; color: var(--app-text-secondary); font-size: 13px; line-height: 1.6; }
+.console-dialog--picker .resource-catalog.is-picker { flex: 1; height: auto; min-height: 0; padding: 0; }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-tabs { gap: 24px; margin-bottom: 16px; }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-tabs button { height: 40px; font-size: 13px; padding-inline: 4px; }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-body { flex: 1; height: auto; min-height: 0; border-radius: 12px; grid-template-columns: 184px minmax(0, 1fr); }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-folders { padding: 16px 10px; gap: 5px; background: var(--app-surface-muted); scrollbar-width: thin; scrollbar-color: var(--app-border) transparent; }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-folder > button { min-height: 40px; font-size: 12px; }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-content { padding: 18px 20px 0; overflow: hidden; }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-filter { gap: 10px; }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-results { flex-shrink: 0; padding: 14px 0; }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-filter > .catalog-icon { width: 36px; height: 36px; }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-grid,
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-list,
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-state,
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-skeleton { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--app-border) transparent; padding: 2px; }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-grid { grid-auto-rows: max-content; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-pagination { flex-shrink: 0; margin-top: 14px; padding: 14px 0; border-top: 1px solid var(--app-border); gap: 12px; font-size: 12px; }
+.console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-pagination .app-button--primary { margin-left: auto; }
+@media (max-width: 620px) {
+  .console-dialog.console-dialog--picker { max-width: calc(100vw - 20px); height: calc(100dvh - 32px); }
+  .console-dialog--picker .el-dialog__header { padding: 16px; }
+  .console-dialog--picker .el-dialog__body { padding: 14px 16px 16px; }
+  .console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-body { grid-template-columns: minmax(0, 1fr); }
+  .console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-content { padding: 14px 12px 0; }
+  .console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-pagination { gap: 8px; }
+  .console-dialog.console-dialog--picker .resource-catalog.is-picker .catalog-pagination .app-button--primary { width: 100%; margin-left: 0; }
+}

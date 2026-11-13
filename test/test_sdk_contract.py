@@ -10,7 +10,7 @@ from openai import APIStatusError, AsyncOpenAI
 
 from api.platform import developer_router
 from auth.deps import AuthContext
-from auth.models import PlatformCallReceipt, Team, TeamMember, User
+from auth.models import PlatformCallReceipt, UserWallet, User
 from config import settings
 from models.config import AiModelConfig
 from services.platform.access import create_key
@@ -23,9 +23,8 @@ IMAGE = base64.b64encode(b"fixture image").decode()
 @pytest.fixture
 async def sdk_api(monkeypatch):
     user = await User.create(username="sdk-client", password_hash="!")
-    team = await Team.create(name="SDK contract", balance=20)
-    member = await TeamMember.create(user=user, team=team, role="creator")
-    key = (await create_key(AuthContext(user=user, team_id=team.id, membership=member), "external"))["key"]
+    await UserWallet.create(user=user, balance=20)
+    key = (await create_key(AuthContext(user=user), "external"))["key"]
     common = dict(is_active=True, base_url="https://vendor.example/v1", api_key="upstream-fixture")
     text = await AiModelConfig.create(**common, name="Chat", model="official-chat", task_type=7,
         supports_tool_calls=True, supports_json_output=True,
@@ -251,7 +250,7 @@ async def test_external_api_key_gets_scoped_upload_metadata_without_file_proxy(s
     assert "x-oss-expires=172800" in ticket["read_url"] and "x-oss-expires=600" in ticket["upload_url"]
     assert "fixture-secret" not in reply.text and ticket["headers"]["content-length"] == "123"
     lease = await StudioMediaLease.get()
-    assert "/" + str(lease.team_id) + "/" in lease.object_key
+    assert "/" + str(lease.account_user_id) + "/" in lease.object_key
 
 
 @pytest.mark.parametrize("inline", ["data:image/png;base64,AAAA", "data:video/mp4;base64,AAAA"])

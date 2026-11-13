@@ -20,7 +20,7 @@ def _operator_id(ctx: AuthContext) -> int:
 
 @router.get(
     "/stats",
-    summary="用户与团队总览统计（仅超级管理员）",
+    summary="用户与账户总览统计（仅超级管理员）",
     response_model=ResponseSchema[UserStatsOut],
 )
 async def get_user_stats(_: AuthContext = _SUPER):

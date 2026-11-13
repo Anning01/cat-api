@@ -169,15 +169,6 @@ class ImageModelTypeEnum(NicknameStrEnum):
 
 
 @enum_description
-class TeamRoleEnum(NicknameStrEnum):
-    """团队成员角色。仅 AUTH_ENABLED=true 时生效。"""
-
-    admin = "admin", "团队管理员"
-    creator = "creator", "创作者"
-    viewer = "viewer", "查看者"
-
-
-@enum_description
 class UserStatusEnum(NicknameIntEnum):
     """用户账号状态。仅 AUTH_ENABLED=true 时生效。"""
 

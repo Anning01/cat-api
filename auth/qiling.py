@@ -9,11 +9,10 @@ from pydantic import BaseModel, Field, ValidationError
 from tortoise.exceptions import IntegrityError
 from tortoise.transactions import in_transaction
 
-from auth.models import QilingIdentity, QilingLoginAttempt, TeamMember, User
+from auth.models import QilingIdentity, QilingLoginAttempt, User
 from auth.security import hash_token, new_session_token
 from auth.service import auth_service
 from config import settings
-from services.team_provisioning import create_owned_team
 from utils.messages import localized_message as msg
 
 
@@ -125,12 +124,8 @@ async def poll(token: str, user: User | None = None) -> dict:
                 require_profile()
                 target = await User.create(username=f"qiling-{uuid4().hex}", nickname=identity.name[:100])
                 await QilingIdentity.create(issuer=attempt.issuer, subject=identity.sub, user=target)
-                await create_owned_team(target.id)
             if target.status != 1:
                 raise HTTPException(403, msg("账号已停用"))
-            if linked and not target.is_super_admin and target.password_hash == "!" and target.username.startswith("qiling-"):
-                if not await TeamMember.filter(user_id=target.id).exists():
-                    await create_owned_team(target.id)
             return {"status": "completed", "session": await auth_service.issue_session(target)}
     except IntegrityError:
         raise HTTPException(409, msg("账号已绑定，请重新发起登录")) from None

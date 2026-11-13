@@ -162,7 +162,7 @@ class WeChatPayService:
         if total_cents <= 0:
             raise WeChatPayError("充值金额必须大于零")
 
-        clean_desc = _sanitize_wechat_text(description)[:127] or "团队充值"
+        clean_desc = _sanitize_wechat_text(description)[:127] or "账户充值"
         clean_attach = _sanitize_wechat_text(attach)[:127]
 
         path = "/v3/pay/transactions/native"

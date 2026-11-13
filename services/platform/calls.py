@@ -13,7 +13,7 @@ from tortoise.transactions import in_transaction
 from auth.models import PlatformCallReceipt
 from models.config import AiModelConfig
 from models.usage_record import ModelUsageRecord
-from services.balance import accumulate_member_cost, consume, ensure_solvent
+from services.balance import consume, ensure_solvent
 from services.billing.pricing import compute_image_cost, compute_input_image_cost, compute_text_cost
 from utils.enums import AiTaskTypeEnum
 from utils.messages import localized_message
@@ -24,6 +24,11 @@ CALL_TIMEOUT = 600
 def digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True,
         separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+async def request_keys(user_id, key):
+    scopes = await PlatformCallReceipt.filter(user_id=user_id, legacy_scope_id__not_isnull=True).distinct().values_list('legacy_scope_id', flat=True)
+    return [digest([user_id, str(key)]), *[digest([scope, user_id, str(key)]) for scope in scopes]]
 
 
 def text_pricing(config):
@@ -51,10 +56,10 @@ def chat_options(config, body):
 
 async def admit(ctx, model, body, key, *, validate=chat_options, kind="text"):
     identifier = uuid4()
-    dedup = digest([ctx.team_id, ctx.user.id, key or str(identifier)])
+    dedup = digest([ctx.user.id, key or str(identifier)])
     signature = digest(body)
     async with in_transaction() as db:
-        eligible = AiModelConfig.filter(scope="official", team_id__isnull=True, is_active=True).exclude(api_protocol="novelvids").using_db(db)
+        eligible = AiModelConfig.filter(scope="official", is_active=True).exclude(api_protocol="novelvids").using_db(db)
         if isinstance(model, int) or re.fullmatch(r"nv-[1-9][0-9]{0,9}", model):
             model_id = model if isinstance(model, int) else int(model[3:])
         else:
@@ -72,13 +77,13 @@ async def admit(ctx, model, body, key, *, validate=chat_options, kind="text"):
         if not await selected.update(concurrency=F("concurrency")):
             raise HTTPException(404, "平台模型不存在或已停用")
         config = await selected.get()
-        previous = await PlatformCallReceipt.get_or_none(dedup_key=dedup).using_db(db)
+        previous = await PlatformCallReceipt.filter(dedup_key__in=await request_keys(ctx.user.id, key or str(identifier))).first().using_db(db)
         if previous:
             detail = "请求标识已用于不同的请求" if previous.payload_hash != signature else "该请求已受理，请查询原请求状态"
             raise HTTPException(409, detail, headers={"X-Request-Id":str(previous.public_id)})
         rates = validate(config, body)
         try:
-            await ensure_solvent(ctx.team_id, ctx.user.id)
+            await ensure_solvent(ctx.user.id)
         except HTTPException as error:
             if error.status_code == 402:
                 raise HTTPException(402, localized_message("API 平台账户可用额度不足，请前往 API 平台检查余额和限额")) from None
@@ -89,7 +94,7 @@ async def admit(ctx, model, body, key, *, validate=chat_options, kind="text"):
         if count >= config.concurrency:
             raise HTTPException(429, "模型并发已满，请稍后重试", headers={"Retry-After":"2"})
         receipt = await PlatformCallReceipt.create(using_db=db, public_id=identifier, dedup_key=dedup,
-            payload_hash=signature, team_id=ctx.team_id, user_id=ctx.user.id, api_key_id=ctx.platform_key_id, model_config_id=config.id,
+            payload_hash=signature, account_user_id=ctx.user.id, user_id=ctx.user.id, api_key_id=ctx.platform_key_id, model_config_id=config.id,
             model_name=config.name, model=config.model, pricing=rates)
     return config, receipt
 
@@ -114,9 +119,8 @@ async def settle(receipt_id):
             billing_type=kind, model_config_id=r.model_config_id, model_name=r.model_name, model=r.model,
             pricing_snapshot=r.pricing, usage={**r.usage, "platform_request_id":str(r.public_id)},
             cost=cost, platform_cost=cost, local_charge=0, settlement_status="settled",
-            cost_source="balance", team_id=r.team_id, user_id=r.user_id)
-        await consume(r.team_id, cost, usage_record_id=record.id, strict=True)
-        await accumulate_member_cost(r.team_id, r.user_id, cost, strict=True)
+            cost_source="balance", account_user_id=r.account_user_id, user_id=r.user_id)
+        await consume(r.account_user_id, cost, usage_record_id=record.id, strict=True)
         await PlatformCallReceipt.filter(id=r.id).using_db(db).update(state="completed", usage_record_id=record.id)
 
 

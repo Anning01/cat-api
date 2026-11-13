@@ -6,6 +6,7 @@ async def ensure_billing_integration_schema() -> None:
     connection = Tortoise.get_connection("default")
     definitions = {
         "model_usage_records": {
+            "account_user_id": "INT",
             "platform_cost": "DECIMAL(18,6)",
             "local_charge": "DECIMAL(18,6)",
             "settlement_status": "VARCHAR(16) NOT NULL DEFAULT 'legacy'",

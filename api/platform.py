@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, R
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from auth.deps import AuthContext, require_roles, require_super_admin
+from auth.deps import AuthContext, require_user, require_super_admin
 from controllers.billing import billing_scope
 from services.billing.aggregation import summary
 from auth.models import PlatformApiKey, PlatformCallReceipt, StudioKeyGrant
@@ -37,12 +37,11 @@ class NewKey(BaseModel):
 
 @console_router.get("/platform/usage", include_in_schema=False)
 async def platform_usage(
-    ctx: AuthContext = Depends(require_roles("admin", "creator")),
+    ctx: AuthContext = Depends(require_user),
     days: Annotated[int | None, Query(ge=1, le=90)] = None,
 ):
-    team_id, user_id = billing_scope(ctx)
-    return ResponseSchema(data=await summary(team_id=ctx.team_id if ctx.team_id is not None else team_id,
-                                             user_id=user_id, cost_source="balance", recent_days=days))
+    user_id = billing_scope(ctx)
+    return ResponseSchema(data=await summary(account_user_id=user_id, cost_source="balance", recent_days=days))
 
 
 @console_router.get("/platform/catalog")
@@ -52,7 +51,7 @@ async def console_catalog():
 
 @console_router.get("/platform/keys", include_in_schema=False)
 async def list_keys(ctx: AuthContext = Depends(console_owner)):
-    rows = await PlatformApiKey.filter(user_id=ctx.user.id, team_id=ctx.team_id, revoked_at__isnull=True).order_by("-id")
+    rows = await PlatformApiKey.filter(user_id=ctx.user.id, revoked_at__isnull=True).order_by("-id")
     granted = set(await StudioKeyGrant.filter(key_id__in=[row.id for row in rows]).values_list("key_id", flat=True))
     return ResponseSchema(data=[{**key_view(row), "purpose":"studio" if row.id in granted else "api"} for row in rows])
 
@@ -88,11 +87,10 @@ async def models(_: AuthContext = Depends(developer_identity)):
 
 @developer_router.get("/account", summary="查询 Key 所属平台账户余额", response_model=PlatformAccountOut)
 async def platform_account(request: Request, response: Response, ctx: AuthContext = Depends(developer_identity)):
-    from auth.models import Team
+    from services.balance import get_balance
     response.headers["Cache-Control"] = "no-store"
-    team = await Team.get(id=ctx.team_id)
     origin = str(request.url).split("/v1/", 1)[0]
-    return PlatformAccountOut(balance=team.balance, recharge_url=f"{origin}/#/profile?recharge=1&team={team.id}")
+    return PlatformAccountOut(balance=await get_balance(ctx.user.id), recharge_url=f"{origin}/#/profile?recharge=1")
 
 
 
@@ -119,7 +117,7 @@ async def call_status_by_key(request_key: Annotated[str, Query(min_length=1, max
 @developer_router.post("/studio/media-lease", include_in_schema=False)
 async def studio_media_lease(body: UploadSpec, response: Response, ctx: AuthContext = Depends(studio_identity)):
     response.headers["Cache-Control"] = "no-store"
-    return await issue_upload(ctx.team_id, body)
+    return await issue_upload(ctx.user.id, body)
 
 
 @developer_router.post("/images/generations", summary="生成图像并返回结果链接")
@@ -140,7 +138,7 @@ async def edit_images(request: Request, ctx: AuthContext = Depends(developer_ide
 @developer_router.post("/media/uploads", summary="申请临时 OSS 直传地址")
 async def temporary_upload(body: UploadSpec, response: Response, ctx: AuthContext = Depends(developer_identity)):
     response.headers["Cache-Control"] = "no-store"
-    return await issue_upload(ctx.team_id, body)
+    return await issue_upload(ctx.user.id, body)
 
 
 @developer_router.post("/videos", summary="提交视频生成", openapi_extra=sdk_request_schema(VideoRequest))

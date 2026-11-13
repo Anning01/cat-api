@@ -17,11 +17,11 @@ import httpx
 from config import settings
 
 
-def make_upload_key(team_id: int | None, filename: str) -> str:
-    """生成对象 key：uploads/{team}/{年月日}/{uuid}-{安全文件名}。"""
+def make_upload_key(user_id: int | None, filename: str) -> str:
+    """生成对象 key：uploads/{user}/{年月日}/{uuid}-{安全文件名}。"""
     safe_name = re.sub(r"[^0-9A-Za-z._\-\u4e00-\u9fff]", "_", Path(filename).name)[:80] or "file"
     day = datetime.now(timezone.utc).strftime("%Y%m%d")
-    return f"uploads/{team_id or 0}/{day}/{uuid4().hex[:12]}-{safe_name}"
+    return f"uploads/{user_id or 0}/{day}/{uuid4().hex[:12]}-{safe_name}"
 
 
 class OSSProvider(abc.ABC):

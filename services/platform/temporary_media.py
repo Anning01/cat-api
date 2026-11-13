@@ -12,7 +12,7 @@ from tortoise.expressions import F, Q
 from tortoise.functions import Sum
 from tortoise.transactions import in_transaction
 
-from auth.models import StudioMediaLease, Team
+from auth.models import StudioMediaLease, User
 from config import settings
 from services.oss.temporary import TemporaryBucket, suppress_signed_queries
 
@@ -45,7 +45,7 @@ def bucket_config():
     return TemporaryBucket(bucket, region, settings.OSS_ACCESS_KEY_ID, settings.OSS_ACCESS_KEY_SECRET)
 
 
-async def issue_upload(team_id, spec):
+async def issue_upload(account_user_id, spec):
     bucket = bucket_config()
     if not bucket:
         raise HTTPException(503, "平台临时素材存储尚未配置")
@@ -53,16 +53,16 @@ async def issue_upload(team_id, spec):
         raise HTTPException(422, "不支持的参考素材类型")
     now = datetime.now(timezone.utc).replace(microsecond=0)
     expires = now + timedelta(seconds=READ_SECONDS)
-    key = f"{PREFIX}{team_id}/{uuid4().hex}.{TYPES[spec.content_type]}"
+    key = f"{PREFIX}{account_user_id}/{uuid4().hex}.{TYPES[spec.content_type]}"
     async with in_transaction() as db:
-        if not await Team.filter(id=team_id, status=1).using_db(db).update(status=F("status")):
-            raise HTTPException(403, "团队已停用")
-        totals = await StudioMediaLease.filter(team_id=team_id).using_db(db).annotate(total=Sum("byte_length")).values_list("total",flat=True)
+        if not await User.filter(id=account_user_id, status=1).using_db(db).update(status=F("status")):
+            raise HTTPException(403, "账户已停用")
+        totals = await StudioMediaLease.filter(account_user_id=account_user_id).using_db(db).annotate(total=Sum("byte_length")).values_list("total",flat=True)
         allocated = sum(t or 0 for t in totals)
-        if allocated + spec.byte_length > settings.STUDIO_TEMP_TEAM_BYTES:
-            raise HTTPException(429, "团队临时素材空间已满")
+        if allocated + spec.byte_length > settings.STUDIO_TEMP_ACCOUNT_BYTES:
+            raise HTTPException(429, "账户临时素材空间已满")
         await StudioMediaLease.create(using_db=db, object_key=key, bucket=bucket.bucket, region=bucket.region,
-                                      team_id=team_id, byte_length=spec.byte_length, expires_epoch=int(expires.timestamp()))
+                                      account_user_id=account_user_id, byte_length=spec.byte_length, expires_epoch=int(expires.timestamp()))
     headers = {"content-length":str(spec.byte_length), "content-type":spec.content_type, "content-md5":spec.content_md5,
                "x-oss-object-acl":"private","x-oss-forbid-overwrite":"true"}
     return {"upload_url":bucket.sign("PUT",key,now,UPLOAD_SECONDS,headers),"headers":headers,
@@ -82,7 +82,7 @@ async def expire_uploads():
     suppress_signed_queries()
     async with httpx.AsyncClient(timeout=15) as client:
         for record in due:
-            if not record.object_key.startswith(f"{PREFIX}{record.team_id}/"):
+            if not record.object_key.startswith(PREFIX):
                 continue
             url = bucket.sign("DELETE",record.object_key,datetime.now(timezone.utc),60)
             try:

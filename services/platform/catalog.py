@@ -42,7 +42,7 @@ def public_tariff(raw):
 
 
 async def model_catalog():
-    rows = await AiModelConfig.filter(scope="official", team_id__isnull=True, is_active=True).exclude(api_protocol="novelvids").order_by("id").values(
+    rows = await AiModelConfig.filter(scope="official", is_active=True).exclude(api_protocol="novelvids").order_by("id").values(
         "id","name","created_at","image_model_type","video_model_type","api_protocol","task_type","task_types","pricing","supports_tool_calls","supports_json_output")
     models = []
     for row in rows:

@@ -24,8 +24,7 @@ def legacy_query_config(config):
     if not base_url:
         return None
     return AiModelConfig(id=config.id, base_url=base_url, api_key=config.api_key,
-        api_protocol=LEGACY_PROTOCOL, model=config.model, video_model_type=config.video_model_type,
-        team_id=config.team_id)
+        api_protocol=LEGACY_PROTOCOL, model=config.model, video_model_type=config.video_model_type)
 
 
 async def migrate_legacy_video_channels() -> None:

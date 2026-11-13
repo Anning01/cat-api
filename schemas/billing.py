@@ -33,7 +33,7 @@ class ModelUsageRecordOut(BaseResponse):
     status: int
     duration_seconds: Optional[float] = None
     cost_source: str = "balance"
-    team_id: Optional[int] = None
+    account_user_id: Optional[int] = None
     user_id: Optional[int] = None
     record_kind: Literal['call', 'agent_conversation'] = 'call'
     conversation_id: Optional[int] = None
@@ -71,7 +71,7 @@ class BillingProjectDetailOut(BaseModel):
 
 
 class StatementFilters(BaseModel):
-    team_id: int | None = Field(None, ge=1)
+    account_user_id: int | None = Field(None, ge=1)
     user_id: int | None = Field(None, ge=1)
     start_date: date | None = None
     end_date: date | None = None
@@ -97,15 +97,14 @@ class StatementQuery(StatementFilters):
 
 
 class StatementPartiesOut(BaseModel):
-    teams: list[StatementPartyOut]
     users: list[StatementPartyOut]
 
 
 class StatementRowOut(BaseModel):
     id: int
     created_at: str
-    team_id: int
-    team_name: str
+    account_user_id: int
+    account_name: str | None
     user_id: int | None
     user_name: str | None
     novel_id: int | None
@@ -123,7 +122,7 @@ class StatementRowOut(BaseModel):
 class StatementSummaryOut(BaseModel):
     total_cost: str
     total_transactions: int
-    team_balance: str | None
+    account_balance: str | None
 
 
 class StatementOut(BaseModel):

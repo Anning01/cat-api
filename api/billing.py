@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 
-from auth.deps import AuthContext, require_roles, require_super_admin
+from auth.deps import AuthContext, require_user, require_super_admin
 from controllers.billing import billing_scope
 from models.usage_record import ModelUsageRecord
 from schemas.billing import ModelUsageRecordOut
@@ -41,23 +41,21 @@ async def export(filters: Annotated[StatementFilters, Query()], ctx=Depends(stat
 
 
 @router.get("/summary")
-async def billing_summary(novel_id: int | None = None, ctx=Depends(require_roles("admin", "creator"))):
-    return ResponseSchema(data=await summary(novel_id, *billing_scope(ctx)))
+async def billing_summary(novel_id: int | None = None, ctx=Depends(require_user)):
+    return ResponseSchema(data=await summary(novel_id, account_user_id=billing_scope(ctx)))
 
 
 @router.get("/projects")
-async def billing_projects(ctx=Depends(require_roles("admin", "creator"))):
+async def billing_projects(ctx=Depends(require_user)):
     return ResponseSchema(data={"items": [], "pagination": {"total": 0, "page": 1, "page_size": 20, "pages": 0}})
 
 
 @router.get("/records")
-async def billing_records(page: int = 1, page_size: int = 20, ctx=Depends(require_roles("admin", "creator"))):
-    team_id, user_id = billing_scope(ctx)
+async def billing_records(page: int = 1, page_size: int = 20, ctx=Depends(require_user)):
+    user_id = billing_scope(ctx)
     query = ModelUsageRecord.all()
-    if team_id is not None:
-        query = query.filter(team_id=team_id)
     if user_id is not None:
-        query = query.filter(user_id=user_id)
+        query = query.filter(account_user_id=user_id)
     page, page_size = max(1, page), max(1, min(100, page_size))
     total = await query.count()
     rows = await query.order_by("-id").offset((page - 1) * page_size).limit(page_size)

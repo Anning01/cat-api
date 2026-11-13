@@ -1,3 +1,4 @@
+from services.platform.calls import request_keys
 """Remote video jobs are durable control-plane records. Video bytes are fetched by the caller."""
 import asyncio
 from collections import Counter
@@ -119,7 +120,7 @@ async def submit_video(ctx, request, key):
     except HTTPException as exc:
         if exc.status_code != 409 or not key:
             raise
-        previous = await PlatformCallReceipt.get_or_none(dedup_key=digest([ctx.team_id,ctx.user.id,key]))
+        previous = await PlatformCallReceipt.get_or_none(dedup_key__in=await request_keys(ctx.user.id,key))
         if not previous or previous.pricing.get("type")!="video" or previous.payload_hash!=digest(body):
             raise
         prior_job = await PlatformVideoJob.get_or_none(receipt_id=previous.id)
@@ -150,7 +151,7 @@ async def submit_video(ctx, request, key):
                     resolution=resolution, aspect_ratio=request.aspect_ratio, output_format="mp4", generate_audio=request.generate_audio,
                     return_last_frame=request.return_last_frame, generation_mode="keyframes" if frames else "reference",
                     first_frame_url=frames.get("first_frame"),last_frame_url=frames.get("last_frame"),reference_images=types["image"],
-                    reference_videos=types["video"], reference_audios=types["audio"],team_id=ctx.team_id)
+                    reference_videos=types["video"], reference_audios=types["audio"],user_id=ctx.user.id)
         if not upstream_id:
             raise ValueError("missing upstream task")
         await PlatformCallReceipt.filter(id=receipt.id,state="submitted").update(provider_id=upstream_id,state="processing")
@@ -227,7 +228,7 @@ async def refresh_job(job, receipt, *, renew=False):
         poll_token=token,poll_after=now+100)
     if not claimed:
         return
-    config = await AiModelConfig.get_or_none(id=receipt.model_config_id,scope="official",team_id__isnull=True)
+    config = await AiModelConfig.get_or_none(id=receipt.model_config_id,scope="official")
     ours = PlatformVideoJob.filter(id=job.id,poll_token=token)
     if config and route_hash(config) != job.route_hash:
         from services.video.ark_migration import legacy_query_config
@@ -295,8 +296,11 @@ async def refresh_job(job, receipt, *, renew=False):
 
 
 async def video_status(ctx, public_id=None, key=None, *, refresh=False):
-    lookup = {"dedup_key":digest([ctx.team_id,ctx.user.id,str(key)])} if key else {"public_id":public_id}
-    receipt = await PlatformCallReceipt.get_or_none(team_id=ctx.team_id,user_id=ctx.user.id,**lookup)
+    lookup = {"dedup_key__in":await request_keys(ctx.user.id,key)} if key else {"public_id":public_id}
+    rows = await PlatformCallReceipt.filter(user_id=ctx.user.id,**lookup).limit(2)
+    if len(rows) > 1:
+        raise HTTPException(409,"旧请求标识对应多条记录，请使用原请求编号查询")
+    receipt = rows[0] if rows else None
     job = await PlatformVideoJob.get_or_none(receipt_id=receipt.id) if receipt else None
     if not job:
         raise HTTPException(404,"视频请求不存在")

@@ -111,7 +111,7 @@ class AiModelConfigController(CRUDBase[AiModelConfig, AiModelConfigCreate, AiMod
 
     @staticmethod
     def _normalize_payload(obj_in) -> dict:
-        data = obj_in.model_dump(exclude_unset=True, exclude={"id", "scope", "team_id"})
+        data = obj_in.model_dump(exclude_unset=True, exclude={"id", "scope"})
         if "task_types" in data:
             values = list(dict.fromkeys(int(value) for value in (data["task_types"] or [])))
             if not values:
