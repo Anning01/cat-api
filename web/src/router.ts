@@ -3,7 +3,8 @@ import { useAuthStore } from '@/features/auth/authStore'
 import { notice } from '@/shared/notice'
 const router=createRouter({history:createWebHashHistory(),routes:[
   ...(['usage','models','docs','keys'] as const).map(section=>({path:'/platform/'+section,component:()=>import('./pages/PlatformConsolePage.vue'),props:{section},meta:{public:['models','docs'].includes(section)}})),
-  ...(['profile','orders','billing','users'] as const).map(section=>({path:'/'+section,component:()=>import('./pages/AccountPage.vue'),props:{section},meta:{admin:section==='users'}})),
+  ...(['profile','orders','billing'] as const).map(section=>({path:'/'+section,component:()=>import('./pages/AccountPage.vue'),props:{section},meta:{}})),
+  {path:'/users',component:()=>import('./pages/UserManagementPage.vue'),meta:{admin:true}},
   {path:'/projects',redirect:'/legacy-works'},
   {path:'/legacy-works',component:()=>import('./pages/LegacyWorksPage.vue')},
   {path:'/login',component:()=>import('./pages/LoginPage.vue'),meta:{public:true}},

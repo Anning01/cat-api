@@ -45,6 +45,14 @@ async def billing_summary(novel_id: int | None = None, ctx=Depends(require_user)
     return ResponseSchema(data=await summary(novel_id, account_user_id=billing_scope(ctx)))
 
 
+@router.get('/mine', response_model=ResponseSchema[StatementOut])
+async def personal_statements(response: Response, filters: Annotated[StatementQuery, Query()], ctx=Depends(require_user)):
+    response.headers['Cache-Control'] = 'no-store'
+    filters.account_user_id = ctx.user.id
+    filters.user_id = None
+    return ResponseSchema(data=await billing_statements.list(filters, filters.page, filters.page_size))
+
+
 @router.get("/projects")
 async def billing_projects(ctx=Depends(require_user)):
     return ResponseSchema(data={"items": [], "pagination": {"total": 0, "page": 1, "page_size": 20, "pages": 0}})

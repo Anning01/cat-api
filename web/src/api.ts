@@ -1,3 +1,4 @@
+import { locale, tr } from './i18n'
 import type { AiModelConfig, AllEnums, AuthMe, AuthStatus, GenerationCapabilities, LoginResult, PaginationResponse, QilingAttempt, QilingPoll, SingleResponse } from './types'
 export const API_BASE = ((import.meta.env.VITE_API_BASE ?? '') as string).replace(/\/+$/, '') + '/api'
 const TOKEN_KEY = 'novelvids_token'
@@ -6,16 +7,17 @@ export const setAuthToken = (value: string) => localStorage.setItem(TOKEN_KEY, v
 export const clearAuthToken = () => localStorage.removeItem(TOKEN_KEY)
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers)
+  headers.set('Accept-Language', locale.value === 'zh' ? 'zh-CN' : 'en')
   const token = getAuthToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
   if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   const response = await fetch(API_BASE + path, { ...options, headers })
   let body
   try { body = await response.json() }
-  catch { throw new Error('服务暂时不可用，请刷新后重试') }
+  catch { throw new Error(tr('服务暂时不可用，请刷新后重试')) }
   if (!response.ok || body.code !== 0) {
     if (body.code === 401) window.location.hash = '#/login'
-    throw new Error(body.message || '请求失败，请重试')
+    throw new Error(tr(body.message || '请求失败，请重试'))
   }
   return body as T
 }

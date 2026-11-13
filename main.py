@@ -39,6 +39,8 @@ async def lifespan(_app):
         "models": ["auth.models", "models.config", "models.usage_record"],
     }, timezone=settings.TIMEZONE)
     try:
+        from services.schema_compat import ensure_admin_events_schema
+        await ensure_admin_events_schema()
         await ensure_billing_integration_schema()
         await _ensure_qiling_issuer_columns(Tortoise.get_connection("default"))
         await ensure_recharge_refund_columns()
@@ -75,8 +77,7 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 @app.get("/api/config/locale")
 async def locale():
-    from services.language import configured_language
-    return ResponseSchema(data={"locale": await configured_language()})
+    return ResponseSchema(data={"locale": settings.CONSOLE_LOCALE})
 
 app.include_router(console_router, prefix="/api")
 app.include_router(billing_router, prefix="/api/billing")

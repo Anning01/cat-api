@@ -44,11 +44,9 @@ class AuthService:
         return LoginOut(token=token, user=UserOut.model_validate(user))
 
     async def me(self, user: User) -> MeOut:
-        from services.balance import get_balance
-        from services.billing.aggregation import summary
-        totals = await summary(account_user_id=user.id)
+        from services.balance import get_balance, total_consumed
         return MeOut(user=UserOut.model_validate(user), is_super_admin=user.is_super_admin,
-                     balance=await get_balance(user.id), total_cost=totals["total_cost"],
+                     balance=await get_balance(user.id), total_cost=await total_consumed(user.id),
                      qiling_bound=await QilingIdentity.filter(user_id=user.id).exists())
 
     async def logout(self, token: str | None) -> None:

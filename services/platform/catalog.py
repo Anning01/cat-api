@@ -2,6 +2,7 @@
 from math import isfinite
 from models.config import AiModelConfig
 from utils.enums import AiTaskTypeEnum
+from services.video_enhancement.contract import EnhancementOptions
 
 
 PUBLIC_KINDS = {
@@ -9,12 +10,27 @@ PUBLIC_KINDS = {
     AiTaskTypeEnum.reference_image: "image",
     AiTaskTypeEnum.storyboard: "text",
     AiTaskTypeEnum.video: "video",
+    AiTaskTypeEnum.video_enhancement: "media_processing",
+    AiTaskTypeEnum.audio_recognition: "asr",
     AiTaskTypeEnum.project_analysis: "text",
     AiTaskTypeEnum.remake_decomposition: "text",
     AiTaskTypeEnum.creation_agent: "text",
     AiTaskTypeEnum.screenplay: "text",
     AiTaskTypeEnum.prompt_optimization: "text",
 }
+
+# Deliberately independent of the provider configuration's private fields.
+PUBLIC_PROCESSING_OPTIONS = {
+    "input_short_side_min", "input_short_side_max", "input_long_side_max",
+    "input_fps_min", "input_fps_max", "max_duration_seconds", "max_file_bytes",
+    "poll_seconds", "local_upload_max_bytes", "output_resolutions",
+}
+
+
+def public_processing_options(raw):
+    allowed = {key: value for key, value in (raw or {}).items() if key in PUBLIC_PROCESSING_OPTIONS}
+    options = EnhancementOptions.model_validate(allowed).model_dump(mode="json")
+    return {key: value for key, value in options.items() if key in PUBLIC_PROCESSING_OPTIONS}
 
 
 def public_tariff(raw):
@@ -43,7 +59,7 @@ def public_tariff(raw):
 
 async def model_catalog():
     rows = await AiModelConfig.filter(scope="official", is_active=True).exclude(api_protocol="novelvids").order_by("id").values(
-        "id","name","created_at","image_model_type","video_model_type","api_protocol","task_type","task_types","pricing","supports_tool_calls","supports_json_output")
+        "id","name","created_at","image_model_type","video_model_type","api_protocol","task_type","task_types","pricing","supports_tool_calls","supports_json_output","concurrency","processing_options")
     models = []
     for row in rows:
         task_types = row["task_types"] or [row["task_type"]]
@@ -58,5 +74,8 @@ async def model_catalog():
             "reference_image_urls": bool(row["image_model_type"] and row["api_protocol"] in {"volcengine_ark", "openrouter_compatible"}),
             "pricing": public_tariff(row["pricing"]), "tool_calls": row["supports_tool_calls"],
             "json_output": row["supports_json_output"],
+            "concurrency": max(1, row["concurrency"]),
+            **({"processing_options": public_processing_options(row["processing_options"])}
+               if AiTaskTypeEnum.video_enhancement in task_types else {}),
         })
     return models

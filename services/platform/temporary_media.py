@@ -61,12 +61,28 @@ async def issue_upload(account_user_id, spec):
         allocated = sum(t or 0 for t in totals)
         if allocated + spec.byte_length > settings.STUDIO_TEMP_ACCOUNT_BYTES:
             raise HTTPException(429, "账户临时素材空间已满")
-        await StudioMediaLease.create(using_db=db, object_key=key, bucket=bucket.bucket, region=bucket.region,
+        lease = await StudioMediaLease.create(using_db=db, object_key=key, bucket=bucket.bucket, region=bucket.region,
                                       account_user_id=account_user_id, byte_length=spec.byte_length, expires_epoch=int(expires.timestamp()))
     headers = {"content-length":str(spec.byte_length), "content-type":spec.content_type, "content-md5":spec.content_md5,
                "x-oss-object-acl":"private","x-oss-forbid-overwrite":"true"}
-    return {"upload_url":bucket.sign("PUT",key,now,UPLOAD_SECONDS,headers),"headers":headers,
+    return {"media_id":lease.id,"upload_url":bucket.sign("PUT",key,now,UPLOAD_SECONDS,headers),"headers":headers,
             "read_url":bucket.sign("GET",key,now,READ_SECONDS),"expires_at":int(expires.timestamp())}
+
+
+async def owned_media_url(user_id: int, media_id: int, kind: str) -> str:
+    """Resolve a live account-owned lease; provider adapters must still probe its bytes."""
+    extensions = {"audio": {"wav", "mp3", "m4a", "flac", "ogg", "aac"}, "video": {"mp4", "mov"}}
+    if kind not in extensions:
+        raise ValueError("Unsupported media kind")
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    lease = await StudioMediaLease.get_or_none(id=media_id, account_user_id=user_id,
+                                               expires_epoch__gt=int(now.timestamp()))
+    if not lease or not lease.object_key.startswith(f"{PREFIX}{user_id}/") or lease.object_key.rsplit(".", 1)[-1] not in extensions[kind]:
+        raise HTTPException(404, "素材不存在、已过期或类型不匹配")
+    bucket = bucket_config()
+    if not bucket or (lease.bucket, lease.region) != (bucket.bucket, bucket.region):
+        raise HTTPException(503, "平台临时素材存储不可用")
+    return bucket.sign("GET", lease.object_key, now, min(READ_SECONDS, lease.expires_epoch - int(now.timestamp())))
 
 
 async def expire_uploads():

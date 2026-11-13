@@ -95,6 +95,6 @@ export interface BillingSummary {
   by_billing_type: Array<{ billing_type: string; cost: number }>
   by_task_type: Array<{ task_type: number; cost: number }>
   by_model: Array<{ model: string; cost: number; record_count?: number }>
-  daily_trend: Array<{ date: string; cost: number }>
+  daily_trend: Array<{ date: string; cost: number; records?: number }>
 }
 export interface AuthMe { user: AuthUser; balance: string; total_cost: number; is_super_admin: boolean; qiling_bound: boolean }

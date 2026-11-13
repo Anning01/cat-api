@@ -1,5 +1,6 @@
 """Personal balances and payment orders."""
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from datetime import date
 from auth.deps import AuthContext, get_auth_context, require_super_admin
 from controllers.account import account_controller
 from schemas.account import (AccountBalanceOut, BalanceTopUpIn, RechargeCreateIn, RechargeOrderOut,
@@ -46,11 +47,12 @@ async def recharge_status(out_trade_no: str, ctx=Depends(owner)):
 
 @router.get('/orders', response_model=ResponseSchema[PaginationResponse[RechargeOrderAdminOut]])
 async def orders(background_tasks: BackgroundTasks, status: str | None = None, search: str | None = None,
+                 account_user_id: int | None = None, start_date: date | None = None, end_date: date | None = None,
                  ctx=Depends(owner), params=Depends(get_list_params)):
     if ctx.is_super_admin:
         background_tasks.add_task(account_controller.cleanup_recharge_orders)
     return ResponseSchema(data=await account_controller.list_orders(ctx.user.id, ctx.is_super_admin,
-        status, search, params.page, params.page_size))
+        status, search, params.page, params.page_size, account_user_id, start_date, end_date))
 
 
 @router.post('/orders/{out_trade_no}/refund', response_model=ResponseSchema[RechargeOrderOut])

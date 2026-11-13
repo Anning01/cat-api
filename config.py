@@ -112,6 +112,9 @@ class Settings:
     # 自建工作台默认启用本地账号与账户。
     LEGACY_WORKS_ENABLED: bool = _env_bool("LEGACY_WORKS_ENABLED", False)
     AUTH_ENABLED: bool = True
+    CONSOLE_LOCALE: str = os.getenv('CONSOLE_LOCALE', 'zh').strip().lower()
+    if CONSOLE_LOCALE not in {'zh', 'en'}:
+        raise ValueError('CONSOLE_LOCALE must be zh or en')
     AUTH_PROVIDER: str = os.getenv("AUTH_PROVIDER", "password").strip().lower()
     if AUTH_PROVIDER not in {"password", "qiling"}:
         raise ValueError("AUTH_PROVIDER must be password or qiling")

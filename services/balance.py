@@ -12,6 +12,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException
 from tortoise.expressions import F
+from tortoise.functions import Sum
 from tortoise.transactions import in_transaction
 
 from auth.models import BalanceTransaction, User, UserWallet
@@ -38,6 +39,14 @@ async def wallet(user_id: int):
 
 async def get_balance(user_id: int) -> Decimal:
     return (await wallet(user_id)).balance
+
+
+async def total_consumed(user_id: int | None = None) -> Decimal:
+    query = BalanceTransaction.filter(type='consume')
+    if user_id is not None:
+        query = query.filter(account_user_id=user_id)
+    rows = await query.annotate(total=Sum('change_amount')).values('total')
+    return -Decimal(rows[0]['total'] or 0)
 
 
 async def ensure_solvent(user_id: int) -> None:

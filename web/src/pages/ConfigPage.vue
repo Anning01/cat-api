@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { tr } from '@/i18n'
+import ConsolePage from '@/components/ConsolePage.vue'
+import AppButton from '@/components/AppButton.vue'
+import AppDialog from '@/components/AppDialog.vue'
 
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   Bot,
   CheckCircle2,
@@ -16,7 +19,6 @@ import {
   Settings2,
   Trash2,
   Video,
-  X,
   Zap,
   Mic,
 } from 'lucide-vue-next'
@@ -25,7 +27,7 @@ import AppIconTile from '@/components/AppIconTile.vue'
 import AppSelect from '@/components/AppSelect.vue'
 import { api } from '@/api'
 import { defaultPricing } from '@/shared/modelPricing'
-import { appConfirm, appConfirmState } from '@/shared/confirmDialog'
+import { appConfirm } from '@/shared/confirmDialog'
 import { notice } from '@/shared/notice'
 import type { AiModelConfig, ConfigEnumItem, EnumItem, GenerationCapabilities, ImageApiProtocol, ImageModelType, ModelPricing, VideoGenerationModelType } from '@/types'
 
@@ -520,51 +522,13 @@ async function remove(item: AiModelConfig) {
   }
 }
 
-// 模型弹窗：Esc 快速取消，并把焦点收进弹窗、关闭后归还给触发按钮。
-const modelDialog = ref<HTMLElement | null>(null)
-let dialogTrigger: HTMLElement | null = null
-
-function closeModelDialog() {
-  showCreate.value = false
-}
-
-function onWindowKeydown(event: KeyboardEvent) {
-  if (event.key !== 'Escape' || event.repeat || !showCreate.value) return
-  if (appConfirmState.open) return
-  event.preventDefault()
-  closeModelDialog()
-}
-
-watch(showCreate, async open => {
-  if (open) {
-    dialogTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    await nextTick()
-    modelDialog.value?.querySelector<HTMLInputElement>(editingSyncedPricing.value ? '.pricing-editor input' : 'input[name="model-config-name"]')?.focus()
-    return
-  }
-  dialogTrigger?.focus()
-  dialogTrigger = null
-})
-
-onMounted(() => {
-  window.addEventListener('keydown', onWindowKeydown)
-  void load()
-})
-onUnmounted(() => window.removeEventListener('keydown', onWindowKeydown))
+const configDialog=ref<InstanceType<typeof AppDialog>>()
+onMounted(()=>{void load()})
 </script>
 
 <template>
-  <main class="model-settings-page">
-    <header class="model-settings-header">
-      <div>
-        <span>MODEL CONFIGURATION</span>
-        <h1>{{ tr('模型配置') }}</h1>
-        <p>{{ tr('统一管理文本、图片、视频与画质增强模型。') }}</p>
-      </div>
-      <div class="model-header-actions">
-        <AppButton variant="primary" size="lg" type="button" @click="openCreate()"><Plus :size="16" />{{ tr('添加模型') }}</AppButton>
-      </div>
-    </header>
+  <ConsolePage class="model-settings-page" :title="tr('模型配置')" :description="tr('统一管理文本、图片、视频与画质增强模型。')">
+    <template #actions><AppButton variant="primary" type="button" @click="openCreate()"><Plus :size="16" />{{ tr('添加模型') }}</AppButton></template>
 
     <section class="model-category-grid" :aria-label="tr('模型能力分类')">
       <AppButton
@@ -579,7 +543,7 @@ onUnmounted(() => window.removeEventListener('keydown', onWindowKeydown))
         @click="selectedCategoryId = category.id"
       >
         <AppIconTile :tone="iconTone(category.id)" size="lg"><component :is="category.icon" :size="22" /></AppIconTile>
-        <span class="category-copy"><small>{{ category.eyebrow }}</small><strong>{{ category.label }}</strong><p>{{ category.description }}</p></span>
+        <span class="category-copy"><strong>{{ category.label }}</strong></span>
         <span class="category-status"><i :class="{ 'is-ready': activeCount(category) }" />{{ activeCount(category) ? tr('{p0} 个模型运行中', { p0: activeCount(category) }) : tr('尚未启用') }}</span>
       </AppButton>
     </section>
@@ -587,7 +551,7 @@ onUnmounted(() => window.removeEventListener('keydown', onWindowKeydown))
     <section class="model-config-section">
       <header>
         <div>
-          <span>{{ selectedCategory.eyebrow }} MODELS</span>
+
           <h2>{{ selectedCategory.label }}</h2>
           <p>{{ selectedCategory.description }}</p>
         </div>
@@ -636,29 +600,15 @@ onUnmounted(() => window.removeEventListener('keydown', onWindowKeydown))
         <AppButton variant="primary" size="sm" type="button" @click="openCreate(selectedCategory.id)"><Plus :size="15" />{{ tr('添加第一个配置') }}</AppButton>
       </div>
     </section>
-    <div v-if="showCreate" class="model-modal-backdrop" @click.self="showCreate = false">
-      <form
-        ref="modelDialog"
-        class="model-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="model-modal-title"
-        autocomplete="off"
-        @submit.prevent="saveConfig"
-        @keydown.esc.stop="closeModelDialog"
-      >
-        <header>
-          <div><AppIconTile :tone="iconTone(selectedCategory.id)" size="sm"><component :is="selectedCategory.icon" :size="18" /></AppIconTile><div><small>{{ isEditing ? 'EDIT MODEL' : 'ADD MODEL' }}</small><h2 id="model-modal-title">{{ editingSyncedPricing ? tr('编辑本地价格') : (isEditing ? tr('编辑') : tr('添加')) + selectedCategory.label }}</h2></div></div>
-          <AppButton variant="soft" size="sm" icon-only type="button" :aria-label="tr('关闭')" @click="showCreate = false"><X :size="18" /></AppButton>
-        </header>
-
+    <AppDialog ref="configDialog" v-model="showCreate" class="model-editor-dialog" :title="editingSyncedPricing ? tr('编辑本地价格') : (isEditing ? tr('编辑') : tr('添加')) + selectedCategory.label" width="900px" guard-changes :show-close="!creating" :close-on-click-modal="!creating" :close-on-press-escape="!creating">
+      <form class="model-modal" autocomplete="off" @submit.prevent="saveConfig">
         <div v-if="!editingSyncedPricing" class="model-form-grid">
           <label v-if="selectedCategory.taskTypes.length > 1" class="is-full">
             <span>{{ tr('能力用途') }}</span>
             <AppMultiSelect v-model="form.task_types" :ariaLabel="tr('能力用途')" :options="taskOptions" />
             <small>{{ tr('可同时选择多个用途；勾选“重制”表示该模型支持视频输入并可用于来源视频拆解。') }}</small>
           </label>
-          <label class="is-full"><span>{{ tr('配置名称') }}</span><input v-model="form.name" name="model-config-name" required autocomplete="off" :placeholder="tr('例如：豆包 Seed 1.6')" /></label>
+          <label class="is-full"><span>{{ tr('配置名称') }}</span><input v-model="form.name" name="model-config-name" autofocus required autocomplete="off" :placeholder="tr('例如：豆包 Seed 1.6')" /></label>
           <label class="is-full"><span>Base URL</span><span class="input-with-icon"><Server :size="15" /><input v-model="form.base_url" name="model-service-base-url" required autocomplete="off" inputmode="url" spellcheck="false" placeholder="https://api.example.com/v1" /></span></label>
           <label class="is-full">
             <span>API Key</span>
@@ -837,15 +787,15 @@ onUnmounted(() => window.removeEventListener('keydown', onWindowKeydown))
           </div>
         </section>
 
-        <footer><span class="model-modal-hint">{{ tr('关闭（Esc）') }}</span><AppButton variant="secondary" size="sm" type="button" @click="showCreate = false">{{ tr('取消') }}</AppButton><AppButton variant="primary" size="sm" type="submit" :loading="creating">{{ creating ? tr('保存中…') : (isEditing ? tr('保存修改') : tr('创建配置')) }}</AppButton></footer>
+        <footer><span class="model-modal-hint">{{ tr('关闭（Esc）') }}</span><AppButton variant="secondary" size="sm" type="button" @click="configDialog?.requestClose()">{{ tr('取消') }}</AppButton><AppButton variant="primary" size="sm" type="submit" :loading="creating">{{ creating ? tr('保存中…') : (isEditing ? tr('保存修改') : tr('创建配置')) }}</AppButton></footer>
       </form>
-    </div>
-  </main>
+    </AppDialog>
+  </ConsolePage>
 </template>
 
 <style scoped>
-.model-settings-page { min-height: 100%; padding: 36px 22px 80px; color: #303442; background: #fff; }
-.model-settings-header { display: flex; width: 100%; align-items: flex-start; justify-content: space-between; gap: 24px; margin: 0 0 28px; padding-bottom: 28px; border-bottom: 1px solid #eceef3; }
+.model-settings-page { color:var(--app-text); }
+.model-settings-header { display: flex; width: 100%; align-items: flex-start; justify-content: space-between; gap: 24px; margin: 0 0 28px; padding-bottom: 28px; border-bottom: 1px solid var(--app-border); }
 .model-settings-header > div, .model-config-section > header > div { display: grid; gap: 5px; }
 .model-settings-header > .model-header-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
 .platform-connection { display:grid; gap:10px; padding:18px 22px 22px; color:var(--app-text); }
@@ -853,77 +803,77 @@ onUnmounted(() => window.removeEventListener('keydown', onWindowKeydown))
 .platform-connection input:focus-visible { outline:2px solid var(--app-accent); outline-offset:2px; }
 .platform-connection footer { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; margin-top:10px; }
 .platform-connection-error { color:var(--app-danger); margin:0; }
-.model-settings-header span, .model-config-section > header > div > span { color: #686af0; font-size: 9px; font-weight: 750; letter-spacing: .16em; }
-.model-settings-header h1 { margin: 0; color: #252937; font-size: clamp(28px, 3vw, 38px); letter-spacing: -.035em; }
-.model-settings-header p, .model-config-section > header p { margin: 0; color: #848a9a; font-size: 12px; line-height: 1.6; }
-.settings-primary-button, .model-config-section > header > button, .model-empty-state button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; border: 1px solid #5b5cf6; border-radius: 10px; color: #fff; background: #5b5cf6; box-shadow: 0 8px 20px rgb(91 92 246 / 18%); cursor: pointer; font-size: 12px; font-weight: 600; }
-.settings-primary-button:hover, .model-config-section > header > button:hover, .model-empty-state button:hover { background: #4d4ee8; }
+.model-settings-header span, .model-config-section > header > div > span { color: var(--app-accent); font-size: 12px; font-weight: 750; letter-spacing: .16em; }
+.model-settings-header h1 { margin: 0; color: var(--app-text); font-size: clamp(28px, 3vw, 38px); letter-spacing: -.035em; }
+.model-settings-header p, .model-config-section > header p { margin: 0; color: var(--app-text-muted); font-size: 12px; line-height: 1.6; }
+
+
 .model-source-banner { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--app-border); border-radius: 12px; background: var(--app-surface-muted); }
 .model-source-copy strong { font-size: 13px; color: var(--app-text); }
 .model-source-copy p { margin: 4px 0 0; font-size: 12px; color: var(--app-text-muted); }
-.scope-badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.scope-badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .scope-badge.is-official { color: var(--app-accent); background: var(--app-accent-soft); }
 
 .official-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; color: var(--app-accent); background: var(--app-accent-soft); font-size: 12px; font-weight: 600; white-space: nowrap; }
-.model-category-grid { display: grid; width: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; }
-.model-category-card { position: relative; display: grid; min-height: 158px; grid-template-columns: 46px minmax(0, 1fr); align-content: start; gap: 13px; padding: 18px; overflow: hidden; border: 1px solid #e6e8ef; border-radius: 15px; color: #303442; background: #fff; cursor: pointer; text-align: left; box-shadow: 0 10px 30px rgb(37 41 57 / 4%); transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease; }
-.model-category-card:hover { border-color: #d6d9e5; box-shadow: 0 14px 34px rgb(37 41 57 / 7%); transform: translateY(-1px); }
-.model-category-card.is-active { border-color: #bfc1ff; box-shadow: 0 14px 34px rgb(91 92 246 / 10%); }
-.category-copy { display: grid; gap: 4px; }
-.category-copy small { color: #989dac; font-size: 8px; font-weight: 750; letter-spacing: .14em; }
+.model-category-grid { display: grid; width: 100%; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0; }
+.model-category-card { position: relative; display: grid; min-height: 96px; white-space:normal; grid-template-columns: 38px minmax(0, 1fr); align-content: start; gap: 10px; padding: 14px; overflow: hidden; border: 1px solid var(--app-border); border-radius: 8px; color: var(--app-text); background: var(--app-surface); cursor: pointer; text-align: left; box-shadow: none; transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease; }
+.model-category-card:hover { border-color: var(--app-border); box-shadow: none; transform: none; }
+.model-category-card.is-active { border-color: var(--app-accent); box-shadow: none; }
+.category-copy { display: grid; gap: 4px; min-width:0; align-content:center; }
+.category-copy small { color: var(--app-text-muted); font-size: 12px; font-weight: 750; letter-spacing: .14em; }
 .category-copy strong { font-size: 14px; }
-.category-copy p { margin: 1px 0 0; color: #7d8393; font-size: 10px; line-height: 1.55; }
-.category-status { display: inline-flex; grid-column: 1 / -1; align-items: center; gap: 6px; align-self: end; color: #8c91a0; font-size: 9px; }
-.category-status i { width: 7px; height: 7px; border-radius: 50%; background: #d3d6de; }
-.category-status i.is-ready { background: #43a77d; box-shadow: 0 0 0 3px #eaf6f1; }
+.category-copy p { margin: 1px 0 0; color: var(--app-text-muted); font-size: 12px; line-height: 1.55; }
+.category-status { display: inline-flex; grid-column: 1 / -1; align-items: center; gap: 6px; align-self: end; color: var(--app-text-muted); font-size: 12px; }
+.category-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--app-border); }
+.category-status i.is-ready { background: var(--creation-success); box-shadow: 0 0 0 3px var(--app-success-soft); }
 .model-config-section { width: 100%; margin: 38px 0 0; }
 .model-config-section > header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 14px; }
 .model-config-section > header h2 { margin: 0; font-size: 18px; }
-.model-config-section > header > button { min-height: 36px; border-color: #e0e3eb; color: #575d6e; background: #fff; box-shadow: none; }
-.model-config-section > header > button:hover { border-color: #cfd2dd; color: #343948; background: #f8f9fb; }
+.model-config-section > header > button { min-height: 36px; border-color: var(--app-border); color: var(--app-text-secondary); background: var(--app-surface); box-shadow: none; }
+.model-config-section > header > button:hover { border-color: var(--app-border); color: var(--app-text); background: var(--app-surface-hover); }
 .model-config-list { display: grid; gap: 9px; }
-.model-config-card { display: grid; min-height: 96px; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 15px 16px; border: 1px solid #e5e7ee; border-radius: 13px; background: #fff; transition: border-color .15s ease, box-shadow .15s ease; }
-.model-config-card.is-active { border-color: #d5d6fb; box-shadow: 0 10px 26px rgb(91 92 246 / 6%); }
+.model-config-card { display: grid; min-height: 96px; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 15px 16px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface); transition: border-color .15s ease, box-shadow .15s ease; }
+.model-config-card.is-active { border-color: var(--app-border-strong); box-shadow: none; }
 .config-main { display: grid; min-width: 0; gap: 5px; }
 .config-title { display: flex; align-items: center; gap: 8px; }
 .config-title h3 { margin: 0; font-size: 13px; }
-.config-title span { padding: 3px 6px; border-radius: 999px; color: #858a99; background: #f0f1f4; font-size: 8px; }
-.config-title span.is-active { color: #258662; background: #e8f6f0; }
-.config-main > p { margin: 0; color: #777cf0; font-size: 9px; }
-.config-metadata { display: flex; min-width: 0; flex-wrap: wrap; gap: 8px 14px; color: #8a8f9f; font-size: 9px; }
+.config-title span { padding: 3px 6px; border-radius: 999px; color: var(--app-text-muted); background: var(--app-surface-muted); font-size: 12px; }
+.config-title span.is-active { color: var(--creation-success); background: var(--app-success-soft); }
+.config-main > p { margin: 0; color: var(--app-accent); font-size: 12px; }
+.config-metadata { display: flex; min-width: 0; flex-wrap: wrap; gap: 8px 14px; color: var(--app-text-muted); font-size: 12px; }
 .config-metadata span { display: inline-flex; min-width: 0; align-items: center; gap: 5px; }
 .config-metadata span:first-child { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .config-actions { display: flex; align-items: center; gap: 7px; }
 .config-icon-actions { display: inline-flex; align-items: center; gap: 5px; }
-.config-actions button { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; border: 1px solid #e0e3ea; border-radius: 8px; color: #666c7c; background: #fff; cursor: pointer; font-size: 10px; }
-.config-actions button:hover { border-color: #cfd3df; background: #f8f9fb; }
+.config-actions button { font-size:13px; }
+.config-actions button:hover { border-color: var(--app-border); background: var(--app-surface-hover); }
 .config-actions .icon-only-action { width: 34px; padding: 0; }
-.config-actions .delete-config { width: 34px; padding: 0; color: #9a7b7b; }
-.config-actions .delete-config:hover { color: #cf6259; background: #fff5f4; }
-.active-check { display: inline-flex; align-items: center; gap: 5px; color: #328966; font-size: 10px; }
-.model-state, .model-empty-state { display: grid; min-height: 260px; place-items: center; align-content: center; gap: 8px; border: 1px dashed #e1e4eb; border-radius: 14px; color: #9095a4; font-size: 11px; text-align: center; }
-.model-empty-state > span { display: grid; width: 50px; height: 50px; margin-bottom: 4px; place-items: center; border-radius: 14px; color: #6b6def; background: #eff0ff; }
-.model-empty-state h3 { margin: 0; color: #434858; font-size: 14px; }
-.model-empty-state p { max-width: 360px; margin: 0 0 8px; color: #8d92a1; font-size: 10px; line-height: 1.6; }
+.config-actions .delete-config { width: 34px; padding: 0; color: var(--creation-danger); }
+.config-actions .delete-config:hover { color: var(--creation-danger); background: var(--app-danger-soft); }
+.active-check { display: inline-flex; align-items: center; gap: 5px; color: var(--creation-success); font-size: 12px; }
+.model-state, .model-empty-state { display: grid; min-height: 260px; place-items: center; align-content: center; gap: 8px; border: 1px dashed var(--app-border); border-radius: 14px; color: var(--app-text-muted); font-size: 12px; text-align: center; }
+.model-empty-state > span { display: grid; width: 50px; height: 50px; margin-bottom: 4px; place-items: center; border-radius: 14px; color: var(--app-accent); background: var(--app-accent-soft); }
+.model-empty-state h3 { margin: 0; color: var(--app-text); font-size: 14px; }
+.model-empty-state p { max-width: 360px; margin: 0 0 8px; color: var(--app-text-muted); font-size: 12px; line-height: 1.6; }
 .model-empty-state button { min-height: 36px; }
 .model-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgb(8 9 12 / 64%); backdrop-filter: blur(8px); }
-.model-modal { display: grid; width: min(900px, 100%); max-height: calc(100dvh - 32px); gap: 24px; overflow: auto; padding: 28px; border: 1px solid var(--app-border); border-radius: 17px; color: var(--app-text); background: var(--app-surface); box-shadow: 0 24px 70px rgb(0 0 0 / 28%); }
+.model-modal { display:grid; gap:24px; margin:0; padding:0; color:var(--app-text); background:transparent; }
 .model-modal > header, .model-modal > footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .model-modal > header > div { display: flex; align-items: center; gap: 11px; }
-.model-modal header small { color: var(--app-accent); font-size: 8px; font-weight: 750; letter-spacing: .14em; }
+.model-modal header small { color: var(--app-accent); font-size: 12px; font-weight: 750; letter-spacing: .14em; }
 .model-modal h2 { margin: 3px 0 0; font-size: 17px; }
 .model-modal header > button { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 8px; cursor: pointer; }
 .model-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 16px; }
-.model-form-grid label { display: grid; gap: 7px; color: var(--app-text-secondary); font-size: 10px; }
+.model-form-grid label { display: grid; gap: 7px; color: var(--app-text-secondary); font-size: 12px; }
 .model-form-grid label.is-full { grid-column: 1 / -1; }
 .model-form-grid label > span:first-child { font-weight: 600; }
-.model-form-grid label > small { color: var(--app-text-muted); font-size: 9px; }
-.model-form-grid input { width: 100%; min-height: 39px; padding: 0 11px; border: 1px solid var(--app-border); border-radius: 9px; outline: 0; color: var(--app-text); background: var(--app-surface-muted); caret-color: var(--app-text); font-size: 11px; transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease; }
+.model-form-grid label > small { color: var(--app-text-muted); font-size: 12px; }
+.model-form-grid input { width: 100%; min-height: 39px; padding: 0 11px; border: 1px solid var(--app-border); border-radius: 9px; outline: 0; color: var(--app-text); background: var(--app-surface-muted); caret-color: var(--app-text); font-size: 12px; transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease; }
 .model-form-grid :deep(.app-select) { width: 100%; }
-.model-form-grid :deep(.app-select__trigger) { min-height: 39px; padding: 0 11px; background: var(--app-surface-muted); font-size: 11px; }
+.model-form-grid :deep(.app-select__trigger) { min-height: 39px; padding: 0 11px; background: var(--app-surface-muted); font-size: 12px; }
 .model-form-grid :deep(.app-select__trigger:hover) { background: var(--app-surface-hover); }
 .model-form-grid :deep(.app-select.is-open .app-select__trigger) { background: var(--app-surface-hover); }
-.model-readonly-value { display: flex; width: 100%; min-height: 39px; align-items: center; padding: 0 11px; border-radius: 9px; color: var(--app-text); background: var(--app-surface-muted); box-shadow: inset 0 0 0 1px var(--app-border); font-size: 11px; }
+.model-readonly-value { display: flex; width: 100%; min-height: 39px; align-items: center; padding: 0 11px; border-radius: 9px; color: var(--app-text); background: var(--app-surface-muted); box-shadow: inset 0 0 0 1px var(--app-border); font-size: 12px; }
 .model-form-grid input::placeholder { color: var(--app-text-muted); opacity: 1; }
 .model-form-grid input:hover { border-color: var(--app-border-strong); }
 .model-form-grid input:focus { border-color: var(--app-accent); color: var(--app-text); background: var(--app-surface-hover); box-shadow: 0 0 0 3px color-mix(in srgb,var(--app-accent) 10%,transparent); }
@@ -932,8 +882,8 @@ onUnmounted(() => window.removeEventListener('keydown', onWindowKeydown))
 .model-form-grid input:-webkit-autofill:focus { border-color: var(--app-border-strong); -webkit-text-fill-color: var(--app-text); caret-color: var(--app-text); box-shadow: 0 0 0 1000px var(--app-surface-muted) inset; }
 .json-capability-field { display: flex !important; min-height: 64px; flex-direction: row; align-items: center; justify-content: space-between; gap: 16px !important; padding: 12px 14px; border: 1px solid var(--app-border); border-radius: 12px; background: var(--app-surface-muted); }
 .json-capability-copy { display: grid; gap: 4px; }
-.json-capability-copy strong { color: var(--app-text); font-size: 11px; }
-.json-capability-copy small { color: var(--app-text-muted); font-size: 9px; line-height: 1.5; }
+.json-capability-copy strong { color: var(--app-text); font-size: 12px; }
+.json-capability-copy small { color: var(--app-text-muted); font-size: 12px; line-height: 1.5; }
 .model-form-grid .json-capability-field > input { position: relative; width: 38px; min-width: 38px; height: 22px; min-height: 22px; margin: 0; padding: 0; border: 0; border-radius: 999px; appearance: none; background: var(--app-border-strong); cursor: pointer; transition: background .16s ease; }
 .model-form-grid .json-capability-field > input::after { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--app-surface); box-shadow: 0 1px 4px rgb(0 0 0 / 24%); content: ''; transition: transform .16s ease; }
 .model-form-grid .json-capability-field > input:checked { background: var(--app-accent); }
@@ -946,21 +896,21 @@ onUnmounted(() => window.removeEventListener('keydown', onWindowKeydown))
 .secret-input > button { position: absolute; right: 5px; display: grid; width: 32px; height: 30px; place-items: center; border: 0; border-radius: 7px; color: var(--app-text-muted); background: transparent; cursor: pointer; }
 .secret-input > button:hover { color: var(--app-accent); background: var(--app-accent-soft); }
 .model-modal > footer { justify-content: flex-end; padding-top: 3px; }
-.model-modal-hint { margin-right: auto; color: var(--app-text-muted); font-size: 10px; }
-.model-modal > footer .app-button { min-height: 38px; padding: 0 14px; border-radius: 9px; cursor: pointer; font-size: 11px; }
+.model-modal-hint { margin-right: auto; color: var(--app-text-muted); font-size: 12px; }
+.model-modal > footer .app-button { min-height: 38px; padding: 0 14px; border-radius: 9px; cursor: pointer; font-size: 12px; }
 .model-modal > footer button:disabled { cursor: not-allowed; opacity: .55; }
 .pricing-editor { display: grid; gap: 10px; margin-top: 2px; padding: 14px; border: 1px solid var(--app-border); border-radius: 12px; background: var(--app-surface-muted); }
 .pricing-sub { display: grid; gap: 8px; margin-top: 4px; padding-top: 10px; border-top: 1px dashed var(--app-border); }
-.pricing-title { color: var(--app-text-secondary); font-size: 10px; font-weight: 600; }
+.pricing-title { color: var(--app-text-secondary); font-size: 12px; font-weight: 600; }
 .pricing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.pricing-grid label { display: grid; gap: 6px; color: var(--app-text-muted); font-size: 10px; }
-.pricing-grid input { width: 100%; min-height: 36px; padding: 0 10px; border: 1px solid var(--app-border); border-radius: 8px; outline: 0; color: var(--app-text); background: var(--app-surface); font-size: 11px; }
+.pricing-grid label { display: grid; gap: 6px; color: var(--app-text-muted); font-size: 12px; }
+.pricing-grid input { width: 100%; min-height: 36px; padding: 0 10px; border: 1px solid var(--app-border); border-radius: 8px; outline: 0; color: var(--app-text); background: var(--app-surface); font-size: 12px; }
 .pricing-grid input:focus { border-color: var(--app-accent); box-shadow: 0 0 0 3px color-mix(in srgb,var(--app-accent) 10%,transparent); }
 @media (max-width: 860px) {
   .model-source-banner { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--app-border); border-radius: 12px; background: var(--app-surface-muted); }
 .model-source-copy strong { font-size: 13px; color: var(--app-text); }
 .model-source-copy p { margin: 4px 0 0; font-size: 12px; color: var(--app-text-muted); }
-.scope-badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.scope-badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .scope-badge.is-official { color: var(--app-accent); background: var(--app-accent-soft); }
 
 .official-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; color: var(--app-accent); background: var(--app-accent-soft); font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -975,7 +925,7 @@ onUnmounted(() => window.removeEventListener('keydown', onWindowKeydown))
   .model-settings-header, .model-config-section > header { align-items: stretch; flex-direction: column; }
   .settings-primary-button { width: 100%; }
   .model-config-card { grid-template-columns: 42px minmax(0, 1fr); }
-  .config-actions { grid-column: 1 / -1; justify-content: flex-end; padding-top: 10px; border-top: 1px solid #eff0f4; }
+  .config-actions { grid-column: 1 / -1; justify-content: flex-end; padding-top: 10px; border-top: 1px solid var(--app-surface-muted); }
   .model-form-grid { grid-template-columns: 1fr; }
   .model-form-grid label, .model-form-grid label.is-full { grid-column: 1; }
 }

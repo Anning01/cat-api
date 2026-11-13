@@ -4,11 +4,11 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import App from './App.vue'
 import { useAuthStore } from './features/auth/authStore'
-import { i18n } from './i18n'
+import { i18n, setLocale } from './i18n'
 import { request, setAuthToken } from './api'
 
 beforeEach(()=>{
-  localStorage.clear()
+  localStorage.clear(); setLocale('zh')
   vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false,addEventListener:vi.fn(),removeEventListener:vi.fn()})))
 })
 describe('Individual console',()=>{

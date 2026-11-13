@@ -12,7 +12,7 @@ export default defineConfig({
       '/media': { target: process.env.CAT_API_DEV_BACKEND || 'http://127.0.0.1:9000', changeOrigin: true },
     },
   },
-  plugins: [vue()],
+  plugins: [vue({template:{compilerOptions:{isCustomElement:tag=>tag==='search'}}})],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

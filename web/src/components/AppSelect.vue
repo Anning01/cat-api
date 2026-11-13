@@ -41,6 +41,7 @@ const emit = defineEmits<{
 }>()
 
 const root = ref<HTMLElement | null>(null)
+const menuTarget = ref<HTMLElement | string>('body')
 const menu = ref<HTMLElement | null>(null)
 const open = ref(false)
 const search = ref('')
@@ -72,6 +73,7 @@ const menuStyle = computed(() => {
 
 async function toggleMenu(fromEnd = false) {
   if (props.disabled || !normalizedOptions.value.length) return
+  menuTarget.value = root.value?.closest('dialog') || 'body'
   open.value = !open.value
   if (!open.value) return
   search.value = ''
@@ -143,6 +145,7 @@ function updatePlacement() {
 }
 
 function selectOption(option: AppSelectOption) {
+  root.value?.dispatchEvent(new Event('input', { bubbles: true }))
   emit('update:modelValue', option.value)
   focusTrigger()
   open.value = false
@@ -207,7 +210,7 @@ onUnmounted(() => {
       <ChevronDown class="app-select__chevron" :size="14" />
     </AppButton>
 
-    <Teleport to="body">
+    <Teleport :to="menuTarget">
       <div
         v-if="open"
         ref="menu"
@@ -265,11 +268,11 @@ onUnmounted(() => {
   gap: 8px;
   padding: 0 10px;
   border: 1px solid var(--app-border);
-  border-radius: 9px;
+  border-radius: 6px;
   color: var(--app-text-secondary);
   background: var(--app-surface);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   box-shadow: 0 1px 2px rgb(32 36 49 / 3%);
   transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
 }
@@ -282,7 +285,7 @@ onUnmounted(() => {
 
 .app-select.is-open .app-select__trigger {
   border-color: var(--app-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb,var(--app-accent) 10%,transparent);
+  box-shadow: none;
 }
 
 .app-select__trigger:focus-visible {
@@ -343,7 +346,7 @@ onUnmounted(() => {
   scrollbar-width: none;
   padding: 6px;
   border: 1px solid var(--app-border);
-  border-radius: 11px;
+  border-radius: 6px;
   color: var(--app-text);
   background: var(--app-surface);
   box-shadow: var(--app-shadow);
@@ -354,7 +357,7 @@ onUnmounted(() => {
 .app-select__menu-label {
   margin: 4px 8px 6px;
   color: var(--app-text-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 .app-select__search { box-sizing: border-box; width: 100%; min-height: 36px; margin-bottom: 5px; padding: 7px 9px; border: 1px solid var(--app-border); border-radius: 7px; color: var(--app-text); background: var(--app-surface); font: inherit; }
 .app-select__search:focus-visible { outline: 2px solid var(--app-accent); outline-offset: -2px; }
@@ -373,7 +376,7 @@ onUnmounted(() => {
   color: var(--app-text-secondary);
   background: transparent;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
 }
 
@@ -416,8 +419,8 @@ onUnmounted(() => {
   min-height: 34px;
   gap: 7px;
   padding-inline: 10px 8px;
-  border-radius: 9px;
-  font-size: 11px;
+  border-radius: 6px;
+  font-size: 13px;
 }
 
 .app-select__menu.is-compact {
@@ -430,6 +433,6 @@ onUnmounted(() => {
   gap: 7px;
   padding: 4px 8px;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 13px;
 }
 </style>

@@ -1,6 +1,20 @@
 from tortoise import Tortoise
 from config import settings
 
+async def ensure_admin_events_schema() -> None:
+    connection = Tortoise.get_connection("default")
+    sqlite = connection.capabilities.dialect == "sqlite"
+    identity = "INTEGER PRIMARY KEY AUTOINCREMENT" if sqlite else "SERIAL PRIMARY KEY"
+    timestamp = "TIMESTAMP" if sqlite else "TIMESTAMPTZ"
+    await connection.execute_script(f"""
+        CREATE TABLE IF NOT EXISTS account_admin_events (
+            id {identity}, account_user_id INT NOT NULL, operator_user_id INT NOT NULL,
+            action VARCHAR(32) NOT NULL, note VARCHAR(255) NOT NULL DEFAULT '',
+            created_at {timestamp} NOT NULL, updated_at {timestamp} NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS account_admin_events_user_idx ON account_admin_events(account_user_id);
+    """)
+
 async def ensure_billing_integration_schema() -> None:
     """Add platform accounting fields while preserving historical records."""
     connection = Tortoise.get_connection("default")

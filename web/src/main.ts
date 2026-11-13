@@ -1,3 +1,4 @@
+import 'element-plus/es/components/dropdown/style/css'
 import '@fontsource-variable/manrope'
 import '@fontsource-variable/noto-sans-sc'
 import { createApp } from 'vue'

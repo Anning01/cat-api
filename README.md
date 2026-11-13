@@ -6,6 +6,10 @@
 
 使用 Python 3.12 和 uv。复制 `.env.example` 为 `.env`，设置自己的管理员账号和密码。
 
+已有依赖和 `.env` 时，在项目根目录执行 `./scripts/dev.sh` 同时启动完整前后端。浏览器打开 <http://127.0.0.1:3001/>；后端位于 <http://127.0.0.1:9000>，使用 `.env` 指定的 PostgreSQL 数据库。默认本地配置由启动脚本使用已安装的 PostgreSQL 工具，在 `127.0.0.1:15432` 管理项目专用实例，数据保存在 `data/postgres-local/`，不会使用 SQLite 或插入演示模型。登录账号使用 `.env` 中的 `SUPER_ADMIN_USERNAME` 和首次创建时设置的密码。此启动方式不插入演示数据，也不安装依赖。
+
+前台运行时按 Ctrl+C 停止；也可从另一个终端执行 `./scripts/dev.sh stop`。修改后端代码后重新启动此命令。PostgreSQL 数据库独立保留运行；需要停止时执行 `uv run --no-sync python scripts/local_postgres.py stop`。`CONSOLE_LOCALE=zh` 控制界面默认语言，与模型生成语言独立。模型调用需要在模型配置中填写有效供应商凭据；微信支付、器灵登录、对象存储各自按部署配置启用，单独启动应用不代表外部服务已经配置完成。
+
 ```sh
 uv sync --frozen
 uv run uvicorn main:app --host 127.0.0.1 --port 9000

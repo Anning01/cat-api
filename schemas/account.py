@@ -58,6 +58,10 @@ class RechargeOrderDetailOut(RechargeOrderOut):
     transaction_id: Optional[str] = None
     paid_at: Optional[datetime] = None
     balance_after: Optional[Decimal] = None
+    refund_id: Optional[str] = None
+    refunded_at: Optional[datetime] = None
+    refund_reason: str = ""
+    note: str = ""
 
     @field_serializer("balance_after", when_used="json")
     def _ser_bal(self, value: Optional[Decimal]) -> Optional[str]:

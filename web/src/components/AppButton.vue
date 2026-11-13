@@ -43,53 +43,27 @@ withDefaults(defineProps<{
 </template>
 
 <style scoped>
-.app-button {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  margin: 0;
-  border: 0;
-  border-radius: 11px;
-  outline: 0;
-  color: inherit;
-  background: transparent;
-  font: inherit;
-  font-weight: 620;
-  line-height: 1;
-  white-space: nowrap;
-  appearance: none;
-  cursor: pointer;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  transition: color .16s ease, background-color .16s ease, box-shadow .16s ease, filter .16s ease, opacity .16s ease;
-}
-.app-button--xs { min-height: 28px; padding: 0 9px; border-radius: 8px; font-size: 10px; }
-.app-button--sm { min-height: 34px; padding: 0 12px; border-radius: 9px; font-size: 11px; }
-.app-button--md { min-height: 38px; padding: 0 14px; font-size: 12px; }
-.app-button--lg { min-height: 44px; padding: 0 18px; border-radius: 12px; font-size: 13px; }
-.app-button--primary { color: #fff; background: linear-gradient(135deg, #6869f7, #5556ed); box-shadow: 0 9px 22px rgb(83 84 230 / 20%); }
-.app-button--primary:hover:not(:disabled) { background: linear-gradient(135deg, #5d5ff2, #494be5); box-shadow: 0 12px 28px rgb(83 84 230 / 26%); }
-.app-button--secondary { color: #4c5262; background: #fff; box-shadow: 0 1px 2px rgb(35 39 55 / 7%), 0 7px 20px rgb(35 39 55 / 5%); }
-.app-button--secondary:hover:not(:disabled) { color: #323746; background: #fafaff; box-shadow: 0 2px 4px rgb(35 39 55 / 8%), 0 10px 24px rgb(35 39 55 / 7%); }
-.app-button--soft { color: #5b5cf0; background: #efefff; box-shadow: inset 0 0 0 1px rgb(91 92 240 / 5%); }
-.app-button--soft:hover:not(:disabled), .app-button--soft.is-active { color: #4d4ee5; background: #e8e8ff; }
-.app-button--ghost { color: inherit; background: transparent; }
-.app-button--ghost:hover:not(:disabled), .app-button--ghost.is-active { color: #5658ec; background: #f0f0ff; }
-.app-button--danger { color: #c45461; background: #fff1f2; }
-.app-button--danger:hover:not(:disabled) { color: #a83f4c; background: #ffe7e9; }
-.app-button--dark { color: #fff; background: #292c36; box-shadow: 0 9px 24px rgb(31 34 44 / 20%); }
-.app-button--dark:hover:not(:disabled) { background: #1f222b; box-shadow: 0 12px 30px rgb(31 34 44 / 25%); }
-.app-button.is-icon-only { width: 38px; padding: 0; flex: 0 0 auto; }
-.app-button--xs.is-icon-only { width: 28px; }
-.app-button--sm.is-icon-only { width: 34px; }
-.app-button--lg.is-icon-only { width: 44px; }
-.app-button.is-block { width: 100%; }
-.app-button:focus-visible { outline: 3px solid rgb(91 92 246 / 20%); outline-offset: 2px; }
-.app-button:active:not(:disabled) { filter: brightness(.96); }
-.app-button:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
-.app-button__spinner { width: 1em; height: 1em; animation: app-button-spin .8s linear infinite; }
-@keyframes app-button-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .app-button { transition: none; } .app-button__spinner { animation-duration: 1.6s; } }
+.app-button { display:inline-flex; min-width:0; min-height:36px; align-items:center; justify-content:center; gap:7px; margin:0; padding:0 12px; border:1px solid transparent; border-radius:6px; color:var(--app-accent); background:transparent; font:inherit; font-size:14px; font-weight:500; line-height:1.2; white-space:nowrap; appearance:none; cursor:pointer; user-select:none; transition:background-color .15s,color .15s,border-color .15s; }
+.app-button--primary { color:var(--app-on-primary); background:var(--app-primary); border-color:var(--app-primary); }
+.app-button--primary:hover:not(:disabled) { filter:brightness(.94); }
+.app-button--secondary { color:var(--app-text); background:var(--app-surface); border-color:var(--app-border-strong); }
+.app-button--secondary:hover:not(:disabled) { background:var(--app-surface-hover); }
+.app-button--soft { color:var(--app-accent); background:var(--app-accent-soft); }
+.app-button--soft:hover:not(:disabled), .app-button--ghost:hover:not(:disabled), .app-button.is-active { background:var(--app-accent-soft); color:var(--app-accent); }
+.app-button--danger { color:var(--creation-danger); background:var(--app-danger-soft); }
+.app-button--danger:hover:not(:disabled) { border-color:var(--creation-danger); }
+.app-button--dark { color:var(--app-on-primary); background:var(--app-primary); }
+.app-button--xs { min-height:28px; padding:0 8px; font-size:12px; }
+.app-button--sm { min-height:32px; padding:0 9px; font-size:13px; }
+.app-button--lg { min-height:40px; padding:0 16px; }
+.app-button.is-icon-only { width:36px; padding:0; flex:0 0 auto; }
+.app-button--sm.is-icon-only { width:32px; }
+.app-button--lg.is-icon-only { width:40px; }
+.app-button.is-block { width:100%; }
+.app-button:focus-visible { outline:2px solid var(--app-accent); outline-offset:3px; }
+.app-button:disabled { opacity:.5; cursor:not-allowed; }
+.app-button__spinner { width:1em; height:1em; animation:app-button-spin .8s linear infinite; }
+@keyframes app-button-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .app-button { transition:none; } .app-button__spinner { animation:none; } }
+@media(max-width:767px) { .app-button { min-height:40px; } }
 </style>

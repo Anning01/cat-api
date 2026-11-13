@@ -3,15 +3,17 @@ import { createI18n, type MessageContext } from 'vue-i18n'
 import en from 'element-plus/es/locale/lang/en'
 import zh from 'element-plus/es/locale/lang/zh-cn'
 import catalog from './messages.json'
+import consoleMessages from './console.json'
 
 export type AppLocale = 'zh' | 'en'
 export const LOCALE_CACHE_KEY = 'novelvids_locale'
+const USER_LOCALE_KEY = 'cat-api:locale-preference'
 const isLocale = (value: unknown): value is AppLocale => value === 'zh' || value === 'en'
 function cachedLocale(): AppLocale {
   try {
-    const value = localStorage.getItem(LOCALE_CACHE_KEY)
-    return isLocale(value) ? value : 'en'
-  } catch { return 'en' }
+    const value = localStorage.getItem(USER_LOCALE_KEY) || localStorage.getItem(LOCALE_CACHE_KEY)
+    return isLocale(value) ? value : 'zh'
+  } catch { return 'zh' }
 }
 // Source messages are stable keys. Functions preserve literal @, | and braces in
 // examples; only explicitly named p0/p1 parameters are interpolated.
@@ -20,7 +22,7 @@ function message(text: string) {
 }
 const sourceKeys = new Map<string, string>()
 const messages: Record<AppLocale, Record<string, ReturnType<typeof message>>> = { zh: {}, en: {} }
-for (const [group, entries] of Object.entries(catalog)) {
+for (const [group, entries] of Object.entries({ ...catalog, console: consoleMessages })) {
   for (const [index, [source, english]] of Object.entries(entries).entries()) {
     const key = `${group}_${index}`
     sourceKeys.set(source, key)
@@ -46,8 +48,14 @@ export function setLocale(value: AppLocale): void {
   try { localStorage.setItem(LOCALE_CACHE_KEY, value) } catch { /* Storage may be disabled. */ }
 }
 let revision = 0
+export function setUserLocale(value: AppLocale): void {
+  ++revision
+  try { localStorage.setItem(USER_LOCALE_KEY, value) } catch { /* Keep the choice for this session. */ }
+  setLocale(value)
+}
 export async function refreshLocale(): Promise<void> {
   if (localeSaving.value) return
+  try { if (isLocale(localStorage.getItem(USER_LOCALE_KEY))) return } catch { /* Use the server default. */ }
   const requestRevision = ++revision
   try {
     const base = ((import.meta.env.VITE_API_BASE ?? '') as string).replace(/\/+$/, '')

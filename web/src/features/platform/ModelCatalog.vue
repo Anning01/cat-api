@@ -38,11 +38,11 @@ import { tr } from '@/i18n'
 import { notice } from '@/shared/notice'
 import AppSelect from '@/components/AppSelect.vue'
 
-const props = defineProps<{ models: CatalogModel[] }>()
+const props = defineProps<{ models: CatalogModel[]; canManage?: boolean; loggedIn?: boolean }>()
 const kind = ref('all')
 const query = ref('')
 const sort = ref('default')
-const viewMode = ref<'grid' | 'compact' | 'list'>('grid')
+const viewMode = ref<'grid' | 'compact' | 'list'>('list')
 const copiedId = ref('')
 const selectedSeries = ref<string[]>([])
 const selectedResolutions = ref<string[]>([])
@@ -297,31 +297,14 @@ function onModelAction(model: CatalogModel) {
 
 <template>
   <div class="model-directory">
+    <section v-if="!models.length" class="catalog-initial-empty">
+      <Grid3X3 :size="32" aria-hidden="true"/>
+      <h2>{{ tr('尚未配置可用模型') }}</h2>
+      <p>{{ tr(canManage ? '这是全新平台。添加供应商地址、API Key 和模型配置并启用后，模型会显示在这里。' : loggedIn ? '平台暂未提供可用模型，请联系管理员配置并启用模型。' : '平台尚未配置可用模型。管理员登录后可添加并启用模型。') }}</p>
+      <div class="console-inline"><RouterLink v-if="canManage" class="catalog-setup-link" to="/settings">{{ tr('前往模型配置') }}</RouterLink><RouterLink v-else-if="!loggedIn" class="catalog-setup-link" to="/login">{{ tr('登录控制台') }}</RouterLink><RouterLink to="/platform/docs">{{ tr('查看接入文档') }}</RouterLink></div>
+    </section>
+    <template v-else>
     <!-- SVG Defs for 3D Art -->
-    <svg width="0" height="0" class="art-svg-defs" aria-hidden="true">
-      <defs>
-        <linearGradient id="art-v-glow" x1="0" y1="0" x2="68" y2="68" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#8B5CF6" stop-opacity="0.32" />
-          <stop offset="1" stop-color="#C4B5FD" stop-opacity="0.12" />
-        </linearGradient>
-        <linearGradient id="art-v-plate" x1="12" y1="12" x2="56" y2="56" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#7C3AED" stop-opacity="0.22" />
-          <stop offset="1" stop-color="#A78BFA" stop-opacity="0.35" />
-        </linearGradient>
-        <linearGradient id="art-i-glow" x1="0" y1="0" x2="68" y2="68" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#A78BFA" stop-opacity="0.28" />
-          <stop offset="1" stop-color="#6366F1" stop-opacity="0.12" />
-        </linearGradient>
-        <linearGradient id="art-i-plate" x1="10" y1="14" x2="58" y2="54" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#8B5CF6" stop-opacity="0.2" />
-          <stop offset="1" stop-color="#C4B5FD" stop-opacity="0.32" />
-        </linearGradient>
-        <linearGradient id="art-t-plate" x1="12" y1="12" x2="56" y2="56" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#8B5CF6" stop-opacity="0.2" />
-          <stop offset="1" stop-color="#C4B5FD" stop-opacity="0.32" />
-        </linearGradient>
-      </defs>
-    </svg>
 
     <!-- Top Toolbar -->
     <div class="catalog-toolbar">
@@ -472,23 +455,6 @@ function onModelAction(model: CatalogModel) {
                 class="model-card"
                 :data-model-id="model.id"
               >
-                <!-- 3D Art in Upper Right -->
-                <div class="model-card-art" aria-hidden="true">
-                  <svg v-if="model.kinds[0] === 'video'" width="64" height="64" viewBox="0 0 68 68" fill="none">
-                    <rect x="14" y="22" width="40" height="32" rx="7" fill="url(#art-v-plate)" stroke="#8B5CF6" stroke-width="1.5" stroke-opacity="0.35" />
-                    <path d="M12 18L52 10L55 18L15 26L12 18Z" fill="url(#art-v-glow)" stroke="#8B5CF6" stroke-width="1.5" stroke-opacity="0.45" />
-                    <polygon points="30,32 44,39 30,46" fill="#7C3AED" fill-opacity="0.45" />
-                  </svg>
-                  <svg v-else-if="model.kinds[0] === 'image'" width="64" height="64" viewBox="0 0 68 68" fill="none">
-                    <rect x="12" y="14" width="44" height="38" rx="8" fill="url(#art-i-plate)" stroke="#8B5CF6" stroke-width="1.5" stroke-opacity="0.35" />
-                    <circle cx="24" cy="24" r="4" fill="#8B5CF6" fill-opacity="0.35" />
-                    <path d="M16 44L28 30L38 40L44 34L52 44H16Z" fill="url(#art-i-glow)" />
-                  </svg>
-                  <svg v-else width="64" height="64" viewBox="0 0 68 68" fill="none">
-                    <rect x="12" y="16" width="44" height="36" rx="8" fill="url(#art-t-plate)" stroke="#8B5CF6" stroke-width="1.5" stroke-opacity="0.35" />
-                    <path d="M22 28L28 34L22 40M32 40H42" stroke="#7C3AED" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.45" />
-                  </svg>
-                </div>
 
                 <!-- Top Row: Kind Badge -->
                 <div class="model-card-heading">
@@ -589,11 +555,18 @@ function onModelAction(model: CatalogModel) {
         </div>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
 .model-directory { min-width: 0; width: 100%; }
+.catalog-initial-empty { display:flex; flex-direction:column; align-items:flex-start; gap:16px; padding:40px 32px; border:1px solid var(--app-border); border-radius:8px; background:var(--app-surface); color:var(--app-text-secondary); }
+.catalog-initial-empty h2 { margin:0; color:var(--app-text); font-size:20px; }
+.catalog-initial-empty p { max-width:64ch; margin:0; line-height:1.8; }
+.catalog-initial-empty .console-inline { gap:20px; flex-wrap:wrap; }
+.catalog-setup-link { display:inline-flex; align-items:center; min-height:40px; padding:8px 16px; border-radius:6px; background:var(--app-primary); color:var(--app-on-primary)!important; }
+@media(max-width:640px) { .catalog-initial-empty { padding:28px 20px; } }
 .art-svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 
 /* Top Toolbar */
@@ -620,7 +593,7 @@ function onModelAction(model: CatalogModel) {
   min-height: 38px;
   padding: 0 16px;
   border: 1px solid var(--app-border);
-  border-radius: 9999px;
+  border-radius: 6px;
   background: var(--app-surface);
   color: var(--app-text-secondary);
   font: inherit;
@@ -634,7 +607,7 @@ function onModelAction(model: CatalogModel) {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   padding: 1px 7px;
-  border-radius: 9999px;
+  border-radius: 6px;
   background: var(--app-surface-muted);
   color: inherit;
   margin-inline-start: 2px;
@@ -645,15 +618,15 @@ function onModelAction(model: CatalogModel) {
   color: var(--app-text);
 }
 .filter-pill[aria-pressed="true"] {
-  background: var(--app-accent, #6366f1);
+  background: var(--app-primary);
   border-color: var(--app-accent, #6366f1);
-  color: #ffffff;
+  color: var(--app-on-primary);
   font-weight: 600;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--app-accent) 26%, transparent);
+  box-shadow:none;
 }
 .filter-pill[aria-pressed="true"] .pill-badge {
   background: rgba(255, 255, 255, 0.25);
-  color: #ffffff;
+  color: var(--app-on-primary);
 }
 
 /* Right Controls */
@@ -670,7 +643,7 @@ function onModelAction(model: CatalogModel) {
   min-height: 38px;
   width: 250px;
   padding: 0 14px;
-  border-radius: 9999px;
+  border-radius: 6px;
   background: var(--app-surface);
   border: 1px solid var(--app-border);
   color: var(--app-text-secondary);
@@ -678,9 +651,9 @@ function onModelAction(model: CatalogModel) {
 }
 .catalog-search:focus-within {
   border-color: var(--app-accent);
-  box-shadow: 0 0 0 2px var(--app-accent-soft);
+  box-shadow:none;
 }
-.catalog-search input {
+.model-directory .catalog-search input {
   width: 100%;
   min-width: 0;
   padding: 0;
@@ -703,7 +676,7 @@ function onModelAction(model: CatalogModel) {
 }
 
 .catalog-sort-box :deep(.app-select__button) {
-  border-radius: 9999px !important;
+  border-radius: 6px !important;
   min-height: 38px;
   padding: 0 14px;
   background: var(--app-surface);
@@ -743,9 +716,9 @@ function onModelAction(model: CatalogModel) {
   background: var(--app-surface-hover);
 }
 .view-mode-btn.is-active {
-  background: var(--app-accent, #6366f1);
-  color: #ffffff;
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--app-accent) 26%, transparent);
+  background: var(--app-primary);
+  color: var(--app-on-primary);
+  box-shadow:none;
 }
 
 /* Two-Column Layout */
@@ -835,7 +808,7 @@ function onModelAction(model: CatalogModel) {
   border-color: var(--app-accent);
 }
 .sidebar-checkbox-label input:checked + .checkbox-indicator {
-  background: var(--app-accent, #6366f1);
+  background: var(--app-primary);
   border-color: var(--app-accent, #6366f1);
 }
 .sidebar-checkbox-label input:checked + .checkbox-indicator::after {
@@ -871,7 +844,7 @@ function onModelAction(model: CatalogModel) {
   margin-top: 8px;
   padding: 8px 12px;
   border: 1px solid var(--app-border);
-  border-radius: 9999px;
+  border-radius: 6px;
   background: var(--app-surface-muted);
   color: var(--app-text-secondary);
   font: inherit;
@@ -944,15 +917,15 @@ function onModelAction(model: CatalogModel) {
   flex-direction: column;
   padding: 20px 22px;
   border: 1px solid var(--app-border);
-  border-radius: 16px;
+  border-radius: 8px;
   background: var(--app-surface);
   transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
   overflow: hidden;
 }
 .model-card:hover {
   border-color: color-mix(in srgb, var(--app-accent) 45%, var(--app-border));
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--app-accent) 8%, rgba(0, 0, 0, 0.04));
-  transform: translateY(-2px);
+  box-shadow:none;
+  transform:none;
 }
 
 /* 3D Art */
@@ -976,17 +949,17 @@ function onModelAction(model: CatalogModel) {
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  border-radius: 9999px;
-  background: linear-gradient(135deg, #ef4444 0%, #f97316 100%);
-  color: #ffffff;
+  border-radius: 6px;
+  background:var(--app-warning-soft);
+  color: var(--app-on-primary);
   font-size: 11px;
   font-weight: 700;
-  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
+  box-shadow:none;
   letter-spacing: 0.3px;
-  animation: flamePulse 2.5s infinite ease-in-out;
+
 }
 .flame-icon-top {
-  color: #ffffff;
+  color: var(--app-on-primary);
   flex-shrink: 0;
 }
 .model-kind-pill {
@@ -1002,15 +975,15 @@ function onModelAction(model: CatalogModel) {
 }
 .model-kind-pill.is-video {
   background: color-mix(in srgb, #8b5cf6 12%, transparent);
-  color: #7c3aed;
+  color: var(--app-accent);
 }
 .model-kind-pill.is-image {
   background: color-mix(in srgb, #6366f1 12%, transparent);
-  color: #6366f1;
+  color: var(--app-accent);
 }
 .model-kind-pill.is-text {
   background: color-mix(in srgb, #a855f7 12%, transparent);
-  color: #9333ea;
+  color: var(--app-accent);
 }
 
 .model-card h3 {
@@ -1156,29 +1129,29 @@ function onModelAction(model: CatalogModel) {
   gap: 8px;
   padding: 5px 12px;
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(249, 115, 22, 0.12) 100%);
+  background:var(--app-warning-soft);
   border: 1px solid rgba(249, 115, 22, 0.35);
-  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.08);
+  box-shadow:none;
   transition: all 0.2s ease;
 }
 .official-discount-badge:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.2);
+  transform:none;
+  box-shadow:none;
   border-color: rgba(249, 115, 22, 0.55);
 }
 .discount-flame-box {
   width: 26px;
   height: 26px;
   border-radius: 7px;
-  background: linear-gradient(135deg, #ef4444 0%, #f97316 100%);
-  color: #ffffff;
+  background:var(--app-warning-soft);
+  color: var(--app-on-primary);
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
+  box-shadow:none;
 }
 .flame-svg {
-  color: #ffffff;
+  color: var(--app-on-primary);
 }
 .discount-content {
   display: flex;
@@ -1200,13 +1173,13 @@ function onModelAction(model: CatalogModel) {
 .discount-large-num {
   font-size: 20px;
   font-weight: 900;
-  color: #ea580c;
+  color: var(--creation-warning);
   line-height: 1;
 }
 .discount-unit-text {
   font-size: 13px;
   font-weight: 800;
-  color: #ea580c;
+  color: var(--creation-warning);
   margin-right: 4px;
 }
 .discount-raw-pill {
@@ -1215,22 +1188,22 @@ function onModelAction(model: CatalogModel) {
   padding: 1px 5px;
   border-radius: 4px;
   background: rgba(249, 115, 22, 0.16);
-  color: #c2410c;
+  color: var(--creation-warning);
   line-height: 1.2;
 }
 
 :global([data-app-theme="dark"]) .official-discount-badge {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.16) 0%, rgba(249, 115, 22, 0.22) 100%);
+  background:var(--app-warning-soft);
   border-color: rgba(249, 115, 22, 0.45);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  box-shadow:none;
 }
 :global([data-app-theme="dark"]) .discount-large-num,
 :global([data-app-theme="dark"]) .discount-unit-text {
-  color: #fb923c;
+  color: var(--creation-warning);
 }
 :global([data-app-theme="dark"]) .discount-raw-pill {
   background: rgba(249, 115, 22, 0.25);
-  color: #fed7aa;
+  color: var(--creation-warning);
 }
 
 .standard-pricing-badge {
@@ -1247,31 +1220,22 @@ function onModelAction(model: CatalogModel) {
   font-weight: 500;
 }
 
-@keyframes flamePulse {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
-  }
-  50% {
-    transform: scale(1.03);
-    box-shadow: 0 3px 10px rgba(239, 68, 68, 0.5);
-  }
-}
+
 .model-action-btn {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
-  border-radius: 50%;
+  border-radius: 6px;
   border: 0;
-  background: var(--app-accent, #6366f1);
-  color: #ffffff;
+  background: var(--app-primary);
+  color: var(--app-on-primary);
   cursor: pointer;
   transition: transform .16s ease, box-shadow .16s ease;
 }
 .model-action-btn:hover {
-  transform: scale(1.08);
-  box-shadow: 0 4px 10px color-mix(in srgb, var(--app-accent) 40%, transparent);
+  transform:none;
+  box-shadow:none;
 }
 
 /* Compact / List Modes */
@@ -1326,7 +1290,7 @@ function onModelAction(model: CatalogModel) {
 .catalog-empty button {
   border: 1px solid var(--app-border);
   padding: 8px 18px;
-  border-radius: 9999px;
+  border-radius: 6px;
   background: var(--app-surface);
   color: var(--app-accent);
   font: inherit;
@@ -1368,3 +1332,6 @@ button:focus-visible, summary:focus-visible, input:focus-visible {
   *, summary svg { transition: none !important; }
 }
 </style>
+
+.model-discount-pill-top,.discount-flame-box,.flame-icon-top,.flame-svg{color:var(--creation-warning);background:var(--app-warning-soft)}
+.model-card-heading{gap:12px}.model-card h3{padding-right:0!important}.model-card-art{display:none}

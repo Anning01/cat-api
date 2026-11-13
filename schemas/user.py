@@ -59,3 +59,20 @@ class UserStatsOut(BaseModel):
     user_count: int = 0
     user_total_cost: float = 0.0
     balance_total: Decimal = Decimal("0")
+
+
+class UserDetailOut(UserOut):
+    avatar_url: str = ""
+    qiling_bound: bool = False
+    active_key_count: int = 0
+    last_seen_at: datetime | None = None
+
+
+class UserEventOut(BaseModel):
+    id: int
+    account_user_id: int
+    operator_user_id: int
+    operator_name: str
+    action: str
+    note: str
+    created_at: datetime

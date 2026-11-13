@@ -12,3 +12,11 @@ logs
 *.pem
 *.key
 *.p12
+**/node_modules
+web/dist
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx

@@ -5,7 +5,7 @@ from utils.messages import localized_message
 import json
 import logging
 import uuid
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -14,7 +14,7 @@ from tortoise.expressions import Q
 from tortoise.timezone import now as tz_now
 from tortoise.transactions import in_transaction
 
-from auth.models import RechargeOrder, User
+from auth.models import RechargeOrder, User, UserAdminEvent
 from config import settings
 from services import balance
 from services.wechat_pay import WeChatPayError, wechat_pay_service
@@ -61,7 +61,11 @@ class AccountController:
         operator_user_id: int | None,
         note: str,
     ) -> dict:
-        result = await balance.top_up(user_id, amount, operator_user_id, note)
+        async with in_transaction():
+            result = await balance.top_up(user_id, amount, operator_user_id, note)
+            if operator_user_id is not None:
+                await UserAdminEvent.create(account_user_id=user_id, operator_user_id=operator_user_id,
+                    action="topup", note=f"{amount:.2f} CNY · {note}"[:255])
         return {"account_user_id": user_id, "balance": result}
 
     async def transactions(self, user_id: int, page: int, page_size: int) -> dict:
@@ -195,11 +199,25 @@ class AccountController:
         search: str | None = None,
         page: int = 1,
         page_size: int = 20,
+        account_user_id: int | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
     ) -> dict:
         """查询充值订单：超管可看全平台，普通用户仅看本人创建的充值订单。"""
         query = RechargeOrder.all()
         if not is_super_admin:
             query = query.filter(account_user_id=user_id)
+
+        if account_user_id is not None:
+            if not is_super_admin and account_user_id != user_id:
+                raise HTTPException(403, '无权查看其他用户的订单')
+            query = query.filter(account_user_id=account_user_id)
+        if start_date and end_date and start_date > end_date or end_date == date.max:
+            raise HTTPException(422, '无效的日期范围')
+        if start_date:
+            query = query.filter(created_at__gte=datetime.combine(start_date, time.min, settings.tz))
+        if end_date:
+            query = query.filter(created_at__lt=datetime.combine(end_date + timedelta(days=1), time.min, settings.tz))
 
         if status:
             query = query.filter(status=status)

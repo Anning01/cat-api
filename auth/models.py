@@ -220,5 +220,15 @@ class UserWallet(AbstractBaseModel):
     balance = fields.DecimalField(max_digits=18, decimal_places=6, default=0)
 
 
+class UserAdminEvent(AbstractBaseModel):
+    account_user_id = fields.IntField(db_index=True)
+    operator_user_id = fields.IntField()
+    action = fields.CharField(max_length=32)
+    note = fields.CharField(max_length=255, default="")
+
+    class Meta:
+        table = "account_admin_events"
+
+
 class AccountMigration(AbstractBaseModel):
     name = fields.CharField(max_length=100, unique=True)

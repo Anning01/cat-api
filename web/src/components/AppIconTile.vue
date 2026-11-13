@@ -30,13 +30,13 @@ withDefaults(defineProps<{
   border: 1px solid color-mix(in srgb,var(--app-icon-tile-color) 18%,var(--app-border));
   color: var(--app-icon-tile-color);
   background: color-mix(in srgb,var(--app-icon-tile-color) 12%,var(--app-surface));
-  box-shadow: 0 8px 22px color-mix(in srgb,var(--app-icon-tile-color) 9%,transparent);
+  box-shadow: none;
 }
 
-.app-icon-tile--sm { width: 40px; height: 40px; border-radius: 11px; }
-.app-icon-tile--md { width: 44px; height: 44px; border-radius: 12px; }
-.app-icon-tile--lg { width: 46px; height: 46px; border-radius: 12px; }
-.app-icon-tile--xl { width: 52px; height: 52px; border-radius: 15px; }
+.app-icon-tile--sm { width: 40px; height: 40px; border-radius: 6px; }
+.app-icon-tile--md { width: 44px; height: 44px; border-radius: 6px; }
+.app-icon-tile--lg { width: 46px; height: 46px; border-radius: 6px; }
+.app-icon-tile--xl { width: 52px; height: 52px; border-radius: 8px; }
 .app-icon-tile--image { --app-icon-tile-color: #c06b9d; }
 .app-icon-tile--video { --app-icon-tile-color: #58a8ad; }
 .app-icon-tile--neutral { --app-icon-tile-color: var(--app-text-muted); }

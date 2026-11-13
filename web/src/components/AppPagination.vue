@@ -51,10 +51,10 @@ function changePageSize(value: string) {
 
 <style scoped>
 .app-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 2px 2px; }
-.app-pagination__total { color: var(--app-text-muted, #9398a8); font-size: 11px; }
+.app-pagination__total { color: var(--app-text-muted, #9398a8); font-size: 13px; }
 .app-pagination__controls { display: flex; align-items: center; gap: 10px; }
-.app-pagination__controls > span { color: var(--app-text-muted, #9398a8); font-size: 11px; font-variant-numeric: tabular-nums; }
-.app-pagination__controls > button { padding: 6px 12px; border: 1px solid var(--app-border, #e3e5ec); border-radius: 8px; color: var(--app-text-secondary, #656b7b); background: var(--app-surface, #fff); cursor: pointer; font-size: 11px; }
+.app-pagination__controls > span { color: var(--app-text-muted, #9398a8); font-size: 13px; font-variant-numeric: tabular-nums; }
+.app-pagination__controls > button { padding: 6px 12px; border: 1px solid var(--app-border, #e3e5ec); border-radius: 8px; color: var(--app-text-secondary, #656b7b); background: var(--app-surface, #fff); cursor: pointer; font-size: 13px; }
 .app-pagination__controls > button:hover:not(:disabled) { color: var(--app-text, #303442); background: var(--app-surface-hover, #f0f1f6); }
 .app-pagination__controls > button:disabled { opacity: 0.45; cursor: default; }
 </style>

@@ -36,22 +36,14 @@ function dismiss() {
   gap: 10px;
   overflow: hidden;
   padding: 12px 12px 12px 16px;
-  border-radius: 12px;
+  border-radius: 8px;
   color: var(--app-text, #303442);
   background: var(--app-surface-raised, #fff);
   box-shadow: 0 2px 6px rgb(20 22 28 / 6%), 0 16px 44px rgb(20 22 28 / 14%);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
-.app-notice::before {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 3px;
-  background: currentColor;
-  content: '';
-}
+
 .app-notice__icon { flex: 0 0 auto; margin-top: 1px; }
 .app-notice__message { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .app-notice__close {
@@ -69,8 +61,8 @@ function dismiss() {
 }
 .app-notice__close:hover { color: var(--app-text, #303442); background: var(--app-surface-hover, #f2f3f7); }
 
-.app-notice.is-info { color: #5b5cf6; }
-.app-notice.is-success { color: #22a06b; }
-.app-notice.is-error { color: #e5484d; }
+.app-notice.is-info { color: var(--app-accent); }
+.app-notice.is-success { color: var(--creation-success); }
+.app-notice.is-error { color: var(--creation-danger); }
 .app-notice .app-notice__message { color: var(--app-text, #303442); }
 </style>

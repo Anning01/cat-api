@@ -49,6 +49,7 @@ async def summary(
     by_model: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     model_records: Counter[str] = Counter()
     daily: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    daily_records: Counter[str] = Counter()
     for row in rows:
         cost = _dec(row["cost"])
         by_billing[row["billing_type"]] += cost
@@ -59,7 +60,9 @@ async def summary(
         created_at = row["created_at"]
         if recent_days is not None:
             created_at = created_at.astimezone(settings.tz)
-        daily[created_at.date().isoformat()] += cost
+        day = created_at.date().isoformat()
+        daily[day] += cost
+        daily_records[day] += 1
     return {
         "total_cost": _money(total),
         "total_records": len(rows),
@@ -79,7 +82,7 @@ async def summary(
             for key, value in sorted(by_model.items(), key=lambda item: -item[1])
         ],
         "daily_trend": [
-            {"date": day, "cost": _money(daily[day])}
+            {"date": day, "cost": _money(daily[day]), "records": daily_records[day]}
             for day in (days or sorted(daily))
         ],
     }
