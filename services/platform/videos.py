@@ -229,6 +229,11 @@ async def refresh_job(job, receipt, *, renew=False):
         return
     config = await AiModelConfig.get_or_none(id=receipt.model_config_id,scope="official",team_id__isnull=True)
     ours = PlatformVideoJob.filter(id=job.id,poll_token=token)
+    if config and route_hash(config) != job.route_hash:
+        from services.video.ark_migration import legacy_query_config
+        previous = legacy_query_config(config)
+        if previous and route_hash(previous) == job.route_hash:
+            config = previous
     if not config or route_hash(config)!=job.route_hash:
         if renew:
             await ours.update(poll_token=None, poll_after=now+60)

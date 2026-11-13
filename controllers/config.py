@@ -203,12 +203,20 @@ class AiModelConfigController(CRUDBase[AiModelConfig, AiModelConfigCreate, AiMod
     async def update(self, config_id: int, obj_in: AiModelConfigUpdate) -> AiModelConfig:
         instance = await self.get(config_id)
         data = self._normalize_payload(obj_in)
+        from services.video.ark_migration import LEGACY_ROUTE
+        old_route = (instance.processing_options or {}).get(LEGACY_ROUTE)
+        if old_route and "processing_options" in data:
+            data["processing_options"] = {**(data["processing_options"] or {}), LEGACY_ROUTE: old_route}
         self._validate_generation_payload(data, instance)
         return await super().update(instance, data)
 
     async def patch(self, config_id: int, obj_in) -> AiModelConfig:
         instance = await self.get(config_id)
         data = self._normalize_payload(obj_in)
+        from services.video.ark_migration import LEGACY_ROUTE
+        old_route = (instance.processing_options or {}).get(LEGACY_ROUTE)
+        if old_route and "processing_options" in data:
+            data["processing_options"] = {**(data["processing_options"] or {}), LEGACY_ROUTE: old_route}
         self._validate_generation_payload(data, instance)
         return await super().patch(instance, data)
 

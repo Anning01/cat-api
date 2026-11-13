@@ -102,6 +102,8 @@ class UnifiedVideoGenerator(BaseVideoGenerator):
 
     async def submit(self, prompt: str, negative_prompt: str = "", subjects: list[dict[str, Any]] | None = None,
         duration: float = 6.0, aspect_ratio: str = "16:9", **kwargs) -> str:
+        if self.config.api_protocol == "unified_video":
+            raise VideoProviderError(localized_message("通用视频接口已停用，请使用火山方舟协议"))
         mode = kwargs.get("generation_mode", "reference")
         selection = validate_selection(self.config.video_model_type, api_protocol=self.config.api_protocol,
             generation_mode=mode, resolution=kwargs.get("resolution"), aspect_ratio=aspect_ratio,

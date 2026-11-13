@@ -10,6 +10,7 @@ from main import app
 for _ in range(2):
     with TestClient(app) as client:
         assert client.get('/health').json() == {'status': 'ok'}
+        assert client.get('/api/config/locale').json()['code'] == 0
         assert client.get('/api/auth/status').json()['data']['deployment_role'] == 'platform'
         assert client.get('/v1/models').status_code == 401
         assert '/chat/completions' in client.get('/v1/openapi.json').json()['paths']

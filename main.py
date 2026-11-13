@@ -4,12 +4,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from utils.response_format import ResponseSchema
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException
 from tortoise import Tortoise
 
+from api.billing import router as billing_router
 from api.platform import console_router, developer_router
 from api.team import router as team_router
 from api.user import router as user_router
@@ -42,6 +44,8 @@ async def lifespan(_app):
         await ensure_recharge_refund_columns()
         if settings.GENERATE_SCHEMAS:
             await Tortoise.generate_schemas(safe=True)
+        from services.video.ark_migration import migrate_legacy_video_channels
+        await migrate_legacy_video_channels()
         await ensure_super_admin()
         await recover_measured()
         workers = [asyncio.create_task(worker()) for worker in
@@ -65,7 +69,15 @@ if settings.SECURITY_HEADERS_ENABLED:
                        docs_content_security_policy=settings.DOCS_CONTENT_SECURITY_POLICY)
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
+
+
+@app.get("/api/config/locale")
+async def locale():
+    from services.language import configured_language
+    return ResponseSchema(data={"locale": await configured_language()})
+
 app.include_router(console_router, prefix="/api")
+app.include_router(billing_router, prefix="/api/billing")
 app.include_router(public_router, prefix="/api/auth")
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(team_router, prefix="/api/team")
