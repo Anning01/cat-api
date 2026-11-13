@@ -862,7 +862,9 @@ function onModelAction(model: CatalogModel) {
 /* Main Content */
 .catalog-content {
   flex: 1;
+  width: 100%;
   min-width: 0;
+  container-type: inline-size;
 }
 .catalog-meta-row {
   margin-bottom: 12px;
@@ -1251,11 +1253,21 @@ function onModelAction(model: CatalogModel) {
 }
 
 .catalog.is-list .model-card {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   padding: 14px 20px;
-  gap: 20px;
+  gap: 12px;
+}
+.catalog.is-list .model-card-heading {
+  justify-content: flex-start;
+  margin: 0;
+}
+.catalog.is-list .model-kind-pill {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.catalog.is-list .model-discount-pill-top {
+  display: none;
 }
 .catalog.is-list .model-card h3 {
   min-height: 0;
@@ -1266,9 +1278,33 @@ function onModelAction(model: CatalogModel) {
 }
 .catalog.is-list .model-card-footer {
   margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
+  padding-top: 10px;
   gap: 16px;
+}
+.catalog.is-list .model-meta-bar,
+.catalog.is-list > .model-card > .model-prices {
+  margin: 0;
+}
+.catalog.is-list .discount-flame-box { display: none; }
+.catalog.is-list .discount-content { flex-direction: row; align-items: center; gap: 8px; }
+.catalog.is-list .discount-large-num { font-size: 14px; }
+.catalog.is-list .discount-title { font-size: 12px; }
+.catalog.is-list .official-discount-badge { padding: 4px 8px; border-radius: 6px; }
+.catalog.is-list .reference-prices { margin: 0; }
+@container (min-width: 620px) {
+  .catalog.is-list .model-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 24px;
+    row-gap: 10px;
+    align-items: start;
+  }
+  .catalog.is-list .model-card-heading { grid-column: 1; grid-row: 1; }
+  .catalog.is-list .model-card h3 { grid-column: 1; grid-row: 2; }
+  .catalog.is-list .model-meta-bar { grid-column: 1; grid-row: 3; }
+  .catalog.is-list > .model-card > .model-prices { grid-column: 2; grid-row: 1 / span 3; }
+  .catalog.is-list .reference-prices,
+  .catalog.is-list .model-card-footer { grid-column: 1 / -1; }
 }
 
 /* Empty State */
