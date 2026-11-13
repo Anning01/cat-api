@@ -12,7 +12,7 @@ const theme=useAppThemeController()
 const links=computed(()=>[
   ...(auth.isLoggedIn ? [{path:'/platform/usage',label:'用量概览',icon:ChartNoAxesCombined},{path:'/platform/keys',label:'API Keys',icon:KeyRound}]:[]),
   {path:'/platform/models',label:'模型目录',icon:Layers},{path:'/platform/docs',label:'接口文档',icon:BookOpen},
-  ...(auth.isLoggedIn ? [{path:'/billing',label:'消费账单',icon:Receipt},{path:'/orders',label:'充值订单',icon:Receipt},{path:'/profile',label:'个人账户',icon:UserRound}]:[{path:'/login',label:'登录',icon:UserRound}]),
+  ...(auth.isLoggedIn ? [{path:'/billing',label:'消费账单',icon:Receipt},{path:'/orders',label:'充值订单',icon:Receipt},{path:'/profile',label:'个人账户',icon:UserRound},{path:'/legacy-works',label:'历史作品迁移',icon:Layers}]:[{path:'/login',label:'登录',icon:UserRound}]),
   ...(auth.isSuperAdmin ? [{path:'/users',label:'用户管理',icon:Users},{path:'/settings',label:'模型配置',icon:Settings}]:[]),
 ])
 </script>

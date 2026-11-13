@@ -18,10 +18,11 @@ describe('Individual console',()=>{
     const router=createRouter({history:createMemoryHistory(),routes:[{path:'/:pathMatch(.*)*',component:{template:'<div />'}}]})
     await router.push('/platform/models');await router.isReady()
     const wrapper=mount(App,{global:{plugins:[pinia,router,i18n]}})
-    expect(wrapper.text()).not.toMatch(/团队|成员|作品|短剧/)
+    expect(wrapper.text()).not.toMatch(/团队|成员|短剧/)
     expect(wrapper.find('a[href="/users"]').exists()).toBe(admin)
     expect(wrapper.find('a[href="/settings"]').exists()).toBe(admin)
     expect(wrapper.find('a[href="/profile"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/legacy-works"]').exists()).toBe(true)
     wrapper.unmount()
   })
   it('sends no legacy team header even if cached from the former console',async()=>{
