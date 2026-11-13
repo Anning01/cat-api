@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuthStore } from '@/features/auth/authStore'
+import { notice } from '@/shared/notice'
 const router=createRouter({history:createWebHashHistory(),routes:[
   ...(['usage','models','docs','keys'] as const).map(section=>({path:'/platform/'+section,component:()=>import('./pages/PlatformConsolePage.vue'),props:{section},meta:{public:['models','docs'].includes(section)}})),
   ...(['profile','orders','billing','users'] as const).map(section=>({path:'/'+section,component:()=>import('./pages/AccountPage.vue'),props:{section},meta:{admin:section==='users'}})),
@@ -14,4 +15,5 @@ router.beforeEach(async to=>{
   if (to.meta.admin && !auth.isSuperAdmin) return '/platform/models'
   return true
 })
+router.onError(()=>notice.error('页面暂时无法加载，请刷新后重试'))
 export default router

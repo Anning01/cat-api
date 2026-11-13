@@ -10,7 +10,9 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   if (token) headers.set('Authorization', `Bearer ${token}`)
   if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   const response = await fetch(API_BASE + path, { ...options, headers })
-  const body = await response.json()
+  let body
+  try { body = await response.json() }
+  catch { throw new Error('服务暂时不可用，请刷新后重试') }
   if (!response.ok || body.code !== 0) {
     if (body.code === 401) window.location.hash = '#/login'
     throw new Error(body.message || '请求失败，请重试')

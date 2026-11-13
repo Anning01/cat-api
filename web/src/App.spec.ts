@@ -33,4 +33,9 @@ describe('Individual console',()=>{
     expect(headers.get('Authorization')).toBe('Bearer fixture')
     expect(headers.has('X-Team-Id')).toBe(false)
   })
+  it('reports an unavailable service instead of exposing a JSON parser error',async()=>{
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:false,json:async()=>{throw new SyntaxError('empty response')}}))
+    await expect(request('/auth/status')).rejects.toThrow('服务暂时不可用，请刷新后重试')
+  })
+
 })
