@@ -35,6 +35,7 @@ const apiBase=computed(()=>new URL(API_BASE,location.href).origin+'/v1')
 const modelStats=computed(()=>(summary.value?.by_model??[]).filter(row=>row.model.toLowerCase().includes(modelSearch.value.toLowerCase())).slice().sort((a,b)=>modelSort.value==='name'?a.model.localeCompare(b.model,dateLocale.value):modelSort.value==='records'?(b.record_count??0)-(a.record_count??0):b.cost-a.cost))
 function isExpired(key:KeyRow){return key.is_expired===true||Boolean(key.expires_at&&Date.parse(key.expires_at)<=Date.now())}
 const filteredKeys=computed(()=>keys.value.filter(key=>(!keyStatus.value||(keyStatus.value==='expired')===isExpired(key))&&(!keySearch.value||(key.name+' '+key.preview).toLowerCase().includes(keySearch.value.toLowerCase()))))
+const modelCalls=computed(()=>new Map(models.value.map(model=>[model.id,model.alias||model.id])))
 const modelNames=computed(()=>new Map(models.value.map(model=>[model.id,model.name])))
 const visibleKeys=computed(()=>filteredKeys.value.slice((keyPage.value-1)*keyPageSize.value,keyPage.value*keyPageSize.value))
 const allSelected=computed(()=>visibleKeys.value.length>0&&visibleKeys.value.every(key=>selected.value.includes(key.id)))
@@ -116,7 +117,7 @@ const formId=useId()
        <small v-else class="muted">{{ tr('旧密钥尚无可恢复副本') }}</small>
        <small v-if="keySecretErrors[key.id]" role="alert" class="text-danger">{{ keySecretErrors[key.id] }}</small>
       </td>
-      <td><span v-if="key.allowed_model_ids==null">{{ tr('全部模型') }}</span><details v-else class="key-model-scope"><summary>{{ tr('指定 {p0} 个模型',{p0:key.allowed_model_ids.length}) }}</summary><ul><li v-for="modelId in key.allowed_model_ids" :key="modelId">{{ modelNames.get(modelId)||modelId }}<code v-if="modelNames.has(modelId)">{{ modelId }}</code></li></ul></details></td>
+      <td><span v-if="key.allowed_model_ids==null">{{ tr('全部模型') }}</span><details v-else class="key-model-scope"><summary>{{ tr('指定 {p0} 个模型',{p0:key.allowed_model_ids.length}) }}</summary><ul><li v-for="modelId in key.allowed_model_ids" :key="modelId">{{ modelNames.get(modelId)||modelId }}<code v-if="modelCalls.has(modelId)">{{ modelCalls.get(modelId) }}</code></li></ul></details></td>
       <td class="date-cell"><strong v-if="isExpired(key)" class="text-danger">{{ tr('已过期') }}</strong><span v-else-if="!key.expires_at">{{ tr('永不过期') }}</span><span v-if="key.expires_at">{{ dateTime(key.expires_at) }}</span></td>
       <td class="date-cell">{{ dateTime(key.created_at) }}</td><td class="row-actions"><AppButton variant="danger" size="sm" :disabled="revoking" @click="revoke([key.id])">{{ tr('停用') }}</AppButton></td>
      </tr></tbody>

@@ -93,6 +93,7 @@ class AiModelConfigOut(AiModelConfigProperties, BaseResponse):
 
     model_config = ConfigDict(from_attributes=True)
 
+    public_alias: Optional[str] = Field(None, description="可读调用名；生成后保持稳定，旧 nv-ID 继续兼容")
     id: int = Field(..., description="配置ID")
     task_type: int = Field(..., description=AiTaskTypeEnum.__doc__)
     task_types: list[int] = Field(default_factory=list, description="模型支持的任务类型列表")

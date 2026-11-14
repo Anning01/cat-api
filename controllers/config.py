@@ -229,7 +229,10 @@ class AiModelConfigController(CRUDBase[AiModelConfig, AiModelConfigCreate, AiMod
     async def create(self, obj_in: AiModelConfigCreate, **kwargs) -> AiModelConfig:
         data = self._normalize_payload(obj_in)
         self._validate_generation_payload(data)
-        return await super().create(data, **kwargs)
+        config = await super().create(data, **kwargs)
+        from services.platform.model_aliases import ensure_model_alias
+        await ensure_model_alias(config)
+        return config
 
     async def update(self, config_id: int, obj_in: AiModelConfigUpdate) -> AiModelConfig:
         instance = await self.get(config_id)

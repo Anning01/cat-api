@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ModelCatalog, { type CatalogModel } from './ModelCatalog.vue'
 import { i18n, setLocale } from '@/i18n'
@@ -47,4 +47,19 @@ it('always shows the filter sidebar beside model cards without toggle or close c
   expect(wrapper.findAll('.model-card')).toHaveLength(2)
   expect(wrapper.find('.catalog-sidebar').exists()).toBe(true)
   wrapper.unmount()
+})
+
+
+it('copies and searches the readable call name while retaining the canonical model identity',async()=>{
+ setLocale('zh')
+ const writeText=vi.fn().mockResolvedValue(undefined)
+ Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText}})
+ const wrapper=mount(ModelCatalog,{props:{models:[{id:'nv-27',alias:'seedream-5.5',name:'Doubao Seedream 5.5',kinds:['image'],pricing:{type:'image',currency:'CNY',prices:{'1K':.13}}}]},global:{plugins:[i18n]}})
+ expect(wrapper.get('[data-model-id="nv-27"] .model-id').text()).toContain('seedream-5.5')
+ expect(wrapper.get('.model-title').text()).toBe('Doubao Seedream 5.5')
+ await wrapper.get('.model-id').trigger('click')
+ expect(writeText).toHaveBeenCalledWith('seedream-5.5')
+ await wrapper.get('.catalog-search input').setValue('seedream-5.5')
+ expect(wrapper.find('[data-model-id="nv-27"]').exists()).toBe(true)
+ wrapper.unmount()
 })

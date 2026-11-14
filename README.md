@@ -61,3 +61,9 @@ npm run dev
 OpenAPI 默认 server 为 `/v1`。通过文件导入 Apifox 时请设置对应测试环境地址；可使用 `PUBLIC_API_BASE_URL` 指定导出所用的公开 API 地址（包含 `/v1`）。本地路由和文件更新不会自动更改线上路由或已发布的 Apifox 内容，需要重新导入并发布。
 
 若门户 HTML 由独立的 Caddy／Nginx 提供且该层设置了 CSP，还需在该层的 `frame-src` 仅加入已配置文档来源（当前为 `https://rjvutktiur.apifox.cn`）。后端的 HTML 响应中间件已按配置加入这一来源；不修改 `frame-ancestors` 或关闭站点防嵌套保护。
+
+## 可读模型调用名
+
+模型目录增加持久化 `alias`（如 `seedream-5.5`），页面复制和新接入示例优先使用别名。`model` 与原生任务的 `X-Cat-Model` 均接受别名；Key 权限仍按原配置验证。改名、改价、停启不会自动更换已有别名。
+
+为兼容既有工作台，`GET /v1/models` 默认仍返回旧 nv-ID；新客户端使用 `/v1/models?identifier=alias`，id 为可读名，legacy_id 为旧 ID。账务与授权关联保持 legacy_id，回执另提供 model_alias、model_name，不改写历史账单。

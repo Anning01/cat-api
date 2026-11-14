@@ -20,7 +20,7 @@
               "examples": {
                 "文生视频": {
                   "value": {
-                    "model": "nv-42",
+                    "model": "seedance-2.0",
                     "content": [
                       {
                         "type": "text",
@@ -1796,7 +1796,7 @@
               "examples": {
                 "MiniMax H3": {
                   "value": {
-                    "model": "nv-42",
+                    "model": "minimax-h3",
                     "content": [
                       {
                         "type": "text",
@@ -3572,7 +3572,7 @@
               "examples": {
                 "Wan3": {
                   "value": {
-                    "model": "nv-42",
+                    "model": "wan3",
                     "input": {
                       "prompt": "缓慢推进的镜头"
                     },
@@ -8040,7 +8040,7 @@
               "examples": {
                 "Seedream 5.5": {
                   "value": {
-                    "model": "nv-42",
+                    "model": "seedream-5.5",
                     "prompt": "保持参考图人物特征",
                     "size": "2048x1152",
                     "image": [
@@ -8961,7 +8961,7 @@
               "examples": {
                 "URL 图片": {
                   "value": {
-                    "model": "nv-42",
+                    "model": "gpt-image-2-discount",
                     "prompt": "山中庭院",
                     "size": "1024x1024",
                     "n": 1,
@@ -10926,7 +10926,7 @@
               "examples": {
                 "URL 参考图与蒙版": {
                   "value": {
-                    "model": "nv-42",
+                    "model": "gpt-image-2-discount",
                     "prompt": "更换背景",
                     "images": [
                       {
@@ -10989,7 +10989,7 @@
               "examples": {
                 "OpenRouter URL 参考图": {
                   "value": {
-                    "model": "nv-42",
+                    "model": "gpt-image-2-discount",
                     "prompt": "山中庭院",
                     "input_references": [
                       {
@@ -11892,7 +11892,7 @@
               "examples": {
                 "非流式": {
                   "value": {
-                    "model": "nv-42",
+                    "model": "deepseek-flash",
                     "messages": [
                       {
                         "role": "user",
@@ -11903,7 +11903,7 @@
                 },
                 "流式与用量": {
                   "value": {
-                    "model": "nv-42",
+                    "model": "deepseek-flash",
                     "messages": [
                       {
                         "role": "user",
@@ -14688,6 +14688,22 @@
       "get": {
         "summary": "查询已授权模型、能力与价格",
         "operationId": "listModels",
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "legacy",
+                "alias"
+              ],
+              "type": "string",
+              "default": "legacy",
+              "title": "Identifier"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "成功结果按上游结构保留；HTTP 200 也可能携带供应商业务错误，请同时检查正文及状态头。",
@@ -14748,9 +14764,77 @@
                           "price_per_image": 0.05
                         },
                         "discount": 1
-                      }
+                      },
+                      "alias": "seedream-5.5",
+                      "legacy_id": "nv-42"
                     }
                   ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "字段、URL 或价格配置不符合要求；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "字段、URL 或价格配置不符合要求",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -15217,72 +15301,6 @@
               }
             }
           },
-          "422": {
-            "description": "字段、URL 或价格配置不符合要求；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
-            "headers": {
-              "X-Cat-Request-Id": {
-                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Novelvids-Request-Id": {
-                "description": "兼容旧客户端的平台回执 UUID。",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Retry-After": {
-                "description": "并发／限流时的建议重试间隔。",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "message": {
-                          "type": "string"
-                        },
-                        "type": {
-                          "type": "string"
-                        },
-                        "param": {},
-                        "code": {}
-                      },
-                      "additionalProperties": true
-                    }
-                  },
-                  "additionalProperties": true
-                },
-                "example": {
-                  "error": {
-                    "message": "字段、URL 或价格配置不符合要求",
-                    "type": "invalid_request_error",
-                    "param": null,
-                    "code": null
-                  }
-                }
-              },
-              "text/plain": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
           "429": {
             "description": "并发／限流；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
             "headers": {
@@ -15557,8 +15575,7 @@
           }
         ],
         "x-apifox-folder": "公共能力/模型与账户",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。",
-        "parameters": []
+        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。 默认兼容 nv-ID。新软件可使用 identifier=alias，让 data[].id 为可读调用名；legacy_id 保留授权与历史关联 ID。两种视图按同一 Key 模型权限过滤。"
       }
     },
     "/account": {
@@ -20095,7 +20112,7 @@
               "examples": {
                 "历史兼容请求": {
                   "value": {
-                    "model": "nv-42",
+                    "model": "seedance-2.0",
                     "prompt": "缓慢推进的镜头",
                     "seconds": "4",
                     "size": "1280x720"
@@ -22537,6 +22554,28 @@
             "type": "string",
             "title": "Model"
           },
+          "model_alias": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Alias"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -22745,6 +22784,21 @@
               "properties": {
                 "id": {
                   "type": "string",
+                  "description": "兼容模式为 nv-ID；identifier=alias 模式为可读调用名"
+                },
+                "alias": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "推荐用于 model 的稳定可读调用名",
+                  "examples": [
+                    "seedream-5.5"
+                  ]
+                },
+                "legacy_id": {
+                  "type": "string",
+                  "description": "兼容和授权使用的配置 ID",
                   "pattern": "^nv-[1-9][0-9]{0,9}$"
                 },
                 "object": {

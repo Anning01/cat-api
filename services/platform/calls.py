@@ -89,7 +89,9 @@ async def admit(ctx, model, body, key, *, validate=chat_options, kind="text"):
             model_id = model if isinstance(model, int) else int(model[3:])
         else:
             from services.platform.catalog import PUBLIC_KINDS
-            candidates = await eligible.filter(Q(name=model) | Q(model=model)).values("id", "task_type", "task_types")
+            alias = await eligible.filter(public_alias=model.lower()).first()
+            candidates = ([{"id":alias.id,"task_type":alias.task_type,"task_types":alias.task_types}] if alias else
+                await eligible.filter(Q(name=model) | Q(model=model)).values("id", "task_type", "task_types"))
             matched = [row["id"] for row in candidates if any(PUBLIC_KINDS.get(task) == kind for task in
                                                                (row["task_types"] or [row["task_type"]]))]
             if not matched:

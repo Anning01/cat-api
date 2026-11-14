@@ -4,6 +4,7 @@ import type { ModelPricing } from '@/types'
 export interface CatalogModel {
   id: string
   name: string
+  alias?: string | null
   kinds: string[]
   image_model_type?: string
   video_model_type?: string
@@ -179,7 +180,7 @@ const filtered = computed(() => {
   return props.models.filter(model => {
     if (kind.value !== 'all' && !model.kinds.includes(kind.value)) return false
     if (search) {
-      const matchSearch = [model.name, model.id, model.image_model_type, model.video_model_type]
+      const matchSearch = [model.name, model.id, model.alias, model.image_model_type, model.video_model_type]
         .some(value => value?.toLocaleLowerCase().includes(search))
       if (!matchSearch) return false
     }
@@ -249,8 +250,8 @@ async function copyId(id: string) {
 }
 
 function onModelAction(model: CatalogModel) {
-  location.hash = `#/platform/docs?model=${encodeURIComponent(model.id)}`
-  notice.info(tr('已打开模型 {p0} 接口文档', { p0: model.id }))
+  location.hash = `#/platform/docs?model=${encodeURIComponent(model.alias||model.id)}`
+  notice.info(tr('已打开模型 {p0} 接口文档', { p0: model.name }))
 }
 </script>
 
@@ -284,7 +285,7 @@ function onModelAction(model: CatalogModel) {
             v-model="query"
             type="search"
             :aria-label="tr('搜索模型')"
-            :placeholder="tr('搜索模型名称或模型 ID')"
+            :placeholder="tr('搜索模型名称或调用名')"
           >
           <button v-if="query" type="button" :aria-label="tr('清空搜索')" @click="query = ''">
             <X :size="13" />
@@ -434,11 +435,11 @@ function onModelAction(model: CatalogModel) {
                   <button
                     class="model-id"
                     type="button"
-                    :aria-label="tr('复制模型 ID {p0}', { p0: model.id })"
-                    @click="copyId(model.id)"
+                    :aria-label="tr('复制模型调用名 {p0}', { p0: model.alias||model.id })"
+                    @click="copyId(model.alias||model.id)"
                   >
-                    <code>{{ model.id }}</code>
-                    <Check v-if="copiedId === model.id" :size="12" />
+                    <code>{{ model.alias||model.id }}</code>
+                    <Check v-if="copiedId === (model.alias||model.id)" :size="12" />
                     <Copy v-else :size="12" />
                   </button>
 
@@ -560,8 +561,8 @@ function onModelAction(model: CatalogModel) {
 .model-discount-pill-top { background:var(--app-warning-soft); color:var(--creation-warning); }
 .model-title { margin:0; color:var(--app-text); font-size:15px; font-weight:650; line-height:1.5; overflow-wrap:anywhere; }
 .model-meta-bar { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
-.model-id { display:inline-flex; align-items:center; gap:6px; min-height:24px; padding:2px 6px; border:1px solid transparent; border-radius:5px; background:var(--app-surface-muted); color:var(--app-text-secondary); cursor:pointer; }
-.model-id code { font:11px ui-monospace,monospace; }
+.model-id { max-width:100%; min-width:0; display:inline-flex; align-items:center; gap:6px; min-height:24px; padding:2px 6px; border:1px solid transparent; border-radius:5px; background:var(--app-surface-muted); color:var(--app-text-secondary); cursor:pointer; }
+.model-id code { font:11px ui-monospace,monospace; white-space:normal; overflow-wrap:anywhere; text-align:start; }
 .model-id:hover { color:var(--app-accent); border-color:var(--app-accent); }
 .model-capabilities { display:flex; flex-wrap:wrap; gap:4px; }
 .model-capabilities span { font-size:11px; color:var(--app-text-secondary); }

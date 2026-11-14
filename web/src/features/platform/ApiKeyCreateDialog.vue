@@ -33,7 +33,7 @@ const sortOptions = computed(() => [
 ])
 const collator = new Intl.Collator('zh-CN', { numeric:true, sensitivity:'base' })
 const filtered = computed(() => models.value.filter(model =>
-  [model.name, model.id, model.image_model_type, model.video_model_type].join(' ').toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase()))
+  [model.name, model.id, model.alias, model.image_model_type, model.video_model_type].join(' ').toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase()))
   .sort((a,b) => {
     if (modelSort.value === 'discount') {
       const difference = getModelDiscount(a)-getModelDiscount(b)
@@ -104,7 +104,7 @@ async function create() {
         <p v-if="scope==='all'" class="muted">{{ tr('允许调用当前及之后新增的所有模型。') }}</p>
         <p v-else class="key-model-help muted">{{ tr('同名模型以 ID 区分；以下展示当前价格，实际调用按受理时配置结算。') }}</p>
         <div v-if="scope==='selected'" class="key-model-picker">
-          <div class="key-model-toolbar"><input v-model="query" type="search" name="model_search" :aria-label="tr('搜索模型')" :placeholder="tr('搜索模型名称或模型 ID')"/><AppSelect v-model="modelSort" class="key-model-sort" :options="sortOptions" :ariaLabel="tr('模型排序')" density="compact"/><span role="status">{{ tr('已选 {p0} 个',{p0:selected.length}) }}<span class="visually-hidden">{{ tr('当前排序：{p0}，共 {p1} 个模型',{p0:sortOptions.find(option=>option.value===modelSort)?.label||'',p1:filtered.length}) }}</span></span></div>
+          <div class="key-model-toolbar"><input v-model="query" type="search" name="model_search" :aria-label="tr('搜索模型')" :placeholder="tr('搜索模型名称或调用名')"/><AppSelect v-model="modelSort" class="key-model-sort" :options="sortOptions" :ariaLabel="tr('模型排序')" density="compact"/><span role="status">{{ tr('已选 {p0} 个',{p0:selected.length}) }}<span class="visually-hidden">{{ tr('当前排序：{p0}，共 {p1} 个模型',{p0:sortOptions.find(option=>option.value===modelSort)?.label||'',p1:filtered.length}) }}</span></span></div>
           <p v-if="loading" role="status" class="muted">{{ tr('正在加载…') }}</p>
           <p v-else-if="catalogError" role="alert" class="console-error">{{ catalogError }} <AppButton size="sm" @click="loadModels">{{ tr('重试') }}</AppButton></p>
           <div v-else class="key-model-options">
@@ -112,7 +112,7 @@ async function create() {
               <input :id="id+'-'+model.id" v-model="selected" type="checkbox" name="allowed_models" :value="model.id" :aria-labelledby="id+'-'+model.id+'-name '+id+'-'+model.id+'-public-id'" :aria-describedby="id+'-'+model.id+'-discount '+id+'-'+model.id+'-meta '+id+'-'+model.id+'-prices'"/>
               <span class="key-model-detail">
                 <span class="key-model-heading">
-                  <strong :id="id+'-'+model.id+'-name'">{{ model.name }}</strong><code :id="id+'-'+model.id+'-public-id'" class="key-model-id">{{ model.id }}</code>
+                  <strong :id="id+'-'+model.id+'-name'">{{ model.name }}</strong><code :id="id+'-'+model.id+'-public-id'" class="key-model-id">{{ model.alias||model.id }}</code>
                   <span :id="id+'-'+model.id+'-discount'" class="key-model-discount" :class="{'is-discounted':getModelDiscount(model)<1}">{{ getModelDiscount(model)<1?tr('折扣 {p0}折',{p0:getDiscountRate(model.pricing.discount),p1:getModelDiscount(model)}):getModelDiscount(model)>1?tr('计费倍率 {p0}×',{p0:getModelDiscount(model)}):tr('按标价计费') }}</span>
                   <span :id="id+'-'+model.id+'-meta'" class="key-model-meta"><span>{{ model.kinds.map(kind=>tr(kindNames[kind]||kind)).join(' / ') }}</span><code v-if="model.image_model_type||model.video_model_type">{{ model.image_model_type||model.video_model_type }}</code><span v-if="model.concurrency!=null">{{ tr('并发 {p0}',{p0:model.concurrency}) }}</span><span v-if="model.reference_image_urls">{{ tr('支持参考图') }}</span><span v-if="model.tool_calls">{{ tr('工具调用') }}</span><span v-if="model.json_output">{{ tr('结构化输出') }}</span></span>
                 </span>

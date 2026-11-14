@@ -23,5 +23,7 @@ async def call_receipt(request_id, ctx, *, by_key=False) -> PlatformReceiptOut:
         record = await ModelUsageRecord.get_or_none(id=row.usage_record_id, user_id=row.user_id)
         if record is not None:
             settlement = PlatformSettlement(status="settled", amount=record.cost, currency=record.currency)
-    return PlatformReceiptOut(id=row.public_id, model=f"nv-{row.model_config_id}", status=row.state,
+    from models.config import AiModelConfig
+    config = await AiModelConfig.get_or_none(id=row.model_config_id)
+    return PlatformReceiptOut(model_alias=config.public_alias if config else None, model_name=row.model_name, id=row.public_id, model=f"nv-{row.model_config_id}", status=row.state,
         usage=row.usage, settlement=settlement, pricing=public_tariff(row.pricing))

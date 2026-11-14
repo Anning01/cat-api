@@ -99,6 +99,31 @@ async def test_chat_alias_and_official_optional_fields_are_lossless(sdk_api):
     assert "logprobs" in raw["choices"][0] and raw["choices"][0]["logprobs"] is None
 
 
+@pytest.mark.parametrize("endpoint", ["chat", "image", "video"])
+async def test_readable_and_legacy_ids_forward_identical_requests(sdk_api, endpoint):
+    from services.platform.model_aliases import ensure_model_aliases
+    sdk, state, models = sdk_api
+    await ensure_model_aliases()
+    model = await AiModelConfig.get(id=models[["chat", "image", "video"].index(endpoint)].id)
+    bodies = []
+    for identifier in (f"nv-{model.id}", model.public_alias):
+        if endpoint == "chat":
+            result = await sdk.chat.completions.create(model=identifier, messages=[{"role":"user", "content":"hello"}])
+            assert result.model == model.model and result.model_extra["vendor_extension"] == {"kept":True}
+        elif endpoint == "image":
+            result = await sdk.images.generate(model=identifier, prompt="courtyard", size="1024x1024")
+            assert result.data[0].url == "https://cdn.example/result.png"
+        else:
+            result = await sdk.videos.create(model=identifier, prompt="pan", seconds="4", size="1280x720")
+            assert (await sdk.videos.retrieve(result.id)).status == "completed"
+        sent = [r for r in state.seen if r.method == "POST"][-1]
+        bodies.append((str(sent.url), json.loads(sent.content)))
+    assert bodies[0] == bodies[1] and bodies[0][1]["model"] == model.model
+    receipts = await PlatformCallReceipt.all()
+    assert len(receipts) == 2
+    assert all(r.model_config_id == model.id and r.model == model.model and r.state == "completed" for r in receipts)
+
+
 async def test_sdk_image_generation_returns_urls_and_rejects_binary_edits(sdk_api):
     sdk, state, _ = sdk_api
     image = await sdk.images.generate(model="official-image", prompt="courtyard", size="1536x1024", background="opaque")

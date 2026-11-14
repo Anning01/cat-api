@@ -71,6 +71,12 @@ async def main():
             model='test-model', base_url='https://example.invalid/v1', api_key='not-a-provider-secret',
             api_protocol='openai_compatible', is_active=True,
             pricing={'type':'text', 'currency':'CNY', 'input_price_per_1m':1, 'output_price_per_1m':2})
+        from services.platform.model_aliases import ensure_model_aliases
+        await Tortoise.get_connection('default').execute_script('ALTER TABLE ai_model_configs DROP COLUMN public_alias CASCADE;')
+        await ensure_billing_integration_schema()
+        await ensure_model_aliases();await ensure_model_aliases()
+        aliased=await AiModelConfig.get(id=model.id)
+        assert aliased.public_alias
         app.dependency_overrides[get_auth_context] = lambda: AuthContext(user=admin, is_super_admin=True)
         async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
             policy = (await client.post('/api/platform/keys', json={
@@ -83,6 +89,8 @@ async def main():
                 assert revealed.json()['data']['key'] == policy['key']
                 assert revealed.headers['cache-control'] == 'no-store'
             assert (await client.get('/v1/models', headers=headers)).json()['data'][0]['id'] == f'nv-{model.id}'
+            readable=(await client.get('/v1/models?identifier=alias',headers=headers)).json()['data'][0]
+            assert readable['id']==aliased.public_alias and readable['legacy_id']==f'nv-{model.id}'
             assert (await PlatformApiKey.get(id=policy['id'])).allowed_model_ids == [f'nv-{model.id}']
             await PlatformApiKey.filter(id=policy['id']).update(expires_at=datetime.now(timezone.utc)-timedelta(seconds=1))
             assert (await client.get('/v1/models', headers=headers)).status_code == 401

@@ -50,6 +50,8 @@ async def lifespan(_app):
         await migrate_legacy_video_channels()
         from services.migrations.user_accounts import migrate_user_accounts
         await migrate_user_accounts()
+        from services.platform.model_aliases import ensure_model_aliases
+        await ensure_model_aliases()
         await ensure_super_admin()
         await recover_measured()
         workers = [asyncio.create_task(worker()) for worker in

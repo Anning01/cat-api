@@ -85,7 +85,9 @@ def public_openapi(app):
         "discount":number,"prices":{"type":"object","additionalProperties":number},
         "input_image":obj({"first_free":integer,"price_per_image":number}),"tiers":array(obj({"short_side_max":integer,"fps_max":number,"price":number})),
         "input_price_per_1m":number,"output_price_per_1m":number,"cache_input_price_per_1m":number,"price_per_minute":number})
-    model = obj({"id":string(pattern=r"^nv-[1-9][0-9]{0,9}$"),"object":string(),"owned_by":string(),"name":string(),"created":integer,
+    model = obj({"id":string("兼容模式为 nv-ID；identifier=alias 模式为可读调用名"),
+        "alias":{"type":["string","null"],"description":"推荐用于 model 的稳定可读调用名","examples":["seedream-5.5"]},
+        "legacy_id":string("兼容和授权使用的配置 ID",pattern=r"^nv-[1-9][0-9]{0,9}$"),"object":string(),"owned_by":string(),"name":string(),"created":integer,
         "kinds":array(string()),"task_types":array(integer),"image_model_type":{"type":["string","null"],"examples":["seedream_5_5"]},
         "video_model_type":{"type":["string","null"]},"pricing":pricing,"concurrency":integer,"tool_calls":{"type":"boolean"},
         "json_output":{"type":"boolean"},"reference_image_urls":{"type":"boolean"},
@@ -237,6 +239,14 @@ def public_openapi(app):
             operation["requestBody"]["content"]["application/json"]["examples"] = deepcopy(request_examples[path])
         if name:
             operation["responses"]["200"]["content"]["application/json"]["example"] = deepcopy(result_examples[name])
+        if method == "post" and path in request_examples:
+            example_alias = "deepseek-flash" if path == "/chat/completions" else "seedance-2.0" if path in {"/videos","/api/v3/contents/generations/tasks"} else "minimax-h3" if path == "/v2/video_generation" else "wan3" if "video-synthesis" in path else "seedream-5.5" if path == "/api/v3/images/generations" else "gpt-image-2-discount"
+            for sample in operation["requestBody"]["content"]["application/json"]["examples"].values():
+                if "model" in sample["value"]:
+                    sample["value"]["model"] = example_alias
+        if path == "/models":
+            operation["description"] += " 默认兼容 nv-ID。新软件可使用 identifier=alias，让 data[].id 为可读调用名；legacy_id 保留授权与历史关联 ID。两种视图按同一 Key 模型权限过滤。"
+            operation["responses"]["200"]["content"]["application/json"]["example"]["data"][0].update(alias="seedream-5.5",legacy_id="nv-42")
         if path == "/api/v3/auc/bigmodel/submit":
             operation["responses"]["200"]["content"]["application/json"]["example"] = {}
         if path == "/api/v1/tasks/{task_id}":

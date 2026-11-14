@@ -69,7 +69,7 @@ def public_tariff(raw):
 
 async def model_catalog():
     rows = await AiModelConfig.filter(scope="official", is_active=True).exclude(api_protocol="novelvids").order_by("id").values(
-        "id","name","created_at","image_model_type","video_model_type","api_protocol","task_type","task_types","pricing","supports_tool_calls","supports_json_output","concurrency","processing_options")
+        "id","name","public_alias","created_at","image_model_type","video_model_type","api_protocol","task_type","task_types","pricing","supports_tool_calls","supports_json_output","concurrency","processing_options")
     models = []
     for row in rows:
         task_types = row["task_types"] or [row["task_type"]]
@@ -77,7 +77,7 @@ async def model_catalog():
         if not kinds:
             continue
         models.append({
-            "id": f"nv-{row['id']}", "name": row["name"], "kinds": kinds,
+            "id": f"nv-{row['id']}", "name": row["name"], "alias":row["public_alias"], "kinds": kinds,
             "task_types": [task for task in task_types if task in PUBLIC_KINDS],
             "created": int(row["created_at"].timestamp()),
             "image_model_type": row["image_model_type"], "video_model_type": row["video_model_type"],

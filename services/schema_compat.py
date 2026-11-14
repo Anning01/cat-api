@@ -19,6 +19,7 @@ async def ensure_billing_integration_schema() -> None:
     """Add platform accounting fields while preserving historical records."""
     connection = Tortoise.get_connection("default")
     definitions = {
+        "ai_model_configs": {"public_alias":"VARCHAR(200)"},
         "general_configs": {"api_docs_url":"VARCHAR(2048)"},
         "model_usage_records": {
             "account_user_id": "INT",

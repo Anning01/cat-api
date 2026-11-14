@@ -99,11 +99,13 @@ async def legacy_studio_images(request: Request, ctx):
 
 
 @developer_router.get("/models", summary="列出当前平台模型")
-async def models(request: Request, ctx: AuthContext = Depends(developer_identity)):
+async def models(request: Request, identifier: Literal["legacy", "alias"] = "legacy", ctx: AuthContext = Depends(developer_identity)):
     legacy = await legacy_studio_images(request, ctx)
-    return {"object":"list","data":[{"object":"model", "owned_by":"novelvids", **item} for item in await model_catalog()
+    rows = [item for item in await model_catalog()
         if (ctx.allowed_model_ids is None or item["id"] in ctx.allowed_model_ids)
-        and not (legacy and needs_pixel_client(item["image_model_type"], item["pricing"]))]}
+        and not (legacy and needs_pixel_client(item["image_model_type"], item["pricing"]))]
+    return {"object":"list","data":[{"object":"model", "owned_by":"novelvids", **item,
+        "legacy_id":item["id"], "id":item["alias"] if identifier == "alias" and item["alias"] else item["id"]} for item in rows]}
 
 
 @developer_router.get("/account", summary="查询 Key 所属平台账户余额", response_model=PlatformAccountOut)

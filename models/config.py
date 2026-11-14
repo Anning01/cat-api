@@ -20,6 +20,7 @@ class AiModelConfig(AbstractBaseModel):
         max_length=100,
         description="配置名称，如 deepseek-v3、gpt-4o",
     )
+    public_alias = fields.CharField(max_length=200, null=True, unique=True, description="稳定可读的模型调用别名")
     base_url = fields.CharField(
         max_length=500,
         description="API 地址",

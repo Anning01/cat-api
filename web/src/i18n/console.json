@@ -375,5 +375,7 @@
   "使用公开 HTTPS 链接或独立文档域名，不填写访问密码或密钥。留空可暂停展示，保存后刷新生效。": "Use a public HTTPS URL or a separate documentation domain without passwords or keys. Leave blank to disable; saving refreshes the page to apply changes.",
   "下载 OpenAPI JSON，重新导入 Apifox": "Download OpenAPI JSON to re-import into Apifox",
   "复制导入地址": "Copy import URL",
-  "保存并应用": "Save and apply"
+  "保存并应用": "Save and apply",
+  "复制模型调用名 {p0}": "Copy model call name {p0}",
+  "搜索模型名称或调用名": "Search model name or call name"
 }

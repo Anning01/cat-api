@@ -18,6 +18,8 @@ class PlatformSettlement(BaseModel):
 class PlatformReceiptOut(BaseModel):
     id: UUID
     model: str
+    model_alias: str | None = None
+    model_name: str | None = None
     status: str
     usage: dict | None
     settlement: PlatformSettlement
