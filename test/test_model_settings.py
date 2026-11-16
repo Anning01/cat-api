@@ -36,3 +36,31 @@ async def test_model_settings_loads_all_three_dependencies_without_changing_mode
             assert await AiModelConfig.all().count()==1
     finally:
         app.dependency_overrides.clear()
+
+
+async def test_model_settings_save_and_clear_provider_defined_reasoning_values():
+    user = await User.create(username='reasoning-admin', is_super_admin=True)
+    model = await AiModelConfig.create(name='推理', task_type=7, model='upstream',
+        base_url='https://vendor.invalid', api_key='fixture')
+    app.dependency_overrides[get_auth_context] = lambda: AuthContext(user=user, is_super_admin=True)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+            response = await client.patch(f'/api/config/{model.id}', json={'thinking':'provider-thinking','reasoning_effort':'provider-effort'})
+            assert response.json()['code'] == 0
+            await model.refresh_from_db()
+            assert model.thinking == 'provider-thinking' and model.reasoning_effort == 'provider-effort'
+            response = await client.patch(f'/api/config/{model.id}', json={'thinking':None, 'reasoning_effort':None})
+            assert response.json()['code'] == 0
+            await model.refresh_from_db()
+            assert model.thinking is None and model.reasoning_effort is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+async def test_public_catalog_reports_strict_output_for_studio_selection():
+    from services.platform.catalog import model_catalog
+    model = await AiModelConfig.create(name='Strict model', task_type=7, model='strict', supports_strict_output=True,
+        base_url='https://vendor.invalid', api_key='fixture', is_active=True)
+    catalog = await model_catalog()
+    entry = next(row for row in catalog if row['id'] == f'nv-{model.id}')
+    assert entry['strict_output'] is True

@@ -8,7 +8,7 @@ import AppStatusBadge from '@/components/AppStatusBadge.vue'
 import AppUnitPrice from '@/components/AppUnitPrice.vue'
 import { pricingRows, getDiscountRate, pixelTierLabel } from '@/features/platform/modelPricing'
 
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, useId } from 'vue'
 import {
   Bot,
   Eye,
@@ -104,7 +104,7 @@ const editingSyncedPricing = ref(false)
 const syncedVideoBillingUnit = ref<ModelPricing['billing_unit']>()
 const showApiKey = ref(false)
 const selectedCategoryId = ref<ModelCategoryId>('llm')
-const form = ref({ task_types: ['1'], name: '', base_url: '', api_key: '', model: '', api_protocol: 'openai_compatible' as ImageApiProtocol, image_model_type: '' as ImageModelType | '', video_model_type: '' as VideoGenerationModelType | '', concurrency: 1, supports_json_output: false, supports_tool_calls: false, max_context_characters: '' as number | '', thinking: '' as 'enabled' | 'disabled' | '', max_tokens: '' as number | '' })
+const form = ref({ task_types: ['1'], name: '', base_url: '', api_key: '', model: '', api_protocol: 'openai_compatible' as ImageApiProtocol, image_model_type: '' as ImageModelType | '', video_model_type: '' as VideoGenerationModelType | '', concurrency: 1, supports_json_output: false, supports_tool_calls: false, supports_strict_output: false, max_context_characters: '' as number | '', thinking: '', reasoning_effort: '', max_tokens: '' as number | '' })
 
 function configTaskTypes(item: AiModelConfig) {
   return item.task_types?.length ? item.task_types : [item.task_type]
@@ -135,11 +135,7 @@ const imageProtocolOptions = computed(() => {
   ]
   return allowed ? allowed.flatMap(value => options.filter(option => option.value === value)) : options
 })
-const thinkingOptions = computed(() => [
-  { value: '', label: tr('按模型默认') },
-  { value: 'enabled', label: tr('开启思考（enabled）') },
-  { value: 'disabled', label: tr('关闭思考（disabled）') },
-])
+const reasoningControlId = useId()
 
 const generationCapabilities = ref<GenerationCapabilities>({ image: {}, video: {} })
 const enhancementPricing = ref<NonNullable<ModelPricing['tiers']>>([])
@@ -287,7 +283,7 @@ function openCreate(categoryId: ModelCategoryId = selectedCategoryId.value) {
   pixelBilling.value = false
   selectedCategoryId.value = categoryId
   const category = categories.find(item => item.id === categoryId) ?? categories[0]
-  form.value = { task_types: [String(category.taskTypes[0])], name: '', base_url: category.id === 'video' ? 'https://ark.cn-beijing.volces.com/api/v3' : '', api_key: '', model: '', api_protocol: category.id === 'image' || category.id === 'video' ? 'volcengine_ark' : 'openai_compatible', image_model_type: category.id === 'image' ? 'seedream_5_lite' : '', video_model_type: category.id === 'video' ? 'seedance_2' : '', concurrency: 1, supports_json_output: false, supports_tool_calls: false, max_context_characters: '' as number | '', thinking: '' as 'enabled' | 'disabled' | '', max_tokens: '' as number | '' }
+  form.value = { task_types: [String(category.taskTypes[0])], name: '', base_url: category.id === 'video' ? 'https://ark.cn-beijing.volces.com/api/v3' : '', api_key: '', model: '', api_protocol: category.id === 'image' || category.id === 'video' ? 'volcengine_ark' : 'openai_compatible', image_model_type: category.id === 'image' ? 'seedream_5_lite' : '', video_model_type: category.id === 'video' ? 'seedance_2' : '', concurrency: 1, supports_json_output: false, supports_tool_calls: false, supports_strict_output: false, max_context_characters: '' as number | '', thinking: '', reasoning_effort: '', max_tokens: '' as number | '' }
   const asrPreset = generationCapabilities.value.audio_recognition
   asrPrice.value = asrPreset?.pricing?.price_per_minute ?? 0
   if (category.id === 'asr' && asrPreset) Object.assign(form.value, { base_url: asrPreset.base_url, model: asrPreset.model, api_protocol: asrPreset.api_protocol })
@@ -335,8 +331,10 @@ function openEdit(item: AiModelConfig) {
     concurrency: item.concurrency,
     supports_json_output: item.supports_json_output ?? false,
     supports_tool_calls: item.supports_tool_calls ?? false,
+    supports_strict_output: item.supports_strict_output ?? false,
     max_context_characters: item.max_context_characters ?? '',
     thinking: item.thinking ?? '',
+    reasoning_effort: item.reasoning_effort ?? '',
     max_tokens: item.max_tokens ?? '',
   }
   textPricing.value = item.pricing?.type === 'text'
@@ -404,9 +402,7 @@ function selectImageProtocol(value: string) {
   form.value.api_protocol = value as ImageApiProtocol
 }
 
-function selectThinking(value: string) {
-  form.value.thinking = value as 'enabled' | 'disabled' | ''
-}
+
 
 async function saveConfig() {
   if (!form.value.task_types.length) {
@@ -488,6 +484,7 @@ async function saveConfig() {
       task_types: taskTypes,
       max_context_characters: form.value.max_context_characters || null,
       thinking: form.value.thinking || null,
+      reasoning_effort: form.value.reasoning_effort || null,
       max_tokens: form.value.max_tokens || null,
       image_model_type: selectedCategoryId.value === 'image' ? form.value.image_model_type || null : null,
       video_model_type: selectedCategoryId.value === 'video' ? form.value.video_model_type || null : null,
@@ -653,17 +650,7 @@ onMounted(()=>{void load()})
               :placeholder="tr('留空表示不预检')"
             />
           </label>
-          <label v-if="selectedCategory.id === 'llm'">
-            <span>{{ tr('思考模式') }}</span>
-            <AppSelect
-              :model-value="form.thinking"
-              :options="thinkingOptions"
-              :ariaLabel="tr('思考模式')"
-              :menu-z-index="2000"
-              @update:model-value="selectThinking"
-            />
-            <small>{{ tr('深度思考/推理模型可关闭思考以提速并避免正文被 reasoning 挤占。') }}</small>
-          </label>
+
           <label v-if="selectedCategory.id === 'llm'">
             <span>{{ tr('最大输出 token') }}</span>
             <input
@@ -678,15 +665,43 @@ onMounted(()=>{void load()})
           <label v-if="selectedCategory.id === 'llm'" class="is-full json-capability-field">
             <span class="json-capability-copy">
               <strong>{{ tr('结构化 JSON 输出') }}</strong>
-              <small>{{ tr('开启后发送 response_format=json_object；关闭后仅使用提示词约束 JSON。') }}</small>
+              <small>{{ tr('仅标记模型的 JSON 能力，不改变或拦截客户端传入的参数。') }}</small>
             </span>
             <input v-model="form.supports_json_output" type="checkbox" role="switch" :aria-label="tr('结构化 JSON 输出')" />
           </label>
         </div>
 
+        <div v-if="selectedCategory.id === 'llm'" class="model-form-grid reasoning-controls">
+          <p class="reasoning-note">{{ tr('模型默认值仅在客户端未传入时使用。') }}</p>
+          <label :for="`${reasoningControlId}-thinking`">
+            <span :id="`${reasoningControlId}-thinking-label`">{{ tr('思考模式（thinking）') }}</span>
+            <input :id="`${reasoningControlId}-thinking`" v-model.trim="form.thinking" name="model-thinking" :aria-labelledby="`${reasoningControlId}-thinking-label`" :aria-describedby="`${reasoningControlId}-thinking-help`"
+              :list="`${reasoningControlId}-thinking-values`" :placeholder="tr('按模型默认，不发送参数')" maxlength="64" autocomplete="off" />
+            <datalist :id="`${reasoningControlId}-thinking-values`">
+              <option value="enabled">{{ tr('开启思考') }}</option>
+              <option value="disabled">{{ tr('关闭思考') }}</option>
+              <option v-for="level in ['low', 'medium', 'high', 'max']" :key="level" :value="level" />
+            </datalist>
+            <small :id="`${reasoningControlId}-thinking-help`">{{ tr('enabled/disabled 发送 thinking.type；其他值作为顶层 thinking 原样发送。') }}</small>
+          </label>
+          <label :for="`${reasoningControlId}-effort`">
+            <span :id="`${reasoningControlId}-effort-label`">{{ tr('推理强度（reasoning_effort）') }}</span>
+            <input :id="`${reasoningControlId}-effort`" v-model.trim="form.reasoning_effort" name="model-reasoning-effort" :aria-labelledby="`${reasoningControlId}-effort-label`" :aria-describedby="`${reasoningControlId}-effort-help`"
+              :list="`${reasoningControlId}-effort-values`" :placeholder="tr('按模型默认，不发送参数')" maxlength="64" autocomplete="off" />
+            <datalist :id="`${reasoningControlId}-effort-values`">
+              <option v-for="level in ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']" :key="level" :value="level" />
+            </datalist>
+            <small :id="`${reasoningControlId}-effort-help`">{{ tr('可选常用档位，也可输入上游支持的其他值。不同模型的支持范围不同。') }}</small>
+          </label>
+        </div>
+
+        <label v-if="selectedCategoryId === 'llm'" class="model-toggle">
+          <input v-model="form.supports_strict_output" type="checkbox" role="switch" />
+          <span>{{ tr('支持严格结构化输出（模型目录标记）') }}</span>
+        </label>
         <label v-if="selectedCategoryId === 'llm' && !editingSyncedPricing" class="model-toggle">
           <input v-model="form.supports_tool_calls" type="checkbox" role="switch" :aria-label="tr('多轮工具调用')" />
-          <span>{{ tr('支持多轮工具调用（创作助手必需）') }}</span>
+          <span>{{ tr('支持工具调用（模型目录标记）') }}</span>
         </label>
         <section v-if="selectedCategoryId === 'enhancement'" class="pricing-editor">
           <span class="pricing-title">{{ tr('增强费用（元 / 输出分钟）') }}</span>
@@ -771,6 +786,9 @@ onMounted(()=>{void load()})
 </template>
 
 <style scoped>
+.reasoning-controls { margin-block: 14px; }
+.reasoning-note { grid-column: 1 / -1; margin: 0; color: var(--app-text-secondary); font-size: 12px; }
+.reasoning-controls input:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
 .model-settings-page { display:flex; flex-direction:column; height:100%; min-height:100%; color:var(--app-text); }
 .model-settings-page :deep(.console-page-header) { flex-shrink:0; }
 .official-badge { color:var(--app-text-secondary); font-size:12px; }
@@ -865,4 +883,8 @@ onMounted(()=>{void load()})
  .model-form-grid label,.model-form-grid label.is-full { grid-column:1; }
 }
 .enhancement-resolution-options{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}.enhancement-resolution-options label{display:flex;gap:6px;align-items:center}.enhancement-resolution-options input{width:auto;min-height:auto}
+
+.model-form-grid.reasoning-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.model-form-grid.reasoning-controls > label { grid-column: auto; }
+@media (max-width: 600px) { .model-form-grid.reasoning-controls { grid-template-columns: minmax(0, 1fr); } }
 </style>

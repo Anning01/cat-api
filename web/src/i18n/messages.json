@@ -1,4 +1,21 @@
 {
+  "model_reasoning": {
+    "仅标记模型的 JSON 能力，不改变或拦截客户端传入的参数。": "Catalog label only. Client parameters are forwarded unchanged.",
+    "支持工具调用（模型目录标记）": "Supports tools (model catalog label)",
+    "严格结构化输出": "Strict structured output",
+    "未标记 JSON 能力": "JSON capability not labeled",
+    "模型默认值仅在客户端未传入时使用。": "Model defaults apply only when the client omits the parameter.",
+
+    "支持严格结构化输出（模型目录标记）": "Supports strict structured output (model catalog label)",
+      "思考模式（thinking）": "Thinking mode (thinking)",
+      "推理强度（reasoning_effort）": "Reasoning effort (reasoning_effort)",
+      "按模型默认，不发送参数": "Use model default; omit parameter",
+      "开启思考": "Enable thinking",
+      "关闭思考": "Disable thinking",
+      "enabled/disabled 发送 thinking.type；其他值作为顶层 thinking 原样发送。": "enabled/disabled use thinking.type; other values are sent unchanged as top-level thinking.",
+      "可选常用档位，也可输入上游支持的其他值。不同模型的支持范围不同。": "Choose a suggested level or enter another value supported upstream. Support varies by model.",
+      "本地调用设置与价格": "Local request settings and prices"
+  },
   "common": {
     "单图生成": "Single image",
     "图层拆分": "Layer decomposition",

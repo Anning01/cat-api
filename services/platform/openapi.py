@@ -90,7 +90,7 @@ def public_openapi(app):
         "legacy_id":string("兼容和授权使用的配置 ID",pattern=r"^nv-[1-9][0-9]{0,9}$"),"object":string(),"owned_by":string(),"name":string(),"created":integer,
         "kinds":array(string()),"task_types":array(integer),"image_model_type":{"type":["string","null"],"examples":["seedream_5_5"]},
         "video_model_type":{"type":["string","null"]},"pricing":pricing,"concurrency":integer,"tool_calls":{"type":"boolean"},
-        "json_output":{"type":"boolean"},"reference_image_urls":{"type":"boolean"},
+        "json_output":{"type":"boolean"},"strict_output":{"type":"boolean"},"reference_image_urls":{"type":"boolean"},
         "native_api":obj({"submit":string(),"query":string()})}, required=["id","name","pricing"])
     schemas.update({
         "PlatformError":obj({"error":obj({"message":string(),"type":string(),"param":{"type":["string","null"]},"code":{"type":["string","null"]}})},required=["error"]),
@@ -189,6 +189,7 @@ def public_openapi(app):
             responses["307"] = {"description":"跳转至供应商视频下载地址，不通过平台转发视频文件。",
                 "headers":{"Location":{"description":"成片 URL","schema":url},**deepcopy(headers)}}
         if path == "/chat/completions":
+            operation['description'] = operation.get('description', '') + '\n客户端显式参数及扩展字段原样透传，支持的 thinking／reasoning_effort 格式与档位由上游模型决定；模型能力标签不拦截请求。仅在客户端省略参数时使用管理员配置的默认思考参数。'
             responses["200"]["content"]["text/event-stream"] = {"schema":string("上游 SSE 原始事件，保留心跳、扩展字段和 [DONE]；需要计费用量时显式发送 include_usage=true。"),
                 "example":'data: {"id":"chatcmpl-example","object":"chat.completion.chunk","model":"vendor-model","choices":[{"index":0,"delta":{"content":"你好"}}]}\n\ndata: [DONE]\n\n'}
         if "/auc/bigmodel/" in path:
@@ -202,7 +203,9 @@ def public_openapi(app):
                     "text/plain":{"schema":{"type":"string"}}}}
     request_examples = {
         "/chat/completions":{"非流式":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}]}},
-            "流式与用量":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}],"stream":True,"stream_options":{"include_usage":True}}}},
+            "流式与用量":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}],"stream":True,"stream_options":{"include_usage":True}}},
+            "上游推理参数":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}],"reasoning_effort":"low","thinking":{"type":"enabled"}}},
+            "顶层 thinking 字符串":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}],"thinking":"low"}}},
         "/images/generations":{"URL 图片":{"value":{"model":"nv-42","prompt":"山中庭院","size":"1024x1024","n":1,"response_format":"url"}}},
         "/api/v3/images/generations":{"Seedream 5.5":{"value":{"model":"nv-42","prompt":"保持参考图人物特征","size":"2048x1152","image":["https://cdn.example/reference.png"],"n":1,"response_format":"url"}}},
         "/images/edits":{"URL 参考图与蒙版":{"value":{"model":"nv-42","prompt":"更换背景","images":[{"image_url":"https://cdn.example/reference.png"}],"mask":{"image_url":"https://cdn.example/mask.png"},"response_format":"url"}}},

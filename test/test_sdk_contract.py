@@ -99,6 +99,59 @@ async def test_chat_alias_and_official_optional_fields_are_lossless(sdk_api):
     assert "logprobs" in raw["choices"][0] and raw["choices"][0]["logprobs"] is None
 
 
+@pytest.mark.parametrize('thinking,effort', [
+    ({'type': 'enabled', 'budget_tokens': 2048}, 'low'), ('low', 'max'),
+    ('provider-thinking', 'provider-effort'), (None, None),
+    (True, {'level': 'future', 'budget': 32}),
+])
+async def test_chat_reasoning_and_nested_extensions_are_forwarded_unchanged(sdk_api, thinking, effort):
+    sdk, state, _ = sdk_api
+    params = {'thinking': thinking, 'reasoning_effort': effort,
+        'future_parameter': {'nested': [1, False, None, {'mode': 'future'}]},
+        'verbosity': 'custom', 'metadata': {'purpose': 'passthrough'},
+        'max_tokens': 128, 'max_completion_tokens': 256, 'stream_options': {'include_usage': False}}
+    await sdk.chat.completions.create(model='official-chat', messages=[{'role': 'user', 'content': 'hello'}], extra_body=params)
+    sent = json.loads(state.seen[0].content)
+    assert all(sent[name] == value for name, value in params.items())
+
+
+async def test_chat_applies_model_defaults_only_when_client_omits_parameters(sdk_api):
+    sdk, state, models = sdk_api
+    await AiModelConfig.filter(id=models[0].id).update(thinking='enabled', reasoning_effort='high')
+    await sdk.chat.completions.create(model='official-chat', messages=[{'role':'user','content':'hello'}])
+    first = json.loads(state.seen[-1].content)
+    assert first['thinking'] == {'type': 'enabled'} and first['reasoning_effort'] == 'high'
+    await sdk.chat.completions.create(model='official-chat', messages=[{'role':'user','content':'hello'}],
+        extra_body={'thinking':'low', 'reasoning_effort':'max'})
+    second = json.loads(state.seen[-1].content)
+    assert second['thinking'] == 'low' and second['reasoning_effort'] == 'max'
+    await sdk.chat.completions.create(model='official-chat', messages=[{'role':'user','content':'hello'}],
+        extra_body={'thinking': None, 'reasoning_effort': None})
+    third = json.loads(state.seen[-1].content)
+    assert third['thinking'] is None and third['reasoning_effort'] is None
+
+
+async def test_chat_capability_labels_do_not_block_openai_parameters(sdk_api):
+    sdk, state, models = sdk_api
+    await AiModelConfig.filter(id=models[0].id).update(supports_tool_calls=False, supports_json_output=False)
+    extras = {'response_format': {'type': 'json_schema', 'json_schema': {'name': 'result', 'strict': True,
+        'schema': {'type': 'object', 'properties': {'answer': {'type': 'string'}}, 'required': ['answer'], 'additionalProperties': False}}},
+        'tools': [{'type': 'function', 'function': {'name': 'lookup', 'parameters': {'type':'object','properties':{}}}}],
+        'stream_options': {'include_usage': True, 'future_option': {'nested': ['value']}},
+        'future_parameter': {'arbitrary': [1, None, True]}, 'extra_headers': {'x-future-body-field': 'not-a-header'}}
+    event = {'id':'chatcmpl-stream', 'object':'chat.completion.chunk', 'created':1, 'model':'official-chat',
+        'choices':[{'index':0,'delta':{'content':'ok'},'finish_reason':'stop'}],
+        'usage':{'prompt_tokens':10,'completion_tokens':2,'total_tokens':12}}
+    state.failure = (200, ('data: '+json.dumps(event)+'\n\ndata: [DONE]\n\n').encode(), {'content-type':'text/event-stream'})
+    # The SDK-only envelope is flattened before it reaches Cat API.
+    stream = await sdk.chat.completions.create(model='official-chat', messages=[{'role':'user','content':'hello'}],
+        stream=True, extra_body=extras)
+    assert [chunk async for chunk in stream]
+    sent = json.loads(state.seen[-1].content)
+    assert all(sent[name] == value for name, value in extras.items())
+    assert 'x-future-body-field' not in state.seen[-1].headers
+
+
 @pytest.mark.parametrize("endpoint", ["chat", "image", "video"])
 async def test_readable_and_legacy_ids_forward_identical_requests(sdk_api, endpoint):
     from services.platform.model_aliases import ensure_model_aliases

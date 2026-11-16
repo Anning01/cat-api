@@ -11915,6 +11915,33 @@
                       "include_usage": true
                     }
                   }
+                },
+                "上游推理参数": {
+                  "value": {
+                    "model": "deepseek-flash",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "你好"
+                      }
+                    ],
+                    "reasoning_effort": "low",
+                    "thinking": {
+                      "type": "enabled"
+                    }
+                  }
+                },
+                "顶层 thinking 字符串": {
+                  "value": {
+                    "model": "deepseek-flash",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "你好"
+                      }
+                    ],
+                    "thinking": "low"
+                  }
                 }
               }
             }
@@ -12787,7 +12814,7 @@
           }
         ],
         "x-apifox-folder": "LLM/对话与流式输出",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。\n客户端显式参数及扩展字段原样透传，支持的 thinking／reasoning_effort 格式与档位由上游模型决定；模型能力标签不拦截请求。仅在客户端省略参数时使用管理员配置的默认思考参数。"
       }
     },
     "/api/v3/auc/bigmodel/submit": {
@@ -22029,9 +22056,7 @@
           "stream_options": {
             "anyOf": [
               {
-                "additionalProperties": {
-                  "type": "boolean"
-                },
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -22137,27 +22162,12 @@
             "title": "Presence Penalty"
           },
           "reasoning_effort": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reasoning Effort"
+            "title": "Reasoning Effort",
+            "description": "按上游协议原样透传，支持的档位由所选模型决定"
           },
           "thinking": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Thinking"
+            "title": "Thinking",
+            "description": "按上游协议原样透传，可为字符串或对象等 JSON 值"
           },
           "tools": {
             "anyOf": [
@@ -22936,6 +22946,9 @@
                   "type": "boolean"
                 },
                 "json_output": {
+                  "type": "boolean"
+                },
+                "strict_output": {
                   "type": "boolean"
                 },
                 "reference_image_urls": {

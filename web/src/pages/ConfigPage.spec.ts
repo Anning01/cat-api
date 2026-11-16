@@ -3,7 +3,7 @@ import { mount,flushPromises } from '@vue/test-utils'
 import ConfigPage from './ConfigPage.vue'
 import { api } from '@/api'
 import { i18n,setLocale } from '@/i18n'
-vi.mock('@/api',()=>({api:{configs:vi.fn(),enums:vi.fn(),generationCapabilities:vi.fn()}}))
+vi.mock('@/api',()=>({api:{configs:vi.fn(),enums:vi.fn(),generationCapabilities:vi.fn(),updateConfig:vi.fn()}}))
 it('renders retained models after all settings dependencies load and switches categories',async()=>{
   setLocale('zh')
   vi.mocked(api.configs).mockResolvedValue({code:0,message:'ok',data:{items:[
@@ -27,4 +27,30 @@ it('renders retained models after all settings dependencies load and switches ca
   expect(wrapper.text()).toContain('现有视频模型')
   expect(api.configs).toHaveBeenCalledOnce();expect(api.enums).toHaveBeenCalledOnce();expect(api.generationCapabilities).toHaveBeenCalledOnce()
   wrapper.unmount()
+})
+
+it('saves suggested or custom reasoning values without restricting provider levels', async () => {
+  setLocale('zh')
+  vi.clearAllMocks()
+  vi.mocked(api.configs).mockResolvedValue({code:0,message:'',data:{items:[
+    {id:1,name:'推理模型',task_type:7,task_types:[7],model:'chat',api_protocol:'openai_compatible',is_active:true,
+      concurrency:1,supports_json_output:true,thinking:'enabled',reasoning_effort:null,
+      base_url:'https://vendor.invalid',api_key:'fixture',pricing:{type:'text',currency:'CNY',input_price_per_1m:1,output_price_per_1m:2},created_at:'',updated_at:''},
+  ],pagination:{total:1,page:1,page_size:100,pages:1}}})
+  vi.mocked(api.updateConfig).mockResolvedValue({data:{}} as never)
+  const wrapper=mount(ConfigPage,{global:{plugins:[i18n]}})
+  try {
+    await flushPromises()
+    await wrapper.get('[aria-label="编辑配置"]').trigger('click')
+    await flushPromises()
+    const form=document.body.querySelector<HTMLFormElement>('form.model-modal')!
+    const thinking=form.querySelector<HTMLInputElement>('[name="model-thinking"]')!
+    const effort=form.querySelector<HTMLInputElement>('[name="model-reasoning-effort"]')!
+    expect(thinking.value).toBe('enabled')
+    thinking.value='low';thinking.dispatchEvent(new Event('input',{bubbles:true}))
+    effort.value='provider-level';effort.dispatchEvent(new Event('input',{bubbles:true}))
+    form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))
+    await flushPromises()
+    expect(api.updateConfig).toHaveBeenCalledWith(1,expect.objectContaining({thinking:'low',reasoning_effort:'provider-level'}))
+  } finally { wrapper.unmount() }
 })

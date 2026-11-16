@@ -19,7 +19,7 @@ async def ensure_billing_integration_schema() -> None:
     """Add platform accounting fields while preserving historical records."""
     connection = Tortoise.get_connection("default")
     definitions = {
-        "ai_model_configs": {"public_alias":"VARCHAR(200)"},
+        "ai_model_configs": {"public_alias":"VARCHAR(200)", "supports_strict_output": "BOOL NOT NULL DEFAULT FALSE"},
         "general_configs": {"api_docs_url":"VARCHAR(2048)"},
         "model_usage_records": {
             "account_user_id": "INT",
@@ -82,3 +82,26 @@ async def ensure_recharge_refund_columns() -> None:
             "ALTER TABLE IF EXISTS recharge_orders ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMP WITH TIME ZONE;"
             "ALTER TABLE IF EXISTS recharge_orders ADD COLUMN IF NOT EXISTS refund_reason VARCHAR(255) DEFAULT '';"
         )
+
+
+async def ensure_model_reasoning_schema() -> None:
+    connection = Tortoise.get_connection('default')
+    if connection.capabilities.dialect == 'sqlite':
+        columns = await connection.execute_query_dict('PRAGMA table_info(ai_model_configs)')
+        if not columns:
+            return
+        names = {column['name'] for column in columns}
+        for name in ('thinking', 'reasoning_effort'):
+            if name not in names:
+                await connection.execute_script(f'ALTER TABLE ai_model_configs ADD COLUMN {name} VARCHAR(64);')
+    else:
+        await connection.execute_script(
+            'ALTER TABLE IF EXISTS ai_model_configs ADD COLUMN IF NOT EXISTS thinking VARCHAR(64);'
+            'ALTER TABLE IF EXISTS ai_model_configs ADD COLUMN IF NOT EXISTS reasoning_effort VARCHAR(64);')
+        columns = await connection.execute_query_dict(
+            "SELECT character_maximum_length FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND table_name = 'ai_model_configs' "
+            "AND column_name = 'thinking' AND data_type = 'character varying'")
+        width = columns[0]['character_maximum_length'] if columns else None
+        if width is not None and width < 64:
+            await connection.execute_script('ALTER TABLE ai_model_configs ALTER COLUMN thinking TYPE VARCHAR(64);')

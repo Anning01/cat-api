@@ -56,6 +56,8 @@ npm run dev
 
 生成成功不依赖即时计费成功；异常在 `/v1/requests/{X-Cat-Request-Id}` 查询，已取得用量的结算会重试，缺少可确认用量的进入 review。文本流式调用建议显式 `stream_options.include_usage=true`，平台不替客户端改写此选项。
 
+文本请求保留客户端显式参数及扩展字段，包括 `reasoning_effort`、对象或字符串形式的 `thinking`。档位和参数格式由上游模型决定，平台不统一枚举、改写或按能力标签拦截。模型配置可设置默认思考参数，仅在客户端没有提供对应参数时补入；显式值（包括 `null`）优先。身份认证、模型路由、额度和媒体边界继续适用。
+
 ## Apifox 文档集成
 
 公开定义地址为 `/v1/openapi.json`（OpenAPI 3.1），下载入口 `/api/platform/openapi-export`；仓库导入文件为 `docs/cat-api-openapi.json`。仅导出公开模型 API，不含管理接口、运行中的模型配置或真实凭证。
