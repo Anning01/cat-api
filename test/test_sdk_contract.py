@@ -369,6 +369,17 @@ async def test_unconfigured_output_limit_is_omitted_and_completion_limit_is_forw
         assert sent["max_completion_tokens"] == limit
 
 
+@pytest.mark.parametrize("explicit", [{}, {"max_tokens": 16384}, {"max_completion_tokens": 32768}])
+async def test_configured_output_limit_reaches_provider_without_overriding_request(sdk_api, explicit):
+    sdk, state, models = sdk_api
+    await AiModelConfig.filter(id=models[0].id).update(max_tokens=128000)
+    await sdk.chat.completions.create(model=f"nv-{models[0].id}",
+        messages=[{"role": "user", "content": "Complete all chapter assets"}], **explicit)
+    sent = json.loads(state.seen[-1].content)
+    expected = explicit or {"max_tokens": 128000}
+    assert {key: sent[key] for key in ("max_tokens", "max_completion_tokens") if key in sent} == expected
+
+
 @pytest.mark.parametrize("finish_reason", ["stop", "length"])
 @pytest.mark.parametrize("limit", [None, 65536])
 async def test_chat_stream_preserves_long_content_reasoning_and_provider_finish(sdk_api, finish_reason, limit):
@@ -545,3 +556,33 @@ async def test_studio_capabilities_leave_legacy_and_external_clients_independent
         await client.images.generate(model=target, prompt="test")
     assert failure.value.status_code == 409
     assert not state.seen
+
+
+@pytest.mark.parametrize("protocol", ["volcengine_ark", "openai_compatible", "openrouter_compatible"])
+@pytest.mark.parametrize("explicit", [{}, {"watermark": True}, {"watermark": False}])
+@pytest.mark.parametrize("with_reference", [False, True])
+async def test_image_watermark_defaults_only_for_ark(sdk_api, protocol, explicit, with_reference):
+    from services.billing.catalog import IMAGE_PRICING
+
+    sdk, state, (_, image, _) = sdk_api
+    updates = {"api_protocol": protocol}
+    if protocol == "volcengine_ark":
+        updates.update(image_model_type="seedream_5_5", pricing=IMAGE_PRICING["seedream_5_5"])
+    await AiModelConfig.filter(id=image.id).update(**updates)
+    state.failure = 200, json.dumps({"data": [
+        {"url": "https://cdn.example/result.png", "size": "2048x2048"}
+    ]}).encode(), {"content-type": "application/json"}
+    extra = dict(explicit)
+    if with_reference:
+        extra["image"] = ["https://cdn.example/reference.png"]
+    await sdk.images.generate(model=image.model, prompt="A cat", extra_body=extra)
+    sent = json.loads(state.seen[-1].content)
+    if explicit:
+        assert sent["watermark"] is explicit["watermark"]
+    elif protocol == "volcengine_ark":
+        assert sent["watermark"] is False
+    else:
+        assert "watermark" not in sent
+    reference_field = {"volcengine_ark": "image", "openai_compatible": "images",
+                       "openrouter_compatible": "input_references"}[protocol]
+    assert bool(sent.get(reference_field)) is with_reference

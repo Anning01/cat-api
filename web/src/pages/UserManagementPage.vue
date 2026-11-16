@@ -29,7 +29,7 @@ const creditUser = ref<AccountRow>(), creditAmount = ref(''), creditNote = ref('
 const createOpen = ref(false), username = ref(''), nickname = ref(''), password = ref(''), createBusy = ref(false), createError = ref('')
 let epoch = 0, detailEpoch = 0
 const tabs = [{id:'profile',label:'基本资料'},{id:'transactions',label:'余额流水'},{id:'billing',label:'消费记录'},{id:'orders',label:'充值订单'},{id:'events',label:'操作记录'}]
-const actions: Record<string,string> = { create:'创建用户', enable:'启用账户', disable:'停用账户', close:'注销访问', topup:'管理员增额' }
+const actions: Record<string,string> = { create:'创建用户', enable:'启用账户', disable:'停用账户', close:'注销访问', topup:'管理员增额', phone_bind:'绑定手机号', wechat_bind:'绑定微信' }
 const transactionLabels: Record<string,string> = { topup:'入账', consume:'消费', adjust:'调整', refund:'退款' }
 const previewBalance = computed(() => Number(creditUser.value?.balance || 0) + Number(creditAmount.value || 0))
 async function load() {

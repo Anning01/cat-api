@@ -47,6 +47,13 @@ VIDEO_PRICING: dict[str, dict] = {
         "prices": {"480p": 70.00, "720p": 70.00, "1080p": 77.00},
         "video_reference_prices": {"480p": 42.00, "720p": 42.00, "1080p": 46.00},
     },
+    # https://console.volcengine.com/ark/region:cn-beijing/docs/model-pricing (2026-11-15)
+    "seedance_2_5_flash": {
+        "type": "video",
+        "currency": "CNY",
+        "prices": {"480p": 46.00, "720p": 46.00},
+        "video_reference_prices": {"480p": 28.00, "720p": 28.00},
+    },
     "minimax_h3": {
         "type": "video",
         "currency": "CNY",

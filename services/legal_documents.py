@@ -85,7 +85,13 @@ def sections(kind: Literal["terms", "privacy"], profile: LegalProfile) -> list[t
         "你通过器灵完成微信授权后，Cat API向器灵核验账号，使用器灵账号标识建立账号关联，并取得昵称用于建立账号。Cat API使用自己的会话凭证维持登录和校验权限。"
         if settings.AUTH_PROVIDER == "qiling" else
         "你通过本部署的账号密码登录。我们保存用户名、昵称和不可逆的密码哈希，使用会话凭证维持登录及校验权限。"
+        if settings.AUTH_PROVIDER == "password" else
+        "你通过手机验证码登录本平台，我们使用自己的会话凭证维持登录和校验权限。"
     )
+    if settings.PHONE_AUTH_ENABLED:
+        sign_in += "你也可以通过手机验证码登录或绑定手机号。手机号用于账号识别与短信验证；我们保存手机号的带密钥摘要和脱敏展示信息，将手机号和验证码发送给阿里云短信服务用于投递。验证码短期有效且仅可使用一次，验证通过不会自动合并其他账号。"
+    if settings.WECHAT_LOGIN_ENABLED:
+        sign_in += "使用本平台公众号微信登录时，我们向微信核验授权，并保存公众号标识与微信用户标识的摘要用于匹配已绑定账号，不主动获取微信昵称或头像。首次关联需要验证手机号，不按微信昵称或其他平台账号编号合并账号。"
     if kind == "terms":
         return [
             ("服务提供者与适用范围", [contact, "Cat API 提供文本、图片和视频等模型的开放接口、调用计量及账户充值服务。本协议适用于本运营者提供的在线服务。开源代码的使用、修改及再分发适用代码仓库附带的开源许可证。"]),

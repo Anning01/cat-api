@@ -11,6 +11,7 @@ import AppAvatar from '@/components/AppAvatar.vue'
 import AppStatusBadge from '@/components/AppStatusBadge.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import QilingLogin from '@/features/auth/QilingLogin.vue'
+import PhoneLogin from '@/features/auth/PhoneLogin.vue'
 import { useAuthStore } from '@/features/auth/authStore'
 import { API_BASE, getAuthToken, request } from '@/api'
 import { tr } from '@/i18n'
@@ -21,6 +22,7 @@ import type { AccountRow, AccountTable } from '@/features/account/types'
 
 const props=defineProps<{section:'profile'|'orders'|'billing'}>()
 const auth=useAuthStore()
+async function phoneBound(){await auth.logout();window.location.hash='#/login?method=phone'}
 const heading=computed(()=>({profile:{title:'个人中心',description:'管理个人资料、账户余额与偏好。'},orders:{title:'充值订单',description:'查看充值、到账与退款状态。'},billing:{title:'消费账单',description:'核对实际扣费、用量与账户余额。'}}[props.section]))
 const name=computed(()=>auth.user?.nickname||auth.user?.username||'')
 const data=ref<AccountTable>(),loading=ref(false),error=ref(''),page=ref(1),pageSize=ref(20)
@@ -118,9 +120,11 @@ const editDialog=ref<InstanceType<typeof AppDialog>>()
      <section class="profile-surface profile-settings">
       <h2>{{ tr('偏好与安全') }}</h2>
       <ConsolePreferences expanded/>
-      <div class="profile-setting-row"><div><strong>{{ tr('登录方式') }}</strong><p>{{ tr(auth.provider==='password'?'密码登录':'器灵扫码登录') }}</p></div><AppStatusBadge>{{ tr(auth.qilingBound?'已绑定器灵':'独立账户') }}</AppStatusBadge></div>
+      <div v-if="auth.wechatEnabled" class="profile-setting-row"><div><strong>{{tr('微信登录')}}</strong><p>{{tr(auth.wechatBound?'微信已绑定，可直接扫码登录。':'首次微信登录时验证已绑定手机号，即可关联当前账号。')}}</p></div></div>
+      <div class="profile-setting-row"><div><strong>{{ tr('登录方式') }}</strong><p>{{ auth.phoneMasked || tr(auth.provider==='password'?'密码登录':'器灵扫码登录') }}</p></div><AppStatusBadge>{{ tr(auth.phoneMasked?'已绑定手机':auth.qilingBound?'已绑定器灵':'独立账户') }}</AppStatusBadge></div>
+      <section v-if="auth.phoneEnabled&&!auth.phoneMasked" class="phone-binding"><h3>{{ tr('绑定手机号') }}</h3><PhoneLogin bind @bound="phoneBound"/></section>
       <form v-if="auth.provider==='password'" class="profile-password-form" @submit.prevent="changePassword"><label :for="formId+'-field-2'">{{ tr('当前密码') }}<input name="field-2" :id="formId+'-field-2'" v-model="oldPassword" type="password" autocomplete="current-password" required/></label><label :for="formId+'-field-3'">{{ tr('新密码') }}<input name="field-3" :id="formId+'-field-3'" v-model="newPassword" type="password" autocomplete="new-password" minlength="8" required/></label><AppButton type="submit" variant="secondary" :loading="profileBusy">{{ tr('修改密码') }}</AppButton></form>
-      <div v-if="auth.provider==='qiling'&&!auth.qilingBound" class="profile-setting-row"><div><strong>{{ tr('器灵账号') }}</strong><p>{{ tr('绑定后可使用器灵扫码登录此账户，保留现有余额和记录。') }}</p></div><AppButton size="sm" variant="secondary" @click="bindOpen=true">{{ tr('绑定账号') }}</AppButton></div>
+      <div v-if="auth.provider==='qiling'&&!auth.qilingBound&&!auth.phoneMasked" class="profile-setting-row"><div><strong>{{ tr('器灵账号') }}</strong><p>{{ tr('绑定后可使用器灵扫码登录此账户，保留现有余额和记录。') }}</p></div><AppButton size="sm" variant="secondary" @click="bindOpen=true">{{ tr('绑定账号') }}</AppButton></div>
       <div class="profile-setting-row profile-key-row"><strong>API Key</strong><RouterLink to="/platform/keys">{{ tr('管理 API Key') }} <ArrowUpRight :size="14" aria-hidden="true"/></RouterLink></div>
       <p v-if="profileError&&!editOpen" role="alert" class="console-error">{{ profileError }}</p>
      </section>

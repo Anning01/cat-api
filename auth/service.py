@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from utils.messages import localized_message
 from utils.enums import UserStatusEnum
 
-from auth.models import QilingIdentity, User, UserSession
+from auth.models import PhoneIdentity, QilingIdentity, User, UserSession, WechatIdentity
 from auth.schemas import LoginIn, RegisterIn, LoginOut, MeOut, UserOut
 from auth.security import hash_password, verify_password, hash_token, new_session_token
 from config import settings
@@ -45,9 +45,12 @@ class AuthService:
 
     async def me(self, user: User) -> MeOut:
         from services.balance import get_balance, total_consumed
+        phone = await PhoneIdentity.get_or_none(user_id=user.id)
         return MeOut(user=UserOut.model_validate(user), is_super_admin=user.is_super_admin,
                      balance=await get_balance(user.id), total_cost=await total_consumed(user.id),
-                     qiling_bound=await QilingIdentity.filter(user_id=user.id).exists())
+                     qiling_bound=await QilingIdentity.filter(user_id=user.id).exists(),
+                     phone_masked=phone.masked_phone if phone else None,
+                     wechat_bound=await WechatIdentity.filter(user_id=user.id,app_id=settings.WECHAT_LOGIN_APP_ID).exists())
 
     async def logout(self, token: str | None) -> None:
         if token:

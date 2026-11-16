@@ -74,6 +74,8 @@ class MeOut(BaseModel):
     is_super_admin: bool = False
     total_cost: float = 0.0
     qiling_bound: bool = False
+    phone_masked: str | None = None
+    wechat_bound: bool = False
 
 
 class LoginOut(BaseModel):

@@ -26,7 +26,7 @@ from services.video.capabilities import capabilities_for, validate_selection
 from utils.enums import TaskStatusEnum
 
 logger = logging.getLogger(__name__)
-IMAGE_REFERENCE_FORMATS = {'seedance_2': '@图片{}', 'seedance_2_mini': '@图片{}', 'seedance_2_fast': '@图片{}', 'seedance_2_5': '@图片{}', 'minimax_h3': '<Picture {}>', 'minimax_h3_autodl': '<Picture {}>', 'wan_3': '图{}'}
+IMAGE_REFERENCE_FORMATS = {'seedance_2': '@图片{}', 'seedance_2_mini': '@图片{}', 'seedance_2_fast': '@图片{}', 'seedance_2_5': '@图片{}', 'seedance_2_5_flash': '@图片{}', 'minimax_h3': '<Picture {}>', 'minimax_h3_autodl': '<Picture {}>', 'wan_3': '图{}'}
 
 
 class Reference(BaseModel):

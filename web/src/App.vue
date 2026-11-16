@@ -67,7 +67,7 @@ watch(() => route.fullPath, () => {
           <RouterLink v-else class="console-login-link" to="/login">{{ tr('登录') }}</RouterLink>
         </div>
       </header>
-      <div id="main-content" class="console-content"><RouterView/></div>
+      <div id="main-content" class="console-content"><p v-if="auth.isLoggedIn&&auth.phoneEnabled&&!auth.phoneMasked&&route.path!=='/profile'" class="phone-migration-reminder" role="status">{{ tr('请绑定手机号，后续将使用手机号登录。') }} <RouterLink to="/profile">{{ tr('前往绑定') }}</RouterLink></p><RouterView/></div>
     </div>
     <RechargeDialog v-if="auth.isLoggedIn" v-model="rechargeOpen"/>
     <div class="console-notices" aria-live="polite"><AppNotice v-for="item in notice.state.notices" :key="item.id" :item="item"/></div>
@@ -75,3 +75,7 @@ watch(() => route.fullPath, () => {
   </div>
   </ElConfigProvider>
 </template>
+<style scoped>
+.phone-migration-reminder{margin:16px 24px 0;padding:12px 16px;background:var(--app-surface-muted);border:1px solid var(--app-border);border-radius:8px;font-size:13px;line-height:1.6}
+.phone-migration-reminder a{margin-inline-start:8px;text-decoration:underline;text-underline-offset:3px}
+</style>

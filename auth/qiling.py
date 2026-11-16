@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 from tortoise.exceptions import IntegrityError
 from tortoise.transactions import in_transaction
 
-from auth.models import QilingIdentity, QilingLoginAttempt, User
+from auth.models import PhoneIdentity, QilingIdentity, QilingLoginAttempt, User
 from auth.security import hash_token, new_session_token
 from auth.service import auth_service
 from config import settings
@@ -63,6 +63,8 @@ async def start(user: User | None = None) -> dict:
         raise HTTPException(404, msg("登录方式不可用"))
     if user and await QilingIdentity.filter(user_id=user.id).exists():
         raise HTTPException(409, msg("当前账号已绑定器灵"))
+    if user and await PhoneIdentity.filter(user_id=user.id).exists():
+        raise HTTPException(409, msg("此账号已迁移，请使用手机验证码登录"))
     payload = await _request("POST", "/api/v1/auth/wechat/session", json={"redirect_path": "/"})
     try:
         upstream = UpstreamAttempt.model_validate(payload)
@@ -116,7 +118,11 @@ async def poll(token: str, user: User | None = None) -> dict:
                 await QilingIdentity.create(issuer=attempt.issuer, subject=identity.sub, user=user)
                 return {"status": "bound"}
             if linked:
-                target = linked.user
+                # Serialize with phone binding so an in-flight scan cannot issue a
+                # new legacy session after binding has revoked the old sessions.
+                target = await User.get(id=linked.user_id).select_for_update()
+                if await PhoneIdentity.filter(user_id=target.id).exists():
+                    raise HTTPException(403, msg("此账号已迁移，请使用手机验证码登录"))
             else:
                 if not settings.QILING_SIGNUP_ENABLED:
                     raise HTTPException(403, msg("暂未开放器灵注册，请先登录并绑定器灵账号"))

@@ -172,6 +172,8 @@ async def generate(ctx, request, key, *, edit=False, protocol=None, legacy_studi
     payload = request.model_dump(mode="json", exclude_unset=True, exclude_none=True)
     payload["model"] = config.model
     payload["response_format"] = "url"
+    if config.api_protocol == "volcengine_ark":
+        payload.setdefault("watermark", False)
     for field in ("images", "image", "input_references"):
         payload.pop(field, None)
     if config.api_protocol == "openai_compatible":

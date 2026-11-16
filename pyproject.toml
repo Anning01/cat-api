@@ -5,6 +5,7 @@ description = "Self-hosted AI workspace for illustrated stories and short dramas
 license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
+    "alibabacloud-dysmsapi20170525>=4.6.0",
     "asyncpg>=0.31.0",
     "configdict>=2.13.4",
     "cryptography>=50.0.2",

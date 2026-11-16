@@ -119,8 +119,22 @@ class Settings:
     if CONSOLE_LOCALE not in {'zh', 'en'}:
         raise ValueError('CONSOLE_LOCALE must be zh or en')
     AUTH_PROVIDER: str = os.getenv("AUTH_PROVIDER", "qiling").strip().lower()
-    if AUTH_PROVIDER not in {"password", "qiling"}:
-        raise ValueError("AUTH_PROVIDER must be password or qiling")
+    if AUTH_PROVIDER not in {"password", "qiling", "phone", "wechat"}:
+        raise ValueError("AUTH_PROVIDER must be password, qiling, phone or wechat")
+    WECHAT_LOGIN_ENABLED = _env_bool("WECHAT_LOGIN_ENABLED", False)
+    WECHAT_LOGIN_APP_ID = os.getenv("WECHAT_LOGIN_APP_ID", "").strip()
+    WECHAT_LOGIN_APP_SECRET = os.getenv("WECHAT_LOGIN_APP_SECRET", "").strip()
+    WECHAT_LOGIN_ORIGIN = os.getenv("WECHAT_LOGIN_ORIGIN", "").strip().rstrip("/")
+    PHONE_AUTH_ENABLED = _env_bool("PHONE_AUTH_ENABLED", False)
+    PHONE_SIGNUP_ENABLED = _env_bool("PHONE_SIGNUP_ENABLED", False)
+    PHONE_AUTH_SECRET = os.getenv("PHONE_AUTH_SECRET", "").strip()
+    PHONE_BIND_BLOCKED_USER_IDS = _env_list("PHONE_BIND_BLOCKED_USER_IDS", [])
+    SMS_ACCESS_KEY_ID = os.getenv("SMS_ACCESS_KEY_ID", "").strip()
+    SMS_ACCESS_KEY_SECRET = os.getenv("SMS_ACCESS_KEY_SECRET", "").strip()
+    SMS_SIGN_NAME = os.getenv("SMS_SIGN_NAME", "").strip()
+    SMS_TEMPLATE_CODE = os.getenv("SMS_TEMPLATE_CODE", "").strip()
+    SMS_CODE_PARAMETER = os.getenv("SMS_CODE_PARAMETER", "code").strip()
+    SMS_DAILY_LIMIT = max(1, int(os.getenv("SMS_DAILY_LIMIT", "200")))
     QILING_API_BASE_URL: str = os.getenv(
         "QILING_API_BASE_URL", ""
     ).strip().rstrip("/")

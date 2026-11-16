@@ -2,7 +2,7 @@ export type ImageApiProtocol = 'novelvids' | 'openai_compatible' | 'openrouter_c
 
 export type ImageModelType = 'seedream_5_5' | 'seedream_5_lite' | 'seedream_5_pro' | 'seedream_5_flash' | 'gpt_image_2' | 'gpt_image_2_5' | 'gpt_image_2_6' | 'gpt_image_2_6_sunburst' | 'gpt_image_2_6_flare'
 
-export type VideoGenerationModelType = 'seedance_2' | 'seedance_2_fast' | 'seedance_2_mini' | 'seedance_2_5' | 'minimax_h3' | 'minimax_h3_autodl' | 'wan_3'
+export type VideoGenerationModelType = 'seedance_2' | 'seedance_2_fast' | 'seedance_2_mini' | 'seedance_2_5' | 'seedance_2_5_flash' | 'minimax_h3' | 'minimax_h3_autodl' | 'wan_3'
 
 export interface ModelPricing {
   type: 'text' | 'image' | 'video' | 'media_processing' | 'asr'
@@ -75,7 +75,10 @@ export interface AuthStatus {
   legacy_works_enabled?: boolean
   deployment_role?: 'studio' | 'platform'
   enabled: boolean
-  provider?: 'password' | 'qiling'
+  provider?: 'password' | 'qiling' | 'phone' | 'wechat'
+  wechat_enabled?: boolean
+  phone_enabled?: boolean
+  phone_signup_enabled?: boolean
   qiling_enabled?: boolean
   legal_ready?: boolean
   legal_missing?: string[]
@@ -98,4 +101,4 @@ export interface BillingSummary {
   by_model: Array<{ model: string; cost: number; record_count?: number }>
   daily_trend: Array<{ date: string; cost: number; records?: number }>
 }
-export interface AuthMe { user: AuthUser; balance: string; total_cost: number; is_super_admin: boolean; qiling_bound: boolean }
+export interface AuthMe { user: AuthUser; balance: string; total_cost: number; is_super_admin: boolean; qiling_bound: boolean; phone_masked?: string | null; wechat_bound?: boolean }

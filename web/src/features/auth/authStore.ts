@@ -3,19 +3,23 @@ import { api, clearAuthToken, getAuthToken, setAuthToken } from '@/api'
 import type { AuthMe, AuthUser, LoginResult } from '@/types'
 export const useAuthStore = defineStore('auth', {
   state: () => ({ ready:false, legacyWorksEnabled:false, token:getAuthToken(), user:null as AuthUser | null,
-    balance:'0', totalCost:0, qilingBound:false, qilingEnabled:false, legalReady:false, provider:'qiling' as 'qiling'|'password' }),
+    balance:'0', totalCost:0, qilingBound:false, qilingEnabled:false, phoneEnabled:false, phoneSignupEnabled:false,
+    phoneMasked:null as string|null, wechatEnabled:false, wechatBound:false,
+    legalReady:false, provider:'qiling' as 'qiling'|'password'|'phone'|'wechat' }),
   getters: {
     isLoggedIn: state => Boolean(state.token && state.user),
     isSuperAdmin: state => state.user?.is_super_admin === true,
     canAccessBilling: state => Boolean(state.token && state.user),
   },
   actions: {
-    applyMe(me: AuthMe) { this.user=me.user; this.balance=me.balance; this.totalCost=Number(me.total_cost); this.qilingBound=me.qiling_bound },
+    applyMe(me: AuthMe) { this.user=me.user; this.balance=me.balance; this.totalCost=Number(me.total_cost); this.qilingBound=me.qiling_bound; this.phoneMasked=me.phone_masked??null; this.wechatBound=me.wechat_bound===true },
     async bootstrap() {
       if (this.ready) return
       const {data} = await api.authStatus()
       this.legacyWorksEnabled=data.legacy_works_enabled === true
       this.qilingEnabled=data.qiling_enabled === true; this.legalReady=data.legal_ready === true
+      this.phoneEnabled=data.phone_enabled===true; this.phoneSignupEnabled=data.phone_signup_enabled===true
+      this.wechatEnabled=data.wechat_enabled===true
       this.provider=data.provider ?? 'qiling'
       if (this.token) {
         try { await this.refreshMe() } catch { this.user=null; this.token=null; clearAuthToken() }
@@ -29,7 +33,7 @@ export const useAuthStore = defineStore('auth', {
     async refreshMe() { this.applyMe((await api.me()).data) },
     async login(username:string,password:string) { await this.acceptSession((await api.login(username,password)).data) },
     async logout() {
-      try { await api.logout() } finally { clearAuthToken(); this.token=null; this.user=null; this.balance='0'; this.totalCost=0; window.location.hash='#/login' }
+      try { await api.logout() } finally { clearAuthToken(); this.token=null; this.user=null; this.balance='0'; this.totalCost=0; this.phoneMasked=null; this.qilingBound=false; this.wechatBound=false; window.location.hash='#/login' }
     },
   },
 })

@@ -4,16 +4,16 @@
 其余路由仅在 AUTH_ENABLED=true 时由 main.py 注册。
 """
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from auth import qiling
+from auth import qiling, phone, wechat
 from auth.deps import AuthContext, extract_bearer_token, get_auth_context, get_current_user
 from auth.schemas import ChangePasswordIn, LoginIn, LoginOut, MeOut, ProfileUpdateIn, RegisterIn, UserOut
 from auth.service import auth_service
 from config import settings
-from services.security.login_throttle import login_throttle
+from services.security.login_throttle import login_throttle, client_ip
 from utils.response_format import ResponseSchema
 from services.legal_documents import profile_status, render
 from typing import Literal
@@ -30,6 +30,9 @@ async def auth_status():
                                 "deployment_role": settings.DEPLOYMENT_ROLE,
                                 "legacy_works_enabled": settings.LEGACY_WORKS_ENABLED,
                                 "qiling_enabled": qiling.enabled(), "legal_ready": legal is not None,
+                                "phone_enabled": phone.enabled(),
+                                "wechat_enabled": wechat.enabled(),
+                                "phone_signup_enabled": settings.PHONE_SIGNUP_ENABLED,
                                 "legal_missing": missing})
 
 
@@ -69,6 +72,93 @@ async def password_change(data: ChangePasswordIn, user=Depends(get_current_user)
 
 class QilingPollIn(BaseModel):
     attempt: str = Field(min_length=32, max_length=64)
+
+
+class PhoneIn(BaseModel):
+    phone: str = Field(pattern=r"^1[3-9][0-9]{9}$", min_length=11, max_length=11)
+
+
+class PhoneVerifyIn(PhoneIn):
+    challenge: str = Field(min_length=32, max_length=64)
+    code: str = Field(pattern=r"^[0-9]{6}$", min_length=6, max_length=6)
+    create_account: bool = Field(default=False, alias="register")
+    agreed: bool = False
+    wechat_attempt: str | None = Field(default=None, min_length=32, max_length=64)
+
+
+@router.post("/phone/start")
+async def phone_start(data: PhoneIn, request: Request):
+    await login_throttle.before_attempt(request, "phone-send")
+    return ResponseSchema(data=await phone.start(data.phone, client_ip(request)))
+
+
+@router.post("/phone/login")
+async def phone_login(data: PhoneVerifyIn, request: Request):
+    await login_throttle.before_attempt(request, "phone-verify")
+    if (data.create_account or data.wechat_attempt) and not data.agreed:
+        raise HTTPException(400, "请先阅读并同意用户协议和隐私政策")
+    return ResponseSchema(data=await phone.verify(data.phone, data.challenge, data.code,
+        register=data.create_account, wechat_attempt=data.wechat_attempt))
+
+
+@router.post("/wechat/start")
+async def wechat_start(request: Request):
+    await login_throttle.before_attempt(request, "wechat-start")
+    return ResponseSchema(data=await wechat.start())
+
+
+@router.post("/wechat/poll")
+async def wechat_poll(data: QilingPollIn, request: Request):
+    await login_throttle.before_attempt(request, "wechat-poll")
+    return ResponseSchema(data=await wechat.poll(data.attempt))
+
+
+@router.get("/wechat/callback", response_class=HTMLResponse)
+async def wechat_callback(code: str = Query(min_length=1, max_length=512),
+                          state: str = Query(min_length=32, max_length=128)):
+    try:
+        confirmation = await wechat.callback(code, state)
+        return wechat_page('请确认在发起扫码的设备上登录 Cat API。如果不是你本人发起，请关闭此页面。'
+            '<form method="post" action="/api/auth/wechat/confirm">'
+            '<input type="hidden" name="confirmation" value="'+confirmation+'">'
+            '<button type="submit">确认登录</button></form>',200)
+    except HTTPException:
+        return wechat_page("微信验证未完成或二维码已失效，请返回登录页重新扫码。",400)
+
+
+@router.post("/wechat/confirm",response_class=HTMLResponse)
+async def wechat_confirm(confirmation: str = Form(min_length=32,max_length=64)):
+    try:
+        await wechat.confirm(confirmation)
+        return wechat_page('微信验证完成，请返回发起登录的页面继续。首次登录需要验证手机号。'
+            '<p>如果在本手机发起登录，可<a href="/#/login?method=wechat">返回登录页面</a>继续。</p>',200)
+    except HTTPException:
+        return wechat_page("微信确认已失效，请返回登录页重新扫码。",400)
+
+
+def wechat_page(message: str, status: int):
+    # Only static strings and server-generated URL-safe secrets are rendered here.
+    return HTMLResponse('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<title>微信登录 · Cat API</title><style>body{font:16px/1.7 system-ui,sans-serif;'
+        'margin:0;background:#f6f7fb;color:#202532}main{max-width:28rem;margin:10vh auto;padding:24px}'
+        'button{font:inherit;min-height:48px;padding:10px 28px;border:0;border-radius:8px;'
+        'background:#5d54d9;color:white;margin-top:24px;cursor:pointer}'
+        'button:focus-visible{outline:3px solid #24205f;outline-offset:4px}</style></head>'
+        '<body><main><h1>Cat API</h1><div>'+message+'</div></main></body></html>',status_code=status,
+        headers={"Cache-Control":"no-store", "Referrer-Policy":"no-referrer"})
+
+
+@router.post("/phone/bind/start")
+async def phone_bind_start(data: PhoneIn, request: Request, user=Depends(get_current_user)):
+    await login_throttle.before_attempt(request, "phone-bind-send")
+    return ResponseSchema(data=await phone.start(data.phone, client_ip(request), user))
+
+
+@router.post("/phone/bind")
+async def phone_bind(data: PhoneVerifyIn, request: Request, user=Depends(get_current_user)):
+    await login_throttle.before_attempt(request, "phone-bind-verify")
+    return ResponseSchema(data=await phone.verify(data.phone, data.challenge, data.code, user))
 
 
 @router.post("/qiling/start")

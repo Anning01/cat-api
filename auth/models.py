@@ -79,6 +79,62 @@ class QilingLoginAttempt(AbstractBaseModel):
         table = "qiling_login_attempts"
 
 
+class PhoneIdentity(AbstractBaseModel):
+    user = fields.OneToOneField("models.User", on_delete=fields.CASCADE)
+    phone_hash = fields.CharField(max_length=64, unique=True)
+    masked_phone = fields.CharField(max_length=20)
+
+    class Meta:
+        table = "phone_identities"
+
+
+class PhoneChallenge(AbstractBaseModel):
+    token_hash = fields.CharField(max_length=64, unique=True)
+    phone_hash = fields.CharField(max_length=64, db_index=True)
+    purpose = fields.CharField(max_length=10)
+    user = fields.ForeignKeyField("models.User", null=True, on_delete=fields.CASCADE)
+    code_hash = fields.CharField(max_length=64)
+    ready = fields.BooleanField(default=False)
+    consumed = fields.BooleanField(default=False)
+    failures = fields.IntField(default=0)
+    expires_at = fields.DatetimeField(db_index=True)
+
+    class Meta:
+        table = "phone_challenges"
+
+
+class PhoneAuthGuard(AbstractBaseModel):
+    # One short database transaction serializes quota reservations across workers.
+    name = fields.CharField(max_length=20, unique=True)
+    events = fields.JSONField(default=list)
+
+    class Meta:
+        table = "phone_auth_guards"
+
+
+class WechatIdentity(AbstractBaseModel):
+    user = fields.OneToOneField("models.User", on_delete=fields.CASCADE)
+    app_id = fields.CharField(max_length=64)
+    subject_hash = fields.CharField(max_length=64)
+
+    class Meta:
+        table = "wechat_identities"
+        unique_together = (("app_id", "subject_hash"),)
+
+
+class WechatLoginAttempt(AbstractBaseModel):
+    token_hash = fields.CharField(max_length=64, unique=True)
+    state_hash = fields.CharField(max_length=64, unique=True)
+    app_id = fields.CharField(max_length=64)
+    status = fields.CharField(max_length=16, default="pending")
+    subject_hash = fields.CharField(max_length=64, null=True)
+    confirmation_hash = fields.CharField(max_length=64, null=True, unique=True)
+    expires_at = fields.DatetimeField(db_index=True)
+
+    class Meta:
+        table = "wechat_login_attempts"
+
+
 class BalanceTransaction(AbstractBaseModel):
     """账户余额流水表：充值/消费/调整，不可变。balance_after 冗余用于对账。"""
 

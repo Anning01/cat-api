@@ -30,7 +30,8 @@ class SecurityHeadersMiddleware:
                 headers = MutableHeaders(scope=message)
                 headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
                 headers["X-Content-Type-Options"] = "nosniff"
-                headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                if "Referrer-Policy" not in headers:
+                    headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
                 headers["Permissions-Policy"] = (
                     "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
                 )
@@ -41,6 +42,9 @@ class SecurityHeadersMiddleware:
                     from services.platform.docs_settings import documentation_origin, with_documentation_frame
                     policy = with_documentation_frame(policy, await documentation_origin())
                 headers["Content-Security-Policy"] = policy
+                if path.startswith("/api/auth/"):
+                    headers["Cache-Control"] = "private, no-store"
+                    headers["Pragma"] = "no-cache"
                 status = int(message.get("status", 0))
                 if (
                     status in {200, 206}
