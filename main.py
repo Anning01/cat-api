@@ -16,7 +16,6 @@ from api.platform import console_router, developer_router
 from api.account import router as account_router
 from api.user import router as user_router
 from auth.api import router as auth_router, public_router
-from auth.bootstrap import ensure_super_admin
 from config import settings
 from controllers.account import account_controller
 from exceptions.handlers import http_exception_handler, validation_exception_handler
@@ -26,9 +25,6 @@ from services.platform.chat import settle_periodically, stop_streams
 from services.platform.http_contract import DEVELOPER_EXCEPTION_HANDLERS
 from services.platform.temporary_media import expire_periodically
 from services.platform.videos import reconcile_videos
-from services.schema_compat import (
-    _ensure_qiling_issuer_columns, ensure_billing_integration_schema, ensure_recharge_refund_columns,
-)
 
 
 @asynccontextmanager
@@ -39,22 +35,10 @@ async def lifespan(_app):
         "models": ["auth.models", "models.config", "models.usage_record"],
     }, timezone=settings.TIMEZONE)
     try:
-        from services.schema_compat import ensure_admin_events_schema
-        await ensure_admin_events_schema()
-        await ensure_billing_integration_schema()
-        from services.schema_compat import ensure_model_reasoning_schema
-        await ensure_model_reasoning_schema()
-        await _ensure_qiling_issuer_columns(Tortoise.get_connection("default"))
-        await ensure_recharge_refund_columns()
-        if settings.GENERATE_SCHEMAS:
-            await Tortoise.generate_schemas(safe=True)
-        from services.video.ark_migration import migrate_legacy_video_channels
-        await migrate_legacy_video_channels()
-        from services.migrations.user_accounts import migrate_user_accounts
-        await migrate_user_accounts()
-        from services.platform.model_aliases import ensure_model_aliases
-        await ensure_model_aliases()
-        await ensure_super_admin()
+        from services.startup import initialize_database, check_database_schema
+        if settings.STARTUP_MIGRATIONS_ENABLED:
+            await initialize_database()
+        await check_database_schema()
         await recover_measured()
         workers = [asyncio.create_task(worker()) for worker in
                    (settle_periodically, expire_periodically, reconcile_videos)]
@@ -124,7 +108,10 @@ async def readiness():
         return JSONResponse({"status": "draining"}, status_code=503,
                             headers={"Retry-After": "30", "Cache-Control": "no-store"})
     await health()
-    return JSONResponse({"status": "ready"}, headers={"Cache-Control": "no-store"})
+    from services.deployment import INSTANCE_ID, release_commit
+    return JSONResponse({"status": "ready", "release": release_commit(), "instance": INSTANCE_ID,
+                         "startup_migrations": settings.STARTUP_MIGRATIONS_ENABLED},
+                        headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/payment/wechat/notify")

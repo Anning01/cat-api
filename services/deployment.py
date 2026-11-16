@@ -1,9 +1,24 @@
 """A local operator-owned marker stops admission without changing account policy."""
 from pathlib import Path
+from functools import lru_cache
+import subprocess
+from uuid import uuid4
 
 from fastapi import HTTPException
 
 from config import settings
+
+INSTANCE_ID = uuid4().hex
+
+
+@lru_cache(maxsize=1)
+def release_commit() -> str:
+    try:
+        result = subprocess.run(['git', 'rev-parse', 'HEAD'],
+            cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=2, check=True)
+        return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return 'unknown'
 
 
 def drain_path() -> Path:

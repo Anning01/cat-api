@@ -31,6 +31,7 @@ class Settings:
     # 应用配置
     DEBUG: bool = _env_bool("DEBUG", True)
     GENERATE_SCHEMAS: bool = _env_bool("GENERATE_SCHEMAS", True)
+    STARTUP_MIGRATIONS_ENABLED: bool = _env_bool("STARTUP_MIGRATIONS_ENABLED", True)
     DEPLOYMENT_DRAIN_FILE: str = os.getenv("DEPLOYMENT_DRAIN_FILE", "data/deployment-draining")
 
     API_DOCUMENTATION_URL: str = os.getenv("API_DOCUMENTATION_URL", "")
