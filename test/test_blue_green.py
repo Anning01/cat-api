@@ -210,7 +210,8 @@ def test_same_commit_still_requires_switching_to_the_candidate_instance(setup_sw
     assert old.instance!=new.instance and new.submissions==[]
 
 
-def test_real_app_cutover_preserves_stream_and_shared_billing_once(setup_switch,tmp_path):
+@pytest.mark.parametrize('old_stream_delay',[False,True])
+def test_real_app_cutover_preserves_stream_and_shared_billing_once(setup_switch,tmp_path,old_stream_delay):
     import sqlite3
     args,_,_,config,old_assets=setup_switch
     project=Path(__file__).resolve().parents[1]
@@ -256,7 +257,9 @@ asyncio.run(main())
             # The production config routes /v1/* as well as /api/*.
             def real_config(url,assets):
                 return config(SimpleNamespace(url=url),assets).replace('/api/* /generate /stream','/api/* /v1/* /generate /stream')
-            args['active_config'].write_text(real_config(instances['old'],old_assets))
+            old_config=real_config(instances['old'],old_assets)
+            if not old_stream_delay:old_config=old_config.replace('   stream_close_delay 660s\n','')
+            args['active_config'].write_text(old_config)
             subprocess.run([args['caddy'],'reload','--config',str(args['active_config']),
                 '--adapter','caddyfile','--address',args['admin']],check=True,capture_output=True)
             args['candidate_config'].write_text(real_config(instances['new'],args['root']/'web/dist'))
