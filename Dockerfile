@@ -33,4 +33,4 @@ EXPOSE 8000
 
 # 注：SQLite 直接写入挂载卷，故容器以 root 运行以保证写权限；
 # 若需加固，可改用命名卷并创建非 root 用户。
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "660"]

@@ -12,7 +12,8 @@ from services.platform.calls import CALL_TIMEOUT, admit, finish, recover_measure
 from services.platform.http_contract import UpstreamResponseError, error_body, redact_secret, response_headers
 
 logger = logging.getLogger(__name__)
-_streams = set()
+_streams = {}
+STREAM_FINALIZE_SECONDS = 30
 
 
 def provider_client(config):
@@ -31,11 +32,12 @@ class ChatStream(StreamingResponse):
     def __init__(self, client, stream, receipt, deadline, secret=""):
         self.queue = asyncio.Queue(maxsize=32)
         self.detached = False
+        self.deadline = deadline
         super().__init__(self.events(), media_type="text/event-stream",
             headers={**response_headers(stream, receipt.public_id, secret), "X-Accel-Buffering":"no"}, status_code=stream.status_code)
         task = asyncio.create_task(self.drain(client, stream, receipt, deadline, secret))
-        _streams.add(task)
-        task.add_done_callback(_streams.discard)
+        _streams[task] = self
+        task.add_done_callback(lambda done: _streams.pop(done, None))
 
     async def put(self, item):
         if not self.detached:
@@ -49,10 +51,14 @@ class ChatStream(StreamingResponse):
         try:
             await super().__call__(scope, receive, send)
         finally:
-            self.detached = True
-            # Wake the single producer if a disconnected client left its queue full.
-            while not self.queue.empty():
-                self.queue.get_nowait()
+            self.detach()
+
+    def detach(self):
+        self.detached = True
+        # Wake both a blocked producer and a reader during forced cleanup.
+        while not self.queue.empty():
+            self.queue.get_nowait()
+        self.queue.put_nowait(None)
 
     async def drain(self, client, stream, receipt, deadline, secret):
         usage = None
@@ -167,7 +173,15 @@ async def settle_periodically():
 
 async def stop_streams():
     if _streams:
-        _, pending = await asyncio.wait(list(_streams), timeout=15)
+        streams = dict(_streams)
+        remaining = max(response.deadline - asyncio.get_running_loop().time() for response in streams.values())
+        _, pending = await asyncio.wait(streams, timeout=max(0, remaining) + STREAM_FINALIZE_SECONDS)
         for task in pending:
+            streams[task].detach()
             task.cancel()
-        await asyncio.gather(*pending, return_exceptions=True)
+        if pending:
+            _, stuck = await asyncio.wait(pending, timeout=STREAM_FINALIZE_SECONDS)
+            if stuck:
+                logger.error("Chat shutdown cleanup exceeded budget: pending=%d", len(stuck))
+                for task in stuck:
+                    task.cancel()

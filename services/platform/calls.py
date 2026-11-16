@@ -16,6 +16,7 @@ from auth.models import PlatformCallReceipt
 from models.config import AiModelConfig
 from models.usage_record import ModelUsageRecord
 from services.balance import consume, ensure_solvent
+from services.deployment import require_accepting
 from services.platform.access import authorize_model
 from services.billing.pricing import compute_image_cost, compute_input_image_cost, compute_pixel_tier_cost, compute_text_cost
 from utils.enums import AiTaskTypeEnum
@@ -80,6 +81,7 @@ def chat_options(config, body):
 
 
 async def admit(ctx, model, body, key, *, validate=chat_options, kind="text"):
+    require_accepting()
     identifier = uuid4()
     dedup = digest([ctx.user.id, key or str(identifier)])
     signature = digest(body)
@@ -121,6 +123,9 @@ async def admit(ctx, model, body, key, *, validate=chat_options, kind="text"):
                                                  model_config_id=model_id).using_db(db).count()
         if count >= config.concurrency:
             raise HTTPException(429, "模型并发已满，请稍后重试", headers={"Retry-After":"2"})
+        # Recheck after database waits. No receipt, charge or upstream submission
+        # is created for work rejected by the deployment gate.
+        require_accepting()
         receipt = await PlatformCallReceipt.create(using_db=db, public_id=identifier, dedup_key=dedup,
             payload_hash=signature, account_user_id=ctx.user.id, user_id=ctx.user.id, api_key_id=ctx.platform_key_id, model_config_id=config.id,
             model_name=config.name, model=config.model, pricing=rates)

@@ -55,7 +55,7 @@ trap cleanup EXIT
 trap 'exit 0' INT TERM
 echo "$$" > "$pid_file"
 
-uv run --no-sync uvicorn main:app --host 127.0.0.1 --port 9000 &
+uv run --no-sync uvicorn main:app --host 127.0.0.1 --port 9000 --timeout-graceful-shutdown 660 &
 api_pid=$!
 CAT_API_DEV_BACKEND=http://127.0.0.1:9000 npm --prefix web run dev -- --host 127.0.0.1 --port 3001 --strictPort &
 web_pid=$!

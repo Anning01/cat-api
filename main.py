@@ -59,10 +59,12 @@ async def lifespan(_app):
         try:
             yield
         finally:
+            # Keep accounting workers and the database available until existing
+            # provider streams have collected their result/usage or timed out.
+            await stop_streams()
             for worker in workers:
                 worker.cancel()
             await asyncio.gather(*workers, return_exceptions=True)
-            await stop_streams()
     finally:
         await Tortoise.close_connections()
 
@@ -107,6 +109,20 @@ app.include_router(native_router)
 async def health():
     await Tortoise.get_connection("default").execute_query("SELECT 1")
     return {"status": "ok"}
+
+
+@app.get("/api/health/ready")
+async def readiness():
+    from services.deployment import require_accepting
+    # Keep a real HTTP 503 for readiness despite the console's HTTP-200 error envelope.
+    from fastapi.responses import JSONResponse
+    try:
+        require_accepting()
+    except HTTPException:
+        return JSONResponse({"status": "draining"}, status_code=503,
+                            headers={"Retry-After": "30", "Cache-Control": "no-store"})
+    await health()
+    return JSONResponse({"status": "ready"}, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/payment/wechat/notify")
