@@ -28,7 +28,7 @@ def walk(value):
 def test_openapi_has_complete_public_contract_and_apifox_folders():
     document=public_openapi(developer_api)
     assert document['openapi']=='3.1.0'
-    assert len(document['paths'])==24
+    assert len(document['paths'])==25
     assert document['paths']['/api/v3/contents/generations/tasks']['post']['x-apifox-folder']=='视频/Seedance'
     assert document['paths']['/v2/video_generation']['post']['x-apifox-folder']=='视频/MiniMax'
     assert document['paths']['/api/v1/services/aigc/video-generation/video-synthesis']['post']['x-apifox-folder']=='视频/Wan3'
@@ -102,7 +102,7 @@ async def test_documentation_configuration_is_public_read_admin_write():
         assert (await client.get('/api/platform/documentation')).json()['data']['url']=='https://rjvutktiur.apifox.cn/'
         exported=await client.get('/api/platform/openapi-export')
         assert exported.status_code==200 and exported.headers['content-disposition'].endswith('"cat-api-openapi.json"')
-        assert len(exported.json()['paths'])==24
+        assert len(exported.json()['paths'])==25
         assert 'docs-admin' not in exported.text
 
 

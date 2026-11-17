@@ -46,6 +46,7 @@ DESCRIPTION = """Cat API 模型开放平台。供应商原生请求与结果按�
 OPERATIONS = {
     ("/models","get"):("listModels","模型与账户","查询已授权模型、能力与价格","ModelList"),
     ("/account","get"):("getAccount","模型与账户","查询 Key 所属账户余额","PlatformAccountOut"),
+    ("/responses","post"):("createResponse","文本对话","Responses 生成／SSE 流式输出","ResponseResult"),
     ("/chat/completions","post"):("createChatCompletion","文本对话","创建对话／SSE 流式输出","ChatCompletion"),
     ("/images/generations","post"):("generateImages","图片生成","生成 URL 图片","ImageResult"),
     ("/images/edits","post"):("editImages","图片生成","使用临时上传 URL 编辑图片","ImageResult"),
@@ -90,11 +91,12 @@ def public_openapi(app):
         "legacy_id":string("兼容和授权使用的配置 ID",pattern=r"^nv-[1-9][0-9]{0,9}$"),"object":string(),"owned_by":string(),"name":string(),"created":integer,
         "kinds":array(string()),"task_types":array(integer),"image_model_type":{"type":["string","null"],"examples":["seedream_5_5"]},
         "video_model_type":{"type":["string","null"]},"pricing":pricing,"concurrency":integer,"tool_calls":{"type":"boolean"},
-        "json_output":{"type":"boolean"},"strict_output":{"type":"boolean"},"reference_image_urls":{"type":"boolean"},
+        "text_api":string(enum=["chat_completions", "responses"]),"json_output":{"type":"boolean"},"strict_output":{"type":"boolean"},"reference_image_urls":{"type":"boolean"},
         "native_api":obj({"submit":string(),"query":string()})}, required=["id","name","pricing"])
     schemas.update({
         "PlatformError":obj({"error":obj({"message":string(),"type":string(),"param":{"type":["string","null"]},"code":{"type":["string","null"]}})},required=["error"]),
         "ModelList":obj({"object":string(enum=["list"]),"data":array(model)},required=["object","data"]),
+        "ResponseResult":obj({"id":string(), "object":string(), "status":string(), "output":array(obj()), "usage":obj()}),
         "ChatCompletion":obj({"id":string(),"object":string(),"created":integer,"model":string("供应商原始模型标识，不保证等于请求的 nv-ID"),
             "choices":array(obj({"index":integer,"message":obj({"role":string(),"content":{"type":["string","null"]},"tool_calls":array(obj()),"reasoning_content":string()}),
                 "finish_reason":{"type":["string","null"]}})),"usage":usage}),
@@ -188,6 +190,9 @@ def public_openapi(app):
             responses.pop("200", None)
             responses["307"] = {"description":"跳转至供应商视频下载地址，不通过平台转发视频文件。",
                 "headers":{"Location":{"description":"成片 URL","schema":url},**deepcopy(headers)}}
+        if path == "/responses":
+            operation["description"] += "\n原生 Responses 透传；text.format 支持范围由上游决定，包含 json_schema；终态为 response.completed / response.incomplete / response.failed，不添加 [DONE]。"
+            responses["200"]["content"]["text/event-stream"] = {"schema":string("供应商原始 Responses SSE 事件")}
         if path == "/chat/completions":
             operation['description'] = operation.get('description', '') + '\n客户端显式参数及扩展字段原样透传，支持的 thinking／reasoning_effort 格式与档位由上游模型决定；模型能力标签不拦截请求。仅在客户端省略参数时使用管理员配置的默认思考参数。'
             responses["200"]["content"]["text/event-stream"] = {"schema":string("上游 SSE 原始事件，保留心跳、扩展字段和 [DONE]；需要计费用量时显式发送 include_usage=true。"),
@@ -202,6 +207,8 @@ def public_openapi(app):
                     "example":{"error":{"message":description,"type":"invalid_request_error" if code<500 else "server_error","param":None,"code":None}}},
                     "text/plain":{"schema":{"type":"string"}}}}
     request_examples = {
+        "/responses":{"严格 JSON":{"value":{"model":"nv-42","input":"Return JSON", "text":{"format":{
+            "type":"json_schema","name":"answer","strict":True,"schema":{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"],"additionalProperties":False}}}}}},
         "/chat/completions":{"非流式":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}]}},
             "流式与用量":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}],"stream":True,"stream_options":{"include_usage":True}}},
             "上游推理参数":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}],"reasoning_effort":"low","thinking":{"type":"enabled"}}},
@@ -221,6 +228,7 @@ def public_openapi(app):
         "/api/v3/auc/bigmodel/query":{"查询原任务":{"value":{}}},
     }
     result_examples = {
+        "ResponseResult":{"id":"resp-example","object":"response","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":2}},
         "ModelList":{"object":"list","data":[{"id":"nv-42","name":"Seedream 5.5","kinds":["image"],"task_types":[2],"image_model_type":"seedream_5_5", "pricing":{"type":"image","currency":"CNY","billing_unit":"pixel_tier","prices":{"low":0.13,"high_capped":0.23},"input_image":{"first_free":0,"price_per_image":0.05},"discount":1}}]},
         "PlatformAccountOut":{"balance":"100.000000","currency":"CNY","recharge_url":"https://api.example.com/#/profile?recharge=1"},
         "ChatCompletion":{"id":"chatcmpl-example","object":"chat.completion","created":1700000000,"model":"vendor-model","choices":[{"index":0,"message":{"role":"assistant","content":"你好"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}},

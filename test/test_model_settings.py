@@ -45,10 +45,11 @@ async def test_model_settings_save_and_clear_provider_defined_reasoning_values()
     app.dependency_overrides[get_auth_context] = lambda: AuthContext(user=user, is_super_admin=True)
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
-            response = await client.patch(f'/api/config/{model.id}', json={'thinking':'provider-thinking','reasoning_effort':'provider-effort'})
+            response = await client.patch(f'/api/config/{model.id}', json={'thinking':'provider-thinking','reasoning_effort':'provider-effort','text_api':'responses'})
             assert response.json()['code'] == 0
             await model.refresh_from_db()
             assert model.thinking == 'provider-thinking' and model.reasoning_effort == 'provider-effort'
+            assert model.text_api == 'responses'
             response = await client.patch(f'/api/config/{model.id}', json={'thinking':None, 'reasoning_effort':None})
             assert response.json()['code'] == 0
             await model.refresh_from_db()
@@ -59,8 +60,9 @@ async def test_model_settings_save_and_clear_provider_defined_reasoning_values()
 
 async def test_public_catalog_reports_strict_output_for_studio_selection():
     from services.platform.catalog import model_catalog
-    model = await AiModelConfig.create(name='Strict model', task_type=7, model='strict', supports_strict_output=True,
+    model = await AiModelConfig.create(name='Strict model', task_type=7, model='strict', supports_strict_output=True, text_api='responses',
         base_url='https://vendor.invalid', api_key='fixture', is_active=True)
     catalog = await model_catalog()
     entry = next(row for row in catalog if row['id'] == f'nv-{model.id}')
     assert entry['strict_output'] is True
+    assert entry['text_api'] == 'responses'

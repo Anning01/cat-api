@@ -104,7 +104,7 @@ const editingSyncedPricing = ref(false)
 const syncedVideoBillingUnit = ref<ModelPricing['billing_unit']>()
 const showApiKey = ref(false)
 const selectedCategoryId = ref<ModelCategoryId>('llm')
-const form = ref({ task_types: ['1'], name: '', base_url: '', api_key: '', model: '', api_protocol: 'openai_compatible' as ImageApiProtocol, image_model_type: '' as ImageModelType | '', video_model_type: '' as VideoGenerationModelType | '', concurrency: 1, supports_json_output: false, supports_tool_calls: false, supports_strict_output: false, max_context_characters: '' as number | '', thinking: '', reasoning_effort: '', max_tokens: '' as number | '' })
+const form = ref({ task_types: ['1'], name: '', base_url: '', api_key: '', model: '', api_protocol: 'openai_compatible' as ImageApiProtocol, image_model_type: '' as ImageModelType | '', video_model_type: '' as VideoGenerationModelType | '', concurrency: 1, text_api: 'chat_completions' as 'chat_completions' | 'responses', supports_json_output: false, supports_tool_calls: false, supports_strict_output: false, max_context_characters: '' as number | '', thinking: '', reasoning_effort: '', max_tokens: '' as number | '' })
 
 function configTaskTypes(item: AiModelConfig) {
   return item.task_types?.length ? item.task_types : [item.task_type]
@@ -283,7 +283,7 @@ function openCreate(categoryId: ModelCategoryId = selectedCategoryId.value) {
   pixelBilling.value = false
   selectedCategoryId.value = categoryId
   const category = categories.find(item => item.id === categoryId) ?? categories[0]
-  form.value = { task_types: [String(category.taskTypes[0])], name: '', base_url: category.id === 'video' ? 'https://ark.cn-beijing.volces.com/api/v3' : '', api_key: '', model: '', api_protocol: category.id === 'image' || category.id === 'video' ? 'volcengine_ark' : 'openai_compatible', image_model_type: category.id === 'image' ? 'seedream_5_lite' : '', video_model_type: category.id === 'video' ? 'seedance_2' : '', concurrency: 1, supports_json_output: false, supports_tool_calls: false, supports_strict_output: false, max_context_characters: '' as number | '', thinking: '', reasoning_effort: '', max_tokens: '' as number | '' }
+  form.value = { task_types: [String(category.taskTypes[0])], name: '', base_url: category.id === 'video' ? 'https://ark.cn-beijing.volces.com/api/v3' : '', api_key: '', model: '', api_protocol: category.id === 'image' || category.id === 'video' ? 'volcengine_ark' : 'openai_compatible', image_model_type: category.id === 'image' ? 'seedream_5_lite' : '', video_model_type: category.id === 'video' ? 'seedance_2' : '', concurrency: 1, text_api: 'chat_completions' as 'chat_completions' | 'responses', supports_json_output: false, supports_tool_calls: false, supports_strict_output: false, max_context_characters: '' as number | '', thinking: '', reasoning_effort: '', max_tokens: '' as number | '' }
   const asrPreset = generationCapabilities.value.audio_recognition
   asrPrice.value = asrPreset?.pricing?.price_per_minute ?? 0
   if (category.id === 'asr' && asrPreset) Object.assign(form.value, { base_url: asrPreset.base_url, model: asrPreset.model, api_protocol: asrPreset.api_protocol })
@@ -329,6 +329,7 @@ function openEdit(item: AiModelConfig) {
     image_model_type: item.image_model_type || '',
     video_model_type: item.video_model_type || '',
     concurrency: item.concurrency,
+    text_api: item.text_api ?? 'chat_completions',
     supports_json_output: item.supports_json_output ?? false,
     supports_tool_calls: item.supports_tool_calls ?? false,
     supports_strict_output: item.supports_strict_output ?? false,
@@ -672,6 +673,11 @@ onMounted(()=>{void load()})
         </div>
 
         <div v-if="selectedCategory.id === 'llm'" class="model-form-grid reasoning-controls">
+          <label v-if="selectedCategory.id === 'llm'">
+            <span>{{ tr('文本接口') }}</span>
+            <AppSelect v-model="form.text_api" :ariaLabel="tr('文本接口')" :menu-z-index="2000"
+              :options="[{ value: 'chat_completions', label: 'Chat Completions' }, { value: 'responses', label: 'Responses' }]" />
+          </label>
           <p class="reasoning-note">{{ tr('模型默认值仅在客户端未传入时使用。') }}</p>
           <label :for="`${reasoningControlId}-thinking`">
             <span :id="`${reasoningControlId}-thinking-label`">{{ tr('思考模式（thinking）') }}</span>
@@ -682,7 +688,7 @@ onMounted(()=>{void load()})
               <option value="disabled">{{ tr('关闭思考') }}</option>
               <option v-for="level in ['low', 'medium', 'high', 'max']" :key="level" :value="level" />
             </datalist>
-            <small :id="`${reasoningControlId}-thinking-help`">{{ tr('enabled/disabled 发送 thinking.type；其他值作为顶层 thinking 原样发送。') }}</small>
+            <small :id="`${reasoningControlId}-thinking-help`">{{ form.text_api === 'responses' ? tr('Responses 使用 reasoning.effort；disabled 对应 none，enabled 沿用所设强度或模型默认值。') : tr('enabled/disabled 发送 thinking.type；其他值作为顶层 thinking 原样发送。') }}</small>
           </label>
           <label :for="`${reasoningControlId}-effort`">
             <span :id="`${reasoningControlId}-effort-label`">{{ tr('推理强度（reasoning_effort）') }}</span>

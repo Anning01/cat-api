@@ -57,3 +57,14 @@ class ChatRequest(BaseModel):
         if "audio" in ((self.model_extra or {}).get("modalities") or []):
             raise ValueError("Inline audio output is not supported; use media URLs")
         return self
+
+
+class ResponsesRequest(BaseModel):
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
+    model: str = Field(min_length=1, max_length=200)
+    input: str | list[dict] | None = None
+    instructions: str | None = None
+    stream: bool = False
+    max_output_tokens: int | None = Field(None, gt=0)
+    reasoning: dict[str, Any] | None = None
+    text: dict[str, Any] | None = None

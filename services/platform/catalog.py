@@ -69,7 +69,7 @@ def public_tariff(raw):
 
 async def model_catalog():
     rows = await AiModelConfig.filter(scope="official", is_active=True).exclude(api_protocol="novelvids").order_by("id").values(
-        "id","name","public_alias","created_at","image_model_type","video_model_type","api_protocol","task_type","task_types","pricing","supports_tool_calls","supports_json_output","supports_strict_output","concurrency","processing_options")
+        "id","name","public_alias","created_at","image_model_type","video_model_type","api_protocol","task_type","task_types","pricing","supports_tool_calls","supports_json_output","supports_strict_output","text_api","concurrency","processing_options")
     models = []
     for row in rows:
         task_types = row["task_types"] or [row["task_type"]]
@@ -83,7 +83,7 @@ async def model_catalog():
             "image_model_type": row["image_model_type"], "video_model_type": row["video_model_type"],
             "reference_image_urls": bool(row["image_model_type"] and row["api_protocol"] in {"openai_compatible", "volcengine_ark", "openrouter_compatible"}),
             "pricing": public_tariff(row["pricing"]), "tool_calls": row["supports_tool_calls"],
-            "json_output": row["supports_json_output"], "strict_output": row["supports_strict_output"],
+            "json_output": row["supports_json_output"], "strict_output": row["supports_strict_output"], "text_api": row["text_api"],
             "concurrency": max(1, row["concurrency"]),
             **({"native_api":NATIVE_APIS[row["api_protocol"]]} if row["api_protocol"] in NATIVE_APIS
                and any(kind in kinds for kind in ("video", "asr", "media_processing")) else {}),

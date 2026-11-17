@@ -14,17 +14,19 @@ def test_reasoning_upgrade_is_additive_and_repeatable(tmp_path):
     code = '''
 import asyncio, os
 from tortoise import Tortoise
-from services.schema_compat import ensure_model_reasoning_schema
+from services.schema_compat import ensure_model_reasoning_schema, ensure_billing_integration_schema
 async def run():
     await Tortoise.init(db_url=os.environ['DATABASE_URL'], modules={'models':['models.config']})
     await ensure_model_reasoning_schema()
     await ensure_model_reasoning_schema()
+    await ensure_billing_integration_schema()
+    await ensure_billing_integration_schema()
     await Tortoise.close_connections()
 asyncio.run(run())
 '''
     subprocess.run([sys.executable, '-c', code], check=True, env={**os.environ, 'DATABASE_URL': f'sqlite://{path}'})
     with sqlite3.connect(path) as connection:
-        assert connection.execute('SELECT thinking, reasoning_effort FROM ai_model_configs').fetchall() == [('enabled', None)]
+        assert connection.execute('SELECT thinking, reasoning_effort, text_api FROM ai_model_configs').fetchall() == [('enabled', None, 'chat_completions')]
 
 
 @pytest.mark.asyncio
@@ -70,8 +72,8 @@ async def run():
         for _ in range(2):
             await ensure_model_reasoning_schema()
             await ensure_billing_integration_schema()
-        assert await db.execute_query_dict('SELECT id, thinking, reasoning_effort, supports_strict_output FROM ai_model_configs') == [
-            {'id': 1, 'thinking': 'enabled', 'reasoning_effort': None, 'supports_strict_output': False}]
+        assert await db.execute_query_dict('SELECT id, thinking, reasoning_effort, supports_strict_output, text_api FROM ai_model_configs') == [
+            {'id': 1, 'thinking': 'enabled', 'reasoning_effort': None, 'supports_strict_output': False, 'text_api': 'chat_completions'}]
         async def width():
             return (await db.execute_query_dict("SELECT character_maximum_length AS n FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='ai_model_configs' AND column_name='thinking'"))[0]['n']
         assert await width() == 64

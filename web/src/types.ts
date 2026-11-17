@@ -32,7 +32,7 @@ export interface GenerationCapabilities {
   video_pricing?: Partial<Record<VideoGenerationModelType, ModelPricing>>
 }
 
-export interface AiModelConfig { id: number; public_alias?: string | null; task_type: number; task_types?: number[]; name: string; base_url?: string; api_key?: string; model?: string; api_protocol: ImageApiProtocol; image_model_type?: ImageModelType | null; video_model_type?: VideoGenerationModelType | null; is_active: boolean; concurrency: number; supports_json_output: boolean; supports_tool_calls?: boolean; supports_strict_output?: boolean; max_context_characters?: number | null; thinking?: string | null; reasoning_effort?: string | null; max_tokens?: number | null; pricing?: ModelPricing | null; processing_options?: Record<string, unknown> | null; scope?: 'official' | 'studio_platform'; created_at: string; updated_at: string }
+export interface AiModelConfig { id: number; public_alias?: string | null; task_type: number; task_types?: number[]; name: string; base_url?: string; api_key?: string; model?: string; api_protocol: ImageApiProtocol; image_model_type?: ImageModelType | null; video_model_type?: VideoGenerationModelType | null; is_active: boolean; concurrency: number; supports_json_output: boolean; supports_tool_calls?: boolean; supports_strict_output?: boolean; text_api?: 'chat_completions' | 'responses'; max_context_characters?: number | null; thinking?: string | null; reasoning_effort?: string | null; max_tokens?: number | null; pricing?: ModelPricing | null; processing_options?: Record<string, unknown> | null; scope?: 'official' | 'studio_platform'; created_at: string; updated_at: string }
 
 export interface GeneralConfig { id: number; prompt_language: 'zh' | 'en'; created_at: string; updated_at: string }
 

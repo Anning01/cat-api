@@ -12817,6 +12817,925 @@
         "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。\n客户端显式参数及扩展字段原样透传，支持的 thinking／reasoning_effort 格式与档位由上游模型决定；模型能力标签不拦截请求。仅在客户端省略参数时使用管理员配置的默认思考参数。"
       }
     },
+    "/responses": {
+      "post": {
+        "summary": "Responses 生成／SSE 流式输出",
+        "operationId": "createResponse",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesRequest"
+              },
+              "examples": {
+                "严格 JSON": {
+                  "value": {
+                    "model": "gpt-image-2-discount",
+                    "input": "Return JSON",
+                    "text": {
+                      "format": {
+                        "type": "json_schema",
+                        "name": "answer",
+                        "strict": true,
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "answer": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "answer"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功结果按上游结构保留；HTTP 200 也可能携带供应商业务错误，请同时检查正文及状态头。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseResult"
+                },
+                "example": {
+                  "id": "resp-example",
+                  "object": "response",
+                  "status": "completed",
+                  "output": [],
+                  "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 2
+                  }
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "供应商原始 Responses SSE 事件"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "字段、URL 或价格配置不符合要求；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "字段、URL 或价格配置不符合要求",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或媒体模式不支持；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "请求参数或媒体模式不支持",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "平台 Key 缺失、无效或到期；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "平台 Key 缺失、无效或到期",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "账户余额不足；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "账户余额不足",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "账户／模型权限不足；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "账户／模型权限不足",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "模型或当前账户任务不存在；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "模型或当前账户任务不存在",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "幂等冲突、任务标识冲突或通道已变化；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "幂等冲突、任务标识冲突或通道已变化",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "JSON 请求超过大小限制；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "JSON 请求超过大小限制",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "并发／限流；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "并发／限流",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "内部错误",
+                    "type": "server_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游结果不确定、网络异常或返回了禁止的内联媒体；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "上游结果不确定、网络异常或返回了禁止的内联媒体",
+                    "type": "server_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务或临时存储不可用；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "服务或临时存储不可用",
+                    "type": "server_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "LLM/对话与流式输出"
+        ],
+        "security": [
+          {
+            "PlatformKey": []
+          }
+        ],
+        "x-apifox-folder": "LLM/对话与流式输出",
+        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。\n原生 Responses 透传；text.format 支持范围由上游决定，包含 json_schema；终态为 response.completed / response.incomplete / response.failed，不添加 [DONE]。"
+      }
+    },
     "/api/v3/auc/bigmodel/submit": {
       "post": {
         "summary": "提交 URL 音频识别任务",
@@ -22658,6 +23577,92 @@
         ],
         "title": "PlatformSettlement"
       },
+      "ResponsesRequest": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Model"
+          },
+          "input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
+          "stream": {
+            "type": "boolean",
+            "title": "Stream",
+            "default": false
+          },
+          "max_output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Output Tokens"
+          },
+          "reasoning": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "title": "ResponsesRequest"
+      },
       "TextPart": {
         "properties": {
           "type": {
@@ -22945,6 +23950,13 @@
                 "tool_calls": {
                   "type": "boolean"
                 },
+                "text_api": {
+                  "type": "string",
+                  "enum": [
+                    "chat_completions",
+                    "responses"
+                  ]
+                },
                 "json_output": {
                   "type": "boolean"
                 },
@@ -22981,6 +23993,34 @@
           "object",
           "data"
         ]
+      },
+      "ResponseResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "output": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": true
+            }
+          },
+          "usage": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
       },
       "ChatCompletion": {
         "type": "object",

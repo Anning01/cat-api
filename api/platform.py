@@ -10,7 +10,7 @@ from controllers.billing import billing_scope
 from services.billing.aggregation import summary
 from auth.models import PlatformApiKey, PlatformCallReceipt, StudioKeyGrant
 from services.platform.temporary_media import UploadSpec, issue_upload
-from schemas.platform_chat import ChatRequest
+from schemas.platform_chat import ChatRequest, ResponsesRequest
 from schemas.platform_billing import PlatformReceiptOut, PlatformAccountOut
 from services.platform.receipts import call_receipt
 from services.platform.videos import VideoRequest, submit_video, video_status
@@ -121,6 +121,12 @@ async def platform_account(request: Request, response: Response, ctx: AuthContex
 async def chat_completions(body: ChatRequest, ctx: AuthContext = Depends(developer_identity),
     idempotency_key: Annotated[str | None, Header(min_length=1, max_length=200)] = None):
     return await complete(ctx, body, idempotency_key)
+
+
+@developer_router.post("/responses", summary="Responses 生成与流式返回")
+async def responses(body: ResponsesRequest, ctx: AuthContext = Depends(developer_identity),
+    idempotency_key: Annotated[str | None, Header(min_length=1, max_length=200)] = None):
+    return await complete(ctx, body, idempotency_key, responses=True)
 
 
 @developer_router.get("/requests/{request_id}", summary="查询调用及结算状态", response_model=PlatformReceiptOut)

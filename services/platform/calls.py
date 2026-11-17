@@ -71,7 +71,7 @@ def chat_options(config, body):
     if not set(config.task_types or [config.task_type]).intersection({1,3,5,6,7,10,11}):
         raise HTTPException(422, "该模型不支持对话请求")
     # Capability labels help clients choose models; upstream validates requested features.
-    for name in ('max_tokens', 'max_completion_tokens'):
+    for name in ('max_tokens', 'max_completion_tokens', 'max_output_tokens'):
         requested = body.get(name)
         if requested and config.max_tokens and requested > config.max_tokens:
             raise HTTPException(422, "请求的输出 token 超出模型配置上限")

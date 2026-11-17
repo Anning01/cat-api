@@ -7,7 +7,11 @@
     "模型默认值仅在客户端未传入时使用。": "Model defaults apply only when the client omits the parameter.",
 
     "支持严格结构化输出（模型目录标记）": "Supports strict structured output (model catalog label)",
-      "思考模式（thinking）": "Thinking mode (thinking)",
+      "文本接口": "Text API",
+      "不支持": "Not supported",
+      "Responses 使用 reasoning.effort；disabled 对应 none，enabled 沿用所设强度或模型默认值。": "Responses uses reasoning.effort: disabled sends none; enabled uses the configured effort or model default.",
+    "支持 JSON Schema 时优先使用严格字段约束。": "Prefer strict field constraints when JSON Schema is supported.",
+    "思考模式（thinking）": "Thinking mode (thinking)",
       "推理强度（reasoning_effort）": "Reasoning effort (reasoning_effort)",
       "按模型默认，不发送参数": "Use model default; omit parameter",
       "开启思考": "Enable thinking",

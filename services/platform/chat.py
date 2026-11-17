@@ -29,7 +29,8 @@ RESULT_UNCONFIRMED = "平台未能确认完整模型结果，请凭请求编号�
 
 
 class ChatStream(StreamingResponse):
-    def __init__(self, client, stream, receipt, deadline, secret=""):
+    def __init__(self, client, stream, receipt, deadline, secret="", *, responses=False):
+        self.responses = responses
         self.queue = asyncio.Queue(maxsize=32)
         self.detached = False
         self.deadline = deadline
@@ -80,12 +81,23 @@ class ChatStream(StreamingResponse):
                             continue
                         value = line[5:].strip()
                         if value == "[DONE]":
-                            done = True
+                            done = done or not self.responses
                             continue
                         try:
                             data = json.loads(value)
-                            provider_id = data.get("id") or provider_id
-                            usage = data.get("usage") or usage
+                            if self.responses:
+                                result = data.get("response") or {}
+                                provider_id = result.get("id") or provider_id
+                                if data.get("type") in {"response.completed", "response.incomplete"}:
+                                    # Only terminal usage confirms a billable response;
+                                    # never reuse an earlier partial usage snapshot.
+                                    usage = response_usage(result.get("usage"))
+                                    done = True
+                                failed = failed or data.get("type") in {"response.failed", "error"}
+                                failed = failed or bool(result.get("error"))
+                            else:
+                                provider_id = data.get("id") or provider_id
+                                usage = data.get("usage") or usage
                             failed = failed or bool(data.get("error"))
                         except (ValueError, AttributeError):
                             pass
@@ -115,7 +127,14 @@ class ChatStream(StreamingResponse):
                 await self.put(None)
 
 
-async def complete(ctx, body, key):
+def response_usage(usage):
+    if not isinstance(usage, dict):
+        return None
+    return {"prompt_tokens": usage.get("input_tokens"), "completion_tokens": usage.get("output_tokens"),
+            "prompt_tokens_details": usage.get("input_tokens_details") or {}}
+
+
+async def complete(ctx, body, key, *, responses=False):
     params = body.model_dump(mode="json", exclude_unset=True)
     config, receipt = await admit(ctx, body.model, params, key)
     headers = {"X-Request-Id":str(receipt.public_id), "Cache-Control":"no-store"}
@@ -125,10 +144,13 @@ async def complete(ctx, body, key):
         client = provider_client(config)
         params["model"] = config.model
         params.setdefault("stream", False)
-        if config.max_tokens and not (body.max_tokens or body.max_completion_tokens):
-            params["max_tokens"] = config.max_tokens
+        limit_names = ("max_output_tokens",) if responses else ("max_tokens", "max_completion_tokens")
+        if config.max_tokens and not any(params.get(name) for name in limit_names):
+            params[limit_names[0]] = config.max_tokens
         from utils.model_reasoning import reasoning_parameters
-        for name, value in reasoning_parameters(config.thinking, config.reasoning_effort).items():
+        defaults = reasoning_parameters(config.thinking, config.reasoning_effort,
+            text_api="responses" if responses else "chat_completions")
+        for name, value in defaults.items():
             params.setdefault(name, value)
         extra = {name: params.pop(name) for name in (body.model_extra or {}) if name in params}
         if 'thinking' in params:
@@ -136,17 +158,21 @@ async def complete(ctx, body, key):
         if extra:
             params["extra_body"] = extra
         async with asyncio.timeout_at(deadline):
-            raw_result = await client.chat.completions.with_raw_response.create(**params)
+            endpoint = client.responses if responses else client.chat.completions
+            raw_result = await endpoint.with_raw_response.create(**params)
             if not body.stream and raw_result.http_response.json().get("error"):
                 await PlatformCallReceipt.filter(id=receipt.id, state="submitted").update(state="rejected")
                 raise UpstreamResponseError(raw_result.http_response, str(receipt.public_id), config.api_key)
         if body.stream:
-            response = ChatStream(client, raw_result.http_response, receipt, deadline, config.api_key)
+            response = ChatStream(client, raw_result.http_response, receipt, deadline, config.api_key, responses=responses)
             client = None  # Stream owns its transport until usage is collected.
             return response
         raw = raw_result.http_response
         result = raw.json()
-        await preserve_result(receipt, finish(receipt, result.get("usage"), result.get("id")))
+        if responses and result.get("status") not in {"completed", "incomplete"}:
+            await mark_failure(receipt, ValueError("unconfirmed response status"))
+        else:
+            await preserve_result(receipt, finish(receipt, response_usage(result.get("usage")) if responses else result.get("usage"), result.get("id")))
         from fastapi import Response
         return Response(raw.content, status_code=raw.status_code, headers=response_headers(raw, receipt.public_id, config.api_key))
     except asyncio.CancelledError as exc:

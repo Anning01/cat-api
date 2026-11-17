@@ -62,6 +62,8 @@ npm run dev
 
 公开定义地址为 `/v1/openapi.json`（OpenAPI 3.1），下载入口 `/api/platform/openapi-export`；仓库导入文件为 `docs/cat-api-openapi.json`。仅导出公开模型 API，不含管理接口、运行中的模型配置或真实凭证。
 
+文本接口同时支持 `/v1/chat/completions` 和 `/v1/responses`，模型目录通过 `text_api` 标注推荐接口。Responses 原始 JSON、SSE 和 `text.format` 保持透传，不限制其他客户端显式使用合法的 `json_object`。仅确认终态的有效用量会进入原有结算流程；失败、非终态或缺失用量的结果进入待核对，不使用过程事件的用量提前计费。
+
 接口按视频／供应商、图片／渠道、LLM 和公共能力分组，使用 Apifox 官方 `x-apifox-folder` 多级目录字段。更新已有项目时，在 Apifox 导入选项中使用导入数据的目录，避免保留旧目录导致仍然平铺。
 
 管理员可在“接口文档 → 文档设置”填写公开在线文档链接，保存后刷新页面应用 CSP 来源；也可用 `API_DOCUMENTATION_URL` 提供初始地址。数据库中的空字符串可暂停展示，并覆盖环境变量默认值。外部页面不会收到平台 Key；始终提供“新窗口打开”，以应对第三方拒绝嵌入。在线文档的主题和内部目录由 Apifox 发布配置控制。
