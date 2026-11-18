@@ -160,9 +160,14 @@ async def images(request: Request, body: ImageRequest, ctx: AuthContext = Depend
     return await generate_platform_image(ctx, body, idempotency_key, legacy_studio=await legacy_studio_images(request, ctx))
 
 
-@developer_router.post("/images/edits", summary="使用已上传的参考图", openapi_extra=sdk_request_schema(ImageRequest))
+@developer_router.post("/images/edits", summary="使用 URL 或标准文件表单编辑图片", openapi_extra=sdk_request_schema(ImageRequest, multipart=True))
 async def edit_images(request: Request, ctx: AuthContext = Depends(developer_identity),
     idempotency_key: Annotated[str | None, Header(min_length=1, max_length=200)] = None):
+    if request.headers.get('content-type','').split(';',1)[0].lower() == 'multipart/form-data':
+        from services.platform.image_uploads import parse_image_edit
+        body, files = await parse_image_edit(request)
+        return await generate_platform_image(ctx, body, idempotency_key, edit=True, upload_files=files,
+            legacy_studio=await legacy_studio_images(request, ctx))
     body = validated_body(ImageRequest, await request.json())
     if not body.reference_urls():
         raise HTTPException(400, "image must contain reference URLs uploaded to temporary storage")

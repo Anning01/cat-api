@@ -63,7 +63,7 @@ reference_url = upload_reference("reference.png", "image/png")
 
 upload_url 的 PUT 授权有效期为 10 分钟，read_url 有效期为 48 小时。PUT 只使用票据内的 headers，不向 OSS 发送猫影 API Key。保留 read_url 供同一任务重试；过期后重新申请并上传。上传完成后再调用生成接口。
 
-生成接口只接收 JSON，单次最多 1 MB；multipart 文件、data URL、b64_json、内联音频或文件数据会在供应商调用前被拒绝。不要调用 SDK 的文件上传模式，改为使用上传完成的 URL。
+普通生成接口只接收 JSON，单次最多 1 MB；data URL、内联音频或文件数据在供应商调用前被拒绝。OpenAI 兼容图片渠道的 `/images/edits` 例外支持标准 multipart 文件表单，见下文；其他渠道仍使用上传完成的 URL。
 
 ## 对话：POST /chat/completions
 
@@ -121,7 +121,11 @@ image = client.images.generate(
 )
 ```
 
-`POST /images/edits` 接收官方 URL JSON：`model`、`prompt`、`images: [{"image_url":"https://..."}]`，可选 `mask: {"image_url":"https://..."}`。旧 `image` URL 数组仍兼容。OpenRouter 原生接口为 `POST /images`，参考图使用 `input_references: [{"type":"image_url","image_url":{"url":"https://..."}}]`。数量 n 原样传递，由上游校验；不接收 multipart、file_id 或内联图片。
+`POST /images/edits` 接收官方 URL JSON：`model`、`prompt`、`images: [{"image_url":"https://..."}]`，可选 `mask: {"image_url":"https://..."}`。旧 `image` URL 数组仍兼容。OpenRouter 原生接口为 `POST /images`，参考图使用 `input_references: [{"type":"image_url","image_url":{"url":"https://..."}}]`。数量 n 原样传递，由上游校验；JSON 模式不接收 file_id 或内联图片。
+
+OpenAI 兼容图片渠道的 `/images/edits` 同时接收官方 SDK 的 multipart 文件表单：`image` / `image[]` 可传 1 至 16 张 PNG/JPEG/WebP，`mask` 可选且须为 PNG；单文件不超过 50 MiB，请求合计不超过 64 MiB。先鉴权，再解析受限文件；文件只在请求期间转发，不进入账务记录，幂等签名包含文件内容摘要。公开别名映射到供应商 model，文件请求转发到同协议的上游 `/images/edits`；不把文件请求发送给只接收 URL 的 Ark/OpenRouter 渠道。
+
+文件编辑的 `response_format` 支持 `url`（默认）或 `b64_json`，原样保留供应商结果；Base64 模式响应上限 64 MiB。仍禁止内联输入和图片二进制 SSE；其他生成接口的 URL 约束不变。沿用实际图片张数、参考图数、规格费率快照和一次性结算；缺少可靠计费规格时保留结果，账单待核对，不自动重提生成。
 
 ## 历史统一视频兼容接口：POST /videos，GET /videos/{id}
 

@@ -49,7 +49,7 @@ Cat API 承担独立的模型服务与结算职责；novel vids／猫影承担�
 ## Protocol Boundary
 
 - 平台按供应商官方协议转发允许的 URL 请求和响应，保留原生任务 ID、状态、扩展字段与流式事件；仅做身份认证、模型与通道路由、任务归属及计费。
-- 不接收或返回 Base64／data URL／内联媒体，不接收 multipart 文件。客户端使用 `/v1/media/uploads` 临时直传，随后传递 HTTPS URL；这是用户明确规定的产品边界，不属于兼容缺陷。
+- 普通生成接口使用 `/v1/media/uploads` 临时直传和 HTTPS URL，不接收内联媒体。为兼容标准客户端，OpenAI 兼容图片渠道的 `/v1/images/edits` 支持受限 multipart 文件转发，并按请求返回 URL 或 Base64；不持久化文件正文，沿用幂等和真实用量结算。音色设计渠道另支持原始 Base64 WAV 输出。
 - 计费异常进入独立回执的待核对／待结算状态，不覆盖上游已成功的生成结果。历史 `/v1/videos` 统一格式保留兼容，新的供应商接入使用原生路径。
 
 ## Brand Commitments

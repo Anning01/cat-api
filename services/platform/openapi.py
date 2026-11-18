@@ -34,7 +34,7 @@ def parameter(name, description, *, required=False, location="header", schema=No
 
 DESCRIPTION = """Cat API 模型开放平台。供应商原生请求与结果按原格式转发，仅进行鉴权、模型路由、任务归属与计费。
 
-**媒体规则**：先调用 `/media/uploads` 申请临时直传，文件直接 PUT 到 OSS，再把 `read_url` 放入生成请求。平台不接收 multipart、Base64 文件、data URL、内联音频或文件；不开放携带内联媒体的图片流式输出。MD5 摘要的 Base64 编码不属于文件内容。
+**媒体规则**：先调用 `/media/uploads` 申请临时直传，文件直接 PUT 到 OSS，再把 `read_url` 放入生成请求。普通生成接口不接收 Base64 文件、data URL、内联音频或文件；OpenAI 兼容图片渠道的 `/images/edits` 支持标准 multipart 文件编辑和按请求返回 URL/Base64，其他接口沿用 URL 规则。不开放图片二进制流式输出。MD5 摘要的 Base64 编码不属于文件内容。
 
 **身份与编号**：平台 Key 填入 Bearer；部分原生协议也支持对应鉴权头。使用目录 `nv-ID` 或 `X-Cat-Model` 选择通道。供应商 `X-Request-Id` 和任务 ID 保留，平台账务 UUID 位于 `X-Cat-Request-Id`（兼容 `X-Novelvids-Request-Id`）。
 
@@ -106,8 +106,8 @@ def public_openapi(app):
             "choices":array(obj({"index":integer,"message":obj({"role":string(),"content":{"type":["string","null"]},"tool_calls":array(obj()),"reasoning_content":string(),
                 "audio":obj({"data":string("音色设计渠道返回原始 Base64 WAV，不裁剪试听样本")})}),
                 "finish_reason":{"type":["string","null"]}})),"usage":usage}),
-        "ImageResult":obj({"created":integer,"data":array(obj({"url":url,"size":string(),"revised_prompt":string(),"error":obj()})),
-            "images":array({"anyOf":[url,obj({"url":url})]}),"usage":obj()},description="供应商 URL 图片结果及原生扩展字段。平台不新增 data 包装、不接收 b64_json。"),
+        "ImageResult":obj({"created":integer,"data":array(obj({"url":url,"size":string(),"revised_prompt":string(),"b64_json":string("仅文件编辑且请求 b64_json 时返回"),"error":obj()})),
+            "images":array({"anyOf":[url,obj({"url":url})]}),"usage":obj()},description="供应商 URL 图片结果及原生扩展字段。平台不新增 data 包装；b64_json 只支持文件编辑请求。"),
         "UploadTicket":obj({"media_id":integer,"upload_url":url,"headers":{"type":"object","additionalProperties":{"type":"string"}},
             "read_url":url,"expires_at":integer},required=["media_id","upload_url","headers","read_url","expires_at"]),
         "LegacyVideo":obj({"id":string(format="uuid"),"object":string(enum=["video"]),"model":string(),"status":string(enum=["queued","in_progress","completed","failed"]),
@@ -166,7 +166,7 @@ def public_openapi(app):
         folder = "图片/OpenRouter" if path == "/images" else folders.get(tag, tag)
         operation.update(operationId=identifier,tags=[folder],summary=title,security=[{"PlatformKey":[]}])
         operation["x-apifox-folder"] = folder
-        operation["description"] = "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。"
+        operation["description"] = "原生扩展字段保留。除文件编辑接口的明确例外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
         if tag == "视频兼容":
             operation["description"] = "历史统一格式兼容入口，保留平台 UUID、completed 与 metadata.url；新供应商接入优先使用原生任务接口。"
         parameters = operation.setdefault("parameters", [])
@@ -196,6 +196,8 @@ def public_openapi(app):
             responses.pop("200", None)
             responses["307"] = {"description":"跳转至供应商视频下载地址，不通过平台转发视频文件。",
                 "headers":{"Location":{"description":"成片 URL","schema":url},**deepcopy(headers)}}
+        if path == "/images/edits":
+            operation['description'] += '\nOpenAI 兼容图片渠道支持 multipart 文件表单：1 至 16 张 image/image[]，可选一张 PNG mask；单文件最多 50 MiB，总请求最多 64 MiB。支持 response_format=url 或 b64_json；其他协议仅支持 JSON URL。文件先鉴权后解析，按文件摘要保证幂等，不自动重提。'
         if path == "/responses":
             operation["description"] += "\n原生 Responses 透传；text.format 支持范围由上游决定，包含 json_schema；终态为 response.completed / response.incomplete / response.failed，不添加 [DONE]。"
             responses["200"]["content"]["text/event-stream"] = {"schema":string("供应商原始 Responses SSE 事件")}

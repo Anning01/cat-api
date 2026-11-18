@@ -2,6 +2,9 @@
 import asyncio
 import json
 import re
+import hashlib
+import base64
+import binascii
 from ipaddress import ip_address
 from math import gcd, isfinite
 from typing import Literal
@@ -47,7 +50,7 @@ class ImageRequest(BaseModel):
     mask: dict | None = None
     frame_count: int | None = None
     frame_duration_ms: int | None = None
-    response_format: Literal["url"] = "url"
+    response_format: Literal["url", "b64_json"] = Field("url", description="b64_json 仅用于 OpenAI 文件编辑接口")
     quality: str | None = None
     background: str | None = None
     moderation: str | None = None
@@ -157,9 +160,16 @@ def needs_pixel_client(model_type, pricing):
     return model_type == "seedream_5_5" or (pricing or {}).get("billing_unit") == "pixel_tier"
 
 
-async def generate(ctx, request, key, *, edit=False, protocol=None, legacy_studio=False):
+async def generate(ctx, request, key, *, edit=False, protocol=None, legacy_studio=False, upload_files=None):
+    if request.response_format == 'b64_json' and not upload_files:
+        raise HTTPException(422, '此接口仅返回图片 URL；b64_json 仅支持文件编辑请求')
     body = request.model_dump(exclude_none=True)
+    if upload_files:
+        body['_file_inputs'] = [{'field':field,'sha256':hashlib.sha256(content).hexdigest(),'bytes':len(content)}
+                               for field, (name,content,mime) in upload_files]
     def validate(config, values):
+        if upload_files and config.api_protocol != 'openai_compatible':
+            raise HTTPException(422, '该渠道仅支持 JSON 图片 URL，请选择支持 OpenAI 文件编辑的渠道')
         if legacy_studio and needs_pixel_client(config.image_model_type, config.pricing):
             raise HTTPException(409, "此生图渠道需要新版工作台，请联系部署管理员升级")
         if protocol and config.api_protocol != protocol:
@@ -171,7 +181,7 @@ async def generate(ctx, request, key, *, edit=False, protocol=None, legacy_studi
     references = request.reference_urls()
     payload = request.model_dump(mode="json", exclude_unset=True, exclude_none=True)
     payload["model"] = config.model
-    payload["response_format"] = "url"
+    payload["response_format"] = request.response_format if upload_files else "url"
     if config.api_protocol == "volcengine_ark":
         payload.setdefault("watermark", False)
     for field in ("images", "image", "input_references"):
@@ -193,9 +203,12 @@ async def generate(ctx, request, key, *, edit=False, protocol=None, legacy_studi
     if config.api_protocol == "openai_compatible":
         payload.pop("aspect_ratio", None)
     upstream_body = {"json":payload}
+    if upload_files:
+        upstream_body = {'data':{name:json.dumps(value,ensure_ascii=False) if isinstance(value,(dict,list,bool)) else str(value)
+                                 for name,value in payload.items()}, 'files':upload_files}
     provider_id = None
     client, upstream = None, None
-    input_count = len(references)
+    input_count = sum(field == 'image[]' for field, _ in upload_files) if upload_files else len(references)
     deadline = asyncio.get_running_loop().time() + CALL_TIMEOUT
     try:
         client = httpx.AsyncClient(timeout=CALL_TIMEOUT, follow_redirects=False)
@@ -203,7 +216,7 @@ async def generate(ctx, request, key, *, edit=False, protocol=None, legacy_studi
             upstream = await client.send(client.build_request("POST", config.base_url.rstrip("/") + upstream_path,
                 headers={"Authorization":"Bearer "+config.api_key}, **upstream_body), stream=True)
             provider_id = upstream.headers.get("x-request-id")
-            max_bytes = 1024 * 1024
+            max_bytes = 64 * 1024**2 if upload_files and request.response_format == 'b64_json' else 1024 * 1024
             length = upstream.headers.get("content-length")
             if length and int(length) > max_bytes:
                 raise ValueError("Image response exceeds limit")
@@ -224,7 +237,11 @@ async def generate(ctx, request, key, *, edit=False, protocol=None, legacy_studi
             await PlatformCallReceipt.filter(id=receipt.id, state="submitted").update(state="rejected", provider_id=provider_id)
             raise UpstreamResponseError(httpx.Response(200, content=bytes(payload), headers={k:v for k,v in upstream.headers.items() if k not in {"content-encoding", "content-length"}}), str(receipt.public_id), config.api_key)
         try:
-            reject_inline_media(raw)
+            checked = raw
+            if upload_files and request.response_format == 'b64_json':
+                checked = {**raw, 'data':[{k:v for k,v in item.items() if k != 'b64_json'}
+                                        for item in raw.get('data',[]) if isinstance(item,dict)]}
+            reject_inline_media(checked)
         except HTTPException:
             await PlatformCallReceipt.filter(id=receipt.id, state="submitted").update(state="review", provider_id=provider_id)
             raise HTTPException(502, "供应商返回了不允许的内联媒体，请选择支持 URL 结果的通道", headers=headers) from None
@@ -243,7 +260,13 @@ async def generate(ctx, request, key, *, edit=False, protocol=None, legacy_studi
             for item in items:
                 url = item.get("url") if isinstance(item, dict) else item
                 if not isinstance(url, str) or not url:
-                    raise ValueError("Provider did not confirm generated image URL")
+                    if not upload_files or request.response_format != 'b64_json' or not isinstance(item,dict):
+                        raise ValueError("Provider did not confirm generated image URL")
+                    from services.platform.image_uploads import image_mime
+                    try:
+                        image_mime(base64.b64decode(item['b64_json'],validate=True))
+                    except (KeyError,ValueError,TypeError,binascii.Error,HTTPException):
+                        raise ValueError('Provider did not confirm valid image data') from None
                 if pixel_billing:
                     tier = output_pixel_tier(item.get("size"), config.image_model_type, layered)
                     tier_counts[tier] = tier_counts.get(tier, 0) + 1

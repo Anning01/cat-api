@@ -177,7 +177,7 @@ async def test_readable_and_legacy_ids_forward_identical_requests(sdk_api, endpo
     assert all(r.model_config_id == model.id and r.model == model.model and r.state == "completed" for r in receipts)
 
 
-async def test_sdk_image_generation_returns_urls_and_rejects_binary_edits(sdk_api):
+async def test_sdk_image_generation_returns_urls_and_rejects_invalid_image_files(sdk_api):
     sdk, state, _ = sdk_api
     image = await sdk.images.generate(model="official-image", prompt="courtyard", size="1536x1024", background="opaque")
     assert image.data[0].url == "https://cdn.example/result.png" and image.data[0].revised_prompt == "kept"
@@ -186,7 +186,7 @@ async def test_sdk_image_generation_returns_urls_and_rejects_binary_edits(sdk_ap
     before = len(state.seen)
     with pytest.raises(APIStatusError) as rejected:
         await sdk.images.edit(model="official-image", prompt="change outfit", image=("face.png", b"source pixels", "image/png"))
-    assert rejected.value.status_code == 400 and len(state.seen) == before
+    assert rejected.value.status_code == 422 and len(state.seen) == before
 
 
 async def test_image_binary_streams_are_rejected_before_upstream(sdk_api):

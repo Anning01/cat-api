@@ -20,10 +20,13 @@ def reject_inline_media(value):
         raise HTTPException(422, "Inline media is not accepted; use temporary OSS URLs")
 
 
-async def bounded_json_body(request: Request):
+async def bounded_json_body(request: Request, *, image_edit=False):
     if request.method not in {"POST", "PUT", "PATCH"}:
         return
-    if request.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
+    if image_edit and content_type == "multipart/form-data":
+        return  # Authenticate in the endpoint before reading a bounded file body.
+    if content_type != "application/json":
         raise HTTPException(400, "Send JSON with media URLs; request a direct upload at /v1/media/uploads")
     length = request.headers.get("content-length")
     if length and length.isdigit() and int(length) > MAX_REQUEST_BYTES:
@@ -50,7 +53,7 @@ def validated_body(schema, values):
         raise HTTPException(422, f"{field}: {detail['msg']}") from None
 
 
-def sdk_request_schema(model):
+def sdk_request_schema(model, *, multipart=False):
     schema = model.model_json_schema()
     definitions = schema.pop("$defs", {})
     def inline(value):
@@ -61,4 +64,14 @@ def sdk_request_schema(model):
         if isinstance(value, list):
             return [inline(item) for item in value]
         return value
-    return {"requestBody":{"required":True, "content":{"application/json":{"schema":inline(schema)}}}}
+    content = {"application/json":{"schema":inline(schema)}}
+    if multipart:
+        file_schema = inline(schema)
+        file_schema['properties']['image'] = {'type':'array','minItems':1,'maxItems':16,
+            'items':{'type':'string','format':'binary'}}
+        file_schema['properties']['mask'] = {'type':'string','format':'binary','description':'可选 PNG 蒙版'}
+        for key in ('images','input_references'):
+            file_schema['properties'].pop(key,None)
+        file_schema['required'] = list(dict.fromkeys([*file_schema.get('required',[]),'image']))
+        content['multipart/form-data'] = {'schema':file_schema}
+    return {"requestBody":{"required":True, "content":content}}
