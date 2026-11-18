@@ -44,7 +44,7 @@ async def test_catalog_mode_and_key_scope_remain_backward_compatible():
     key=await create_key(AuthContext(user=user),'limited',allowed_model_ids=[f'nv-{first.id}'])
     app=FastAPI();app.include_router(developer_router,prefix='/v1')
     async with AsyncClient(transport=ASGITransport(app=app),base_url='http://test',headers={'Authorization':'Bearer '+key['key']}) as client:
-        legacy=(await client.get('/v1/models')).json()['data']
+        legacy=(await client.get('/v1/models?identifier=legacy')).json()['data']
         assert [r['id'] for r in legacy]==[f'nv-{first.id}']
         assert legacy[0]['alias']=='seedream-5.5'
         readable=(await client.get('/v1/models?identifier=alias')).json()['data']

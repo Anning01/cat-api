@@ -88,7 +88,7 @@ async def main():
                 revealed = await client.get(f"/api/platform/keys/{policy['id']}/secret")
                 assert revealed.json()['data']['key'] == policy['key']
                 assert revealed.headers['cache-control'] == 'no-store'
-            assert (await client.get('/v1/models', headers=headers)).json()['data'][0]['id'] == f'nv-{model.id}'
+            assert (await client.get('/v1/models', headers=headers)).json()['data'][0]['id'] == model.model
             readable=(await client.get('/v1/models?identifier=alias',headers=headers)).json()['data'][0]
             assert readable['id']==aliased.public_alias and readable['legacy_id']==f'nv-{model.id}'
             assert (await PlatformApiKey.get(id=policy['id'])).allowed_model_ids == [f'nv-{model.id}']

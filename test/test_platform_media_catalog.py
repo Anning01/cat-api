@@ -37,9 +37,9 @@ async def test_catalog_media_models_and_admin_updates():
     app.include_router(console_router, prefix="/api")
     app.dependency_overrides[get_auth_context] = lambda: AuthContext(user=admin, is_super_admin=True)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        assert (await client.get("/v1/models")).status_code == 401
+        assert (await client.get("/v1/models?identifier=legacy")).status_code == 401
         for key in keys:
-            response = await client.get("/v1/models", headers={"Authorization":f"Bearer {key}"})
+            response = await client.get("/v1/models?identifier=legacy", headers={"Authorization":f"Bearer {key}"})
             assert response.status_code == 200
             data = response.json()["data"]
             assert [row["id"] for row in data] == [f"nv-{enhancement.id}", f"nv-{asr.id}"]
@@ -57,11 +57,11 @@ async def test_catalog_media_models_and_admin_updates():
             "pricing":{"type":"media_processing","billing_unit":"minute","tiers":[{"short_side_max":2160,"fps_max":120,"price":7}]}})
         assert changed.status_code == 200 and changed.json()["code"] == 0
         headers = {"Authorization":f"Bearer {keys[1]}"}
-        updated = (await client.get("/v1/models", headers=headers)).json()["data"][0]
+        updated = (await client.get("/v1/models?identifier=legacy", headers=headers)).json()["data"][0]
         assert updated["concurrency"] == 5 and updated["processing_options"]["poll_seconds"] == 20
         assert updated["pricing"]["tiers"][0]["price"] == 7
         assert (await client.patch(f"/api/config/{enhancement.id}", json={"is_active":False})).json()["code"] == 0
-        assert len((await client.get("/v1/models", headers=headers)).json()["data"]) == 1
+        assert len((await client.get("/v1/models?identifier=legacy", headers=headers)).json()["data"]) == 1
         app.dependency_overrides[get_auth_context] = lambda: AuthContext(user=normal)
         assert (await client.patch(f"/api/config/{asr.id}", json={"concurrency":9})).status_code == 403
 

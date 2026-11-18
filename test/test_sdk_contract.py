@@ -601,7 +601,7 @@ async def test_studio_capabilities_leave_legacy_and_external_clients_independent
     key = (await create_key(AuthContext(user=user), "older-workbench", studio=True))["key"]
     client = sdk.with_options(api_key=key)
     target = f"nv-{image.id}"
-    assert target in [item.id for item in (await sdk.models.list()).data]
+    assert image.model in [item.id for item in (await sdk.models.list()).data]
     assert target not in [item.id for item in (await client.models.list()).data]
     assert target in [item.id for item in (await client.models.list(extra_headers={
         "X-NovelVids-Capabilities":"pixel_tier_images"})).data]

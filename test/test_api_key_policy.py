@@ -47,7 +47,8 @@ async def test_key_policy_is_saved_listed_and_filters_the_authenticated_catalog(
         assert datetime.fromisoformat(listed['expires_at'].replace('Z','+00:00')) == expiry
         assert not listed['is_expired'] and 'key' not in listed
         response = await client.get('/v1/models', headers={'Authorization':'Bearer '+created['key']})
-        assert [row['id'] for row in response.json()['data']] == [f'nv-{allowed.id}']
+        assert [row['id'] for row in response.json()['data']] == [allowed.model]
+        assert response.json()['data'][0]['legacy_id'] == f'nv-{allowed.id}'
         await PlatformApiKey.filter(id=created['id']).update(expires_at=datetime.now(timezone.utc)-timedelta(seconds=1))
         assert (await client.get('/v1/models', headers={'Authorization':'Bearer '+created['key']})).status_code == 401
         assert (await client.get('/api/platform/keys')).json()['data'][0]['is_expired']

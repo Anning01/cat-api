@@ -8,7 +8,13 @@ Base URL：`{{BASE_URL}}`
 
 在猫影开放平台创建 API Key，保存到 `NOVELVIDS_API_KEY` 环境变量。发送 `Authorization: Bearer <API_KEY>`，使用该 Key 所属用户的团队权限与余额。
 
-`model` 接受已启用模型的目录 ID（`nv-...`）、唯一配置名称或原模型 ID。原模型已启用时可以沿用原代码中的 model，仅修改 base_url 和 api_key。名称存在多个匹配项时使用目录 ID。
+`GET /models` 对普通客户端默认返回平台已有的公开调用别名，例如 `gpt-image-2.6-sunburst-discount`，`name` 与该 ID 相同，不下发后台随意填写的显示昵称。客户端把该名称填入 `model`，平台按现有别名找到唯一配置，再使用供应商原模型名转发；例如公开调用名 `gpt-image-2.6-sunburst-discount` 对应供应商 `gpt-image-2.6-sunburst`。后缀区分渠道，保留各自价格与权限，不合并多渠道、不改路由策略。
+
+用途按 OpenRouter 目录形式返回 `architecture.input_modalities/output_modalities/modality`，同时提供顶层 input_modalities/output_modalities；例如 text->text 是文本输出、text+image->image 是生图、audio->text 是识别、text->audio 是音色设计。不能把支持图片输入误标为图片生成。`endpoints` 列出平台实际提供的路径；供应商原生协议依旧按对应路径调用，目录有模型不代表任意第三方软件已适配该协议。不编造未知上下文长度或未核实的识图能力。
+
+`legacy_id` 保留内部授权编号；普通目录仍按当前 Key 的 nv-ID 授权过滤。显式请求 `/models?identifier=legacy` 可取得历史 nv-ID 目录；工作台现有 `X-NovelVids-Capabilities` 请求头也保留该兼容视图。API Key 的用途名称不影响普通客户端的命名格式；`identifier=alias` 可显式请求公开别名视图。已有 nv-ID 和旧别名调用继续可用。
+
+参考：[OpenAI 模型对象](https://developers.openai.com/api/reference/python/resources/models/methods/list)、[OpenRouter 模型目录](https://openrouter.ai/docs/guides/overview/models)。用途元数据采用公开扩展格式，既有 pricing 继续使用 CNY 与平台实际配置，不冒充 OpenRouter 的 USD 价格。
 
 ```python
 import os

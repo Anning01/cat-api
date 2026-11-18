@@ -58,7 +58,7 @@ async def test_voice_catalog_forward_duration_receipt_and_idempotency(sdk_api):
     config=await channel()
     state.failure=200,json.dumps(completion()).encode(),{'content-type':'application/json','x-request-id':'supplier-id'}
     listed=(await sdk.models.list()).data
-    item=next(m.model_dump() for m in listed if m.id==f'nv-{config.id}')
+    item=next(m.model_dump() for m in listed if m.id==config.public_alias)
     assert item['kinds']==['voice_design'] and item['task_types']==[12]
     assert item['pricing']=={'type':'voice_design','billing_unit':'second','currency':'CNY','price_per_second':0.012,'discount':0.8}
     assert 'upstream-fixture' not in json.dumps(item)
@@ -91,7 +91,7 @@ async def test_voice_catalog_forward_duration_receipt_and_idempotency(sdk_api):
     cross=await sdk._client.get(f'https://platform.example/v1/requests/{receipt_id}',headers={'Authorization':f'Bearer {other}'})
     assert cross.status_code==404
     await AiModelConfig.filter(id=config.id).update(is_active=False)
-    assert f'nv-{config.id}' not in [m.id for m in (await sdk.models.list()).data]
+    assert config.public_alias not in [m.id for m in (await sdk.models.list()).data]
     assert (await post(sdk,f'nv-{config.id}',key='disabled')).status_code==404
 
 
@@ -131,7 +131,7 @@ async def test_admin_can_configure_price_and_next_catalog_read_changes(sdk_api):
     sdk,_,_=sdk_api
     config=await channel()
     await ai_model_config_controller.patch(config.id,AiModelConfigPatch(pricing={'type':'voice_design','billing_unit':'second','price_per_second':0.02}))
-    item=next(m.model_dump() for m in (await sdk.models.list()).data if m.id==f'nv-{config.id}')
+    item=next(m.model_dump() for m in (await sdk.models.list()).data if m.id==config.public_alias)
     assert item['pricing']['price_per_second']==0.02
     assert voice_cost(wav_usage(completion()),item['pricing'])==Decimal('0.050003')
 

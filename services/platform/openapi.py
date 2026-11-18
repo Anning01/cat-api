@@ -86,13 +86,18 @@ def public_openapi(app):
         "discount":number,"prices":{"type":"object","additionalProperties":number},
         "input_image":obj({"first_free":integer,"price_per_image":number}),"tiers":array(obj({"short_side_max":integer,"fps_max":number,"price":number})),
         "input_price_per_1m":number,"output_price_per_1m":number,"cache_input_price_per_1m":number,"price_per_minute":number,"price_per_second":number})
-    model = obj({"id":string("兼容模式为 nv-ID；identifier=alias 模式为可读调用名"),
+    model = obj({"id":string("默认返回公开调用别名；identifier=legacy 返回历史 nv-ID"),
         "alias":{"type":["string","null"],"description":"推荐用于 model 的稳定可读调用名","examples":["seedream-5.5"]},
         "legacy_id":string("兼容和授权使用的配置 ID",pattern=r"^nv-[1-9][0-9]{0,9}$"),"object":string(),"owned_by":string(),"name":string(),"created":integer,
         "kinds":array(string()),"task_types":array(integer),"image_model_type":{"type":["string","null"],"examples":["seedream_5_5"]},
         "video_model_type":{"type":["string","null"]},"pricing":pricing,"concurrency":integer,"tool_calls":{"type":"boolean"},
         "text_api":string(enum=["chat_completions", "responses"]),"json_output":{"type":"boolean"},"strict_output":{"type":"boolean"},"reference_image_urls":{"type":"boolean"},
         "native_api":obj({"submit":string(),"query":string()})}, required=["id","name","pricing"])
+    model['properties'].update({
+        'architecture':obj({'input_modalities':array(string()),'output_modalities':array(string()),'modality':string()}),
+        'input_modalities':array(string()), 'output_modalities':array(string()), 'endpoints':array(string()),
+        'supported_parameters':array(string()),
+    })
     schemas.update({
         "PlatformError":obj({"error":obj({"message":string(),"type":string(),"param":{"type":["string","null"]},"code":{"type":["string","null"]}})},required=["error"]),
         "ModelList":obj({"object":string(enum=["list"]),"data":array(model)},required=["object","data"]),
@@ -259,7 +264,7 @@ def public_openapi(app):
                 if "model" in sample["value"]:
                     sample["value"]["model"] = example_alias
         if path == "/models":
-            operation["description"] += " 默认兼容 nv-ID。新软件可使用 identifier=alias，让 data[].id 为可读调用名；legacy_id 保留授权与历史关联 ID。两种视图按同一 Key 模型权限过滤。"
+            operation["description"] += " 普通客户端默认返回公开调用别名（如 gpt-image-2.6-sunburst-discount），name 与 ID 相同，不使用后台显示昵称。平台把该别名映射到唯一渠道和供应商原模型名；保留折扣渠道和独立价格，不合并或切换渠道。architecture 提供 OpenRouter 形式的输入/输出模态，endpoints 为平台实际可调用路径。identifier=legacy 返回历史 nv-ID；X-NovelVids-Capabilities 请求头保留旧工作台视图。identifier=alias 可显式请求公开别名视图。所有视图按同一 Key 权限过滤。"
             operation["responses"]["200"]["content"]["application/json"]["example"]["data"][0].update(alias="seedream-5.5",legacy_id="nv-42")
         if path == "/api/v3/auc/bigmodel/submit":
             operation["responses"]["200"]["content"]["application/json"]["example"] = {}

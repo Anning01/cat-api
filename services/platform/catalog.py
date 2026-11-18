@@ -3,6 +3,7 @@ from math import isfinite
 from models.config import AiModelConfig
 from utils.enums import AiTaskTypeEnum
 from services.video_enhancement.contract import EnhancementOptions
+from services.platform.model_metadata import model_identifier, modality_metadata
 
 
 PUBLIC_KINDS = {
@@ -70,7 +71,7 @@ def public_tariff(raw):
 
 async def model_catalog():
     rows = await AiModelConfig.filter(scope="official", is_active=True).exclude(api_protocol="novelvids").order_by("id").values(
-        "id","name","public_alias","created_at","image_model_type","video_model_type","api_protocol","task_type","task_types","pricing","supports_tool_calls","supports_json_output","supports_strict_output","text_api","concurrency","processing_options")
+        "id","name","model","public_alias","created_at","image_model_type","video_model_type","api_protocol","task_type","task_types","pricing","supports_tool_calls","supports_json_output","supports_strict_output","text_api","concurrency","processing_options")
     models = []
     for row in rows:
         task_types = row["task_types"] or [row["task_type"]]
@@ -79,6 +80,7 @@ async def model_catalog():
             continue
         models.append({
             "id": f"nv-{row['id']}", "name": row["name"], "alias":row["public_alias"], "kinds": kinds,
+            "model_id":model_identifier(row),
             "task_types": [task for task in task_types if task in PUBLIC_KINDS],
             "created": int(row["created_at"].timestamp()),
             "image_model_type": row["image_model_type"], "video_model_type": row["video_model_type"],
@@ -91,4 +93,5 @@ async def model_catalog():
             **({"processing_options": public_processing_options(row["processing_options"])}
                if AiTaskTypeEnum.video_enhancement in task_types else {}),
         })
+        models[-1].update(modality_metadata(models[-1], kinds))
     return models
