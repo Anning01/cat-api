@@ -79,13 +79,32 @@ async def test_phone_verification_links_existing_account_then_scan_logs_it_in(wx
 
 
 @pytest.mark.parametrize("already_has_phone", [False, True])
-async def test_signed_in_migration_links_the_current_account(wx, sms, already_has_phone):
+async def test_signed_in_migration_and_later_scan_login_work_without_sms(wx, sms, monkeypatch, already_has_phone):
+    owner = await phone_user() if already_has_phone else await User.create(username="legacy-user")
+    other = await User.create(username="other-user")
+    monkeypatch.setattr(settings, "PHONE_AUTH_ENABLED", False)
+    attempt, _, _ = await scan(wx, user=owner)
+
+    assert await wechat.poll(attempt, other) == {"status": "expired"}
+    assert await wechat.poll(attempt) == {"status": "expired"}
+    replies = await asyncio.gather(*[wechat.poll(attempt, owner) for _ in range(4)])
+    completed = [r for r in replies if r["status"] == "completed"]
+    assert len(completed) == 1 and completed[0]["session"].user.id == owner.id
+    assert (await WechatIdentity.get()).user_id == owner.id
+    assert await PhoneIdentity.filter(user_id=owner.id).exists() == already_has_phone
+    assert sms.await_count == 0
+
+    public_attempt, _, _ = await scan(wx)
+    assert (await wechat.poll(public_attempt))["session"].user.id == owner.id
+
+
+@pytest.mark.parametrize("already_has_phone", [False, True])
+async def test_previous_client_can_finish_an_in_flight_sms_migration(wx, sms, already_has_phone):
     number = "13800138000"
     owner = await phone_user(number) if already_has_phone else await User.create(username="legacy-user")
     other = await User.create(username="other-user")
     old_session = await auth_service.issue_session(owner)
     attempt, _, _ = await scan(wx, user=owner)
-    assert (await wechat.poll(attempt, owner))["status"] == "phone_required"
     assert await wechat.poll(attempt, other) == {"status": "expired"}
     assert await wechat.poll(attempt) == {"status": "expired"}
 
@@ -196,16 +215,31 @@ async def test_parallel_callbacks_exchange_once_and_poll_issues_one_session(wx):
     assert await UserSession.all().count()==1
 
 
-async def test_disabled_or_phone_less_account_cannot_scan_login(wx):
+async def test_disabled_account_cannot_scan_login(wx):
     owner=await phone_user()
     await WechatIdentity.create(user=owner,app_id="wx-test-app",subject_hash=hash_token("wx-test-app:wechat-person-a"))
     token,_,_=await scan(wx)
     await User.filter(id=owner.id).update(status=0)
     with pytest.raises(HTTPException):await wechat.poll(token)
-    await User.filter(id=owner.id).update(status=1)
-    await PhoneIdentity.all().delete()
-    with pytest.raises(HTTPException):await wechat.poll(token)
     assert not await UserSession.all().exists()
+
+
+async def test_signed_in_migration_preserves_existing_wechat_and_incident_block(wx, monkeypatch):
+    owner = await User.create(username="old-owner")
+    other = await User.create(username="other-owner")
+    await WechatIdentity.create(user=other, app_id=settings.WECHAT_LOGIN_APP_ID,
+                                subject_hash=hash_token(settings.WECHAT_LOGIN_APP_ID + ":wechat-person-a"))
+    taken, _, _ = await scan(wx, user=owner)
+    with pytest.raises(HTTPException) as conflict:
+        await wechat.poll(taken, owner)
+    assert conflict.value.status_code == 409
+
+    monkeypatch.setattr(settings, "PHONE_BIND_BLOCKED_USER_IDS", [str(owner.id)])
+    blocked, _, _ = await scan(wx, user=owner, subject="new-wechat")
+    with pytest.raises(HTTPException) as restriction:
+        await wechat.poll(blocked, owner)
+    assert restriction.value.status_code == 403
+    assert (await WechatIdentity.get()).user_id == other.id
 
 
 async def test_transport_is_fixed_to_wechat_and_sanitizes_provider_errors(monkeypatch):

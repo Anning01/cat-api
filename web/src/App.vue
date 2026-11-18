@@ -99,7 +99,7 @@ watch(() => route.fullPath, () => {
           <strong>{{ migrationTitle }}</strong>
           <AppButton size="sm" variant="danger" @click="loginPrompt=true">{{ tr(loginAudience==='guest'?'打开登录':'扫码绑定微信') }}</AppButton>
         </div>
-        <p v-else-if="loginAudience===null&&auth.isLoggedIn&&auth.phoneEnabled&&!auth.phoneMasked&&route.path!=='/profile'" class="phone-migration-reminder" role="status">{{ tr('请绑定手机号，后续将使用手机号登录。') }} <RouterLink to="/profile">{{ tr('前往绑定') }}</RouterLink></p>
+        <p v-else-if="loginAudience===null&&auth.isLoggedIn&&auth.phoneEnabled&&!auth.phoneMasked&&!auth.wechatBound&&route.path!=='/profile'" class="phone-migration-reminder" role="status">{{ tr('请绑定手机号，后续将使用手机号登录。') }} <RouterLink to="/profile">{{ tr('前往绑定') }}</RouterLink></p>
         <RouterView v-if="route.path!=='/login'||!loginPrompt"/>
       </div>
     </div>
@@ -107,7 +107,7 @@ watch(() => route.fullPath, () => {
     <AppDialog v-if="loginAudience!==null" v-model="loginPrompt" :title="migrationTitle" width="440px" class="wechat-migration-dialog">
       <LoginPage v-if="loginAudience==='guest'" embedded/>
       <template v-else>
-        <p class="wechat-migration-copy">{{ tr('请绑定 Cat API 的公众号微信登录。绑定到当前账号，保留余额、账单和 API Key。') }}</p>
+        <p class="wechat-migration-copy">{{ tr('在微信里确认后即可绑定当前账号，保留余额、账单和 API Key。') }}</p>
         <WechatLogin :key="loginAudience" bind :agreed="true" @authenticated="finishWechatBinding"/>
         <p v-if="bindError" class="console-error" role="alert">{{ bindError }}</p>
       </template>

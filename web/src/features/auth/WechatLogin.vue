@@ -43,7 +43,7 @@ async function start(resume?:{attempt:string;deadline:number}){
     const {data:reply}=await request<SingleResponse<{status:string;session?:LoginResult;expires_in?:number}>>(endpoint+'/poll',{method:'POST',body:JSON.stringify({attempt:data.attempt}),signal:controller.signal})
     if(!active())return
     if(reply.status==='pending'){timer=setTimeout(poll,3000);return}
-    if(reply.status==='phone_required'){phase.value='phone';qr.value='';url.value='';deadline=Date.now()+(reply.expires_in??0)*1000;remember(data.attempt,deadline);tick();return}
+    if(!props.bind&&reply.status==='phone_required'){phase.value='phone';qr.value='';url.value='';deadline=Date.now()+(reply.expires_in??0)*1000;remember(data.attempt,deadline);tick();return}
     if(reply.status==='completed'&&reply.session){stop();forget();emit('authenticated',reply.session);return}
     expire();error.value=tr('微信验证未完成，请重新扫码')
    }catch(e){if(active()){expire();error.value=e instanceof Error?e.message:tr('登录失败，请重试')}}
@@ -72,7 +72,7 @@ watch(()=>props.agreed,value=>{
    <AppButton v-else-if="url&&!qr" type="button" variant="secondary" @click="start()">{{tr('刷新微信二维码')}}</AppButton>
    <AppButton v-else-if="!url" type="button" variant="secondary" @click="start()">{{tr('重新扫码')}}</AppButton>
   </template>
-  <template v-else-if="phase==='phone'"><PhoneLogin :bind="bind" :wechat-attempt="attempt" :agreed="agreed" @authenticated="session=>{forget();emit('authenticated',session)}"/></template>
+  <template v-else-if="phase==='phone'"><PhoneLogin :wechat-attempt="attempt" :agreed="agreed" @authenticated="session=>{forget();emit('authenticated',session)}"/></template>
   <p v-if="phase==='pending'||phase==='phone'" class="muted">{{ tr('剩余时间') }} {{Math.floor(seconds/60)}}:{{String(seconds%60).padStart(2,'0')}}</p>
   <p v-if="phase==='expired'" role="status">{{ tr('微信授权已过期，请重新扫码。') }}</p>
   <AppButton v-if="phase==='idle'||phase==='expired'" type="button" :loading="busy" @click="start()">{{ tr('获取微信登录二维码') }}</AppButton>

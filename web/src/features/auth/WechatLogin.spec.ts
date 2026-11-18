@@ -41,13 +41,15 @@ it('shows the QR before consent and polls only after consent',async()=>{
  wrapper.unmount()
 })
 
-it('uses the authenticated binding endpoints and advances to binding the current phone',async()=>{
+it('completes authenticated binding directly after WeChat confirmation',async()=>{
  const wrapper=await setup(true, true)
  expect(vi.mocked(request).mock.calls[0]![0]).toBe('/auth/wechat/bind/start')
- vi.mocked(request).mockResolvedValueOnce({data:{status:'phone_required',expires_in:250}})
+ const session={token:'new-session',user:{id:1}}
+ vi.mocked(request).mockResolvedValueOnce({data:{status:'completed',session}})
  await vi.advanceTimersByTimeAsync(3000)
  expect(vi.mocked(request).mock.calls[1]![0]).toBe('/auth/wechat/bind/poll')
- expect(wrapper.findComponent(PhoneLogin).props('bind')).toBe(true)
+ expect(wrapper.findComponent(PhoneLogin).exists()).toBe(false)
+ expect(wrapper.emitted('authenticated')).toEqual([[session]])
  wrapper.unmount()
 })
 it('cancels pending polling when the user leaves this method',async()=>{

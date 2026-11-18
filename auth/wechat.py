@@ -1,10 +1,11 @@
-"""Service-account OAuth, with phone-owned accounts and private polling secrets."""
+"""Service-account OAuth with private polling secrets and account-scoped binding."""
 from datetime import datetime, timedelta, timezone
 import secrets
 from urllib.parse import urlencode, urlsplit
 
 import httpx
 from fastapi import HTTPException
+from tortoise.exceptions import IntegrityError
 from tortoise.transactions import in_transaction
 
 from auth.models import PhoneIdentity, User, UserAdminEvent, WechatIdentity, WechatLoginAttempt
@@ -14,7 +15,6 @@ from config import settings
 
 
 def enabled() -> bool:
-    from auth import phone
     try:
         origin = urlsplit(settings.WECHAT_LOGIN_ORIGIN)
         valid = (origin.scheme == "https" and origin.hostname and not origin.username
@@ -22,7 +22,7 @@ def enabled() -> bool:
     except ValueError:
         valid = False
     return bool(settings.WECHAT_LOGIN_ENABLED and settings.WECHAT_LOGIN_APP_ID
-                and settings.WECHAT_LOGIN_APP_SECRET and valid and phone.enabled())
+                and settings.WECHAT_LOGIN_APP_SECRET and valid)
 
 
 def require_enabled():
@@ -109,25 +109,34 @@ def _attempt(token: str, user_id: int | None = None):
 
 async def poll(token: str, user: User | None = None) -> dict:
     require_enabled()
-    async with in_transaction():
-        attempt = await _attempt(token, user.id if user else None).select_for_update()
-        if not attempt or attempt.status == "consumed":
-            return {"status": "expired"}
-        if attempt.status in {"pending", "exchanging", "confirm"}:
-            return {"status": "pending"}
-        if attempt.status != "verified" or not attempt.subject_hash:
-            return {"status": "failed"}
-        identity = await WechatIdentity.get_or_none(app_id=attempt.app_id, subject_hash=attempt.subject_hash)
-        if user and identity and identity.user_id != user.id:
-            raise HTTPException(409, "此微信已绑定其他账号，请使用另一个微信")
-        if user or not identity:
-            return {"status": "phone_required", "expires_in": max(0,int((attempt.expires_at-now()).total_seconds()))}
-        user = await User.get(id=identity.user_id).select_for_update()
-        if user.status != 1 or not await PhoneIdentity.filter(user_id=user.id).exists():
-            raise HTTPException(403, "账号不可登录，请使用手机号或联系支持")
-        attempt.status = "consumed"
-        await attempt.save(update_fields=["status", "updated_at"])
-        return {"status": "completed", "session": await auth_service.issue_session(user)}
+    try:
+        async with in_transaction():
+            # Authenticated binding and the previous SMS path lock the account first.
+            target = await User.get(id=user.id).select_for_update() if user else None
+            attempt = await _attempt(token, user.id if user else None).select_for_update()
+            if not attempt or attempt.status == "consumed":
+                return {"status": "expired"}
+            if attempt.status in {"pending", "exchanging", "confirm"}:
+                return {"status": "pending"}
+            if attempt.status != "verified" or not attempt.subject_hash:
+                return {"status": "failed"}
+            if target:
+                if target.status != 1 or str(target.id) in settings.PHONE_BIND_BLOCKED_USER_IDS:
+                    raise HTTPException(403, "当前账号暂不能绑定微信，请联系支持")
+                await _link_identity(attempt, target)
+            else:
+                identity = await WechatIdentity.get_or_none(app_id=attempt.app_id, subject_hash=attempt.subject_hash)
+                if not identity:
+                    from auth import phone
+                    phone.require_enabled()
+                    return {"status": "phone_required", "expires_in": max(0, int((attempt.expires_at - now()).total_seconds()))}
+                target = await User.get(id=identity.user_id).select_for_update()
+                if target.status != 1:
+                    raise HTTPException(403, "账号不可登录，请联系支持")
+                await _consume_attempt(attempt)
+            return {"status": "completed", "session": await auth_service.issue_session(target)}
+    except IntegrityError:
+        raise HTTPException(409, "微信或账号已有其他绑定，不能覆盖或合并账号") from None
 
 
 async def require_confirmed_binding(token: str, user: User):
@@ -146,6 +155,10 @@ async def link_verified_phone(token: str, user: User, *, binding: bool = False):
     target = await User.get(id=user.id).select_for_update()
     if target.status != 1 or not await PhoneIdentity.filter(user_id=target.id).exists():
         raise HTTPException(403, "请先验证手机号")
+    await _link_identity(attempt, target)
+
+
+async def _link_identity(attempt: WechatLoginAttempt, target: User):
     identity = await WechatIdentity.get_or_none(app_id=attempt.app_id, subject_hash=attempt.subject_hash)
     current = await WechatIdentity.get_or_none(user_id=target.id)
     if ((identity and identity.user_id != target.id)
@@ -154,5 +167,9 @@ async def link_verified_phone(token: str, user: User, *, binding: bool = False):
     if not identity:
         await WechatIdentity.create(user=target, app_id=attempt.app_id, subject_hash=attempt.subject_hash)
         await UserAdminEvent.create(account_user_id=target.id,operator_user_id=target.id,action="wechat_bind")
+    await _consume_attempt(attempt)
+
+
+async def _consume_attempt(attempt: WechatLoginAttempt):
     attempt.status = "consumed"
     await attempt.save(update_fields=["status", "updated_at"])

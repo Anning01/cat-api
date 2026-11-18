@@ -144,7 +144,7 @@ async def wechat_callback(code: str = Query(min_length=1, max_length=512),
 async def wechat_confirm(confirmation: str = Form(min_length=32,max_length=64)):
     try:
         await wechat.confirm(confirmation)
-        return wechat_page('微信验证完成，请返回发起登录的页面继续。首次登录需要验证手机号。'
+        return wechat_page('微信验证完成，请返回发起扫码的页面继续。'
             '<p>如果在本手机发起登录，可<a href="/#/login?method=wechat">返回登录页面</a>继续。</p>',200)
     except HTTPException:
         return wechat_page("微信确认已失效，请返回登录页重新扫码。",400)
