@@ -5,6 +5,7 @@ import re
 import hashlib
 import base64
 import binascii
+from dataclasses import replace
 from ipaddress import ip_address
 from math import gcd, isfinite
 from typing import Literal
@@ -99,18 +100,26 @@ def selection(config, body):
         size = None
     ratio = body.get("aspect_ratio")
     if size and "x" in size:
+        if config.api_protocol == 'openai_compatible':
+            match = re.fullmatch(r'([1-9][0-9]{0,4})x([1-9][0-9]{0,4})', size)
+            if not match:
+                raise HTTPException(422, 'size 须为 WIDTHxHEIGHT 像素尺寸')
+            width, height = map(int, match.groups())
+            if (width % 16 or height % 16 or max(width,height) > 3840
+                or max(width,height) > 3 * min(width,height)
+                or not 655360 <= width * height <= 8294400):
+                raise HTTPException(422, f'size={size} 不符合 GPT Image 尺寸规范：边长须为 16 的倍数且不超过 3840，比例在 1:3 至 3:1，总像素在 655360 至 8294400')
+            # Keep the existing short-edge tariff bands; native pixels override the private aspect_ratio hint.
+            tiers = sorted(caps.sizes, key=lambda tier:int(caps.sizes[tier][0].split('x')[0]))
+            tier = next((tier for tier in tiers if min(width,height) <= int(caps.sizes[tier][0].split('x')[0])), None)
+            if tier is None:
+                raise HTTPException(422, '此像素尺寸未对应已配置的清晰度档位')
+            selected = validate_selection(config.image_model_type, clarity=tier, aspect_ratio=None,
+                output_format=body['output_format'], generation_count=1, frame_count=body.get('frame_count'),
+                frame_duration_ms=body.get('frame_duration_ms'))
+            divisor = gcd(width,height)
+            return replace(selected, aspect_ratio=f'{width//divisor}:{height//divisor}', provider_size=size)
         match = next(((tier, caps.aspect_ratios[sizes.index(size)]) for tier, sizes in caps.sizes.items() if size in sizes), None)
-        if not match and config.api_protocol == "openai_compatible":
-            try:
-                width, height = (int(value) for value in size.split("x"))
-                divisor = gcd(width, height)
-                native_ratio = f"{width // divisor}:{height // divisor}"
-                tier = next(tier for tier, sizes in caps.sizes.items()
-                            if min(width, height) == int(sizes[0].split("x")[0]))
-                if native_ratio in caps.aspect_ratios:
-                    match = tier, native_ratio
-            except (ValueError, StopIteration, ZeroDivisionError):
-                pass
         if not match or ratio and ratio != match[1]:
             raise HTTPException(422, "尺寸与所选模型画幅不匹配")
         size, ratio = match

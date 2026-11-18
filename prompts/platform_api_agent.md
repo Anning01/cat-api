@@ -123,6 +123,8 @@ image = client.images.generate(
 
 `POST /images/edits` 接收官方 URL JSON：`model`、`prompt`、`images: [{"image_url":"https://..."}]`，可选 `mask: {"image_url":"https://..."}`。旧 `image` URL 数组仍兼容。OpenRouter 原生接口为 `POST /images`，参考图使用 `input_references: [{"type":"image_url","image_url":{"url":"https://..."}}]`。数量 n 原样传递，由上游校验；JSON 模式不接收 file_id 或内联图片。
 
+OpenAI 兼容 GPT Image 请求可直接使用原生像素尺寸，例如 `1536x864`。平台按官方像素限制校验，不再要求尺寸出现在工作台预设白名单；像素 size 优先于额外的 aspect_ratio 提示，原样转发，不擅自改图像尺寸。两边须为 16 的倍数、最大边不超过 3840、长短边比不超过 3、总像素在 655360 至 8294400。1K/2K/4K 费用仍沿用已有短边档位及后台价格，不新增费率。URL JSON 和文件表单使用同一尺寸校验。
+
 OpenAI 兼容图片渠道的 `/images/edits` 同时接收官方 SDK 的 multipart 文件表单：`image` / `image[]` 可传 1 至 16 张 PNG/JPEG/WebP，`mask` 可选且须为 PNG；单文件不超过 50 MiB，请求合计不超过 64 MiB。先鉴权，再解析受限文件；文件只在请求期间转发，不进入账务记录，幂等签名包含文件内容摘要。公开别名映射到供应商 model，文件请求转发到同协议的上游 `/images/edits`；不把文件请求发送给只接收 URL 的 Ark/OpenRouter 渠道。
 
 文件编辑的 `response_format` 支持 `url`（默认）或 `b64_json`，原样保留供应商结果；Base64 模式响应上限 64 MiB。仍禁止内联输入和图片二进制 SSE；其他生成接口的 URL 约束不变。沿用实际图片张数、参考图数、规格费率快照和一次性结算；缺少可靠计费规格时保留结果，账单待核对，不自动重提生成。
