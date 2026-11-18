@@ -3,7 +3,7 @@ import { api, clearAuthToken, getAuthToken, setAuthToken } from '@/api'
 import type { AuthMe, AuthUser, LoginResult } from '@/types'
 export const useAuthStore = defineStore('auth', {
   state: () => ({ ready:false, legacyWorksEnabled:false, token:getAuthToken(), user:null as AuthUser | null,
-    balance:'0', totalCost:0, qilingBound:false, qilingEnabled:false, phoneEnabled:false, phoneSignupEnabled:false,
+    balance:'0', totalCost:0, qilingBound:false, qilingEnabled:false, phoneEnabled:false,
     phoneMasked:null as string|null, wechatEnabled:false, wechatBound:false,
     legalReady:false, provider:'qiling' as 'qiling'|'password'|'phone'|'wechat' }),
   getters: {
@@ -18,7 +18,7 @@ export const useAuthStore = defineStore('auth', {
       const {data} = await api.authStatus()
       this.legacyWorksEnabled=data.legacy_works_enabled === true
       this.qilingEnabled=data.qiling_enabled === true; this.legalReady=data.legal_ready === true
-      this.phoneEnabled=data.phone_enabled===true; this.phoneSignupEnabled=data.phone_signup_enabled===true
+      this.phoneEnabled=data.phone_enabled===true
       this.wechatEnabled=data.wechat_enabled===true
       this.provider=data.provider ?? 'qiling'
       if (this.token) {

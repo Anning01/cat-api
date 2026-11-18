@@ -10,7 +10,7 @@ vi.mock('@/api',()=>({request:vi.fn(),getAuthToken:()=>null}))
 afterEach(()=>vi.clearAllMocks())
 function setup(bind=false,agreed=true){
  const pinia=createPinia();setActivePinia(pinia);setLocale('zh')
- const auth=useAuthStore();auth.legalReady=true;auth.phoneSignupEnabled=true
+ const auth=useAuthStore();auth.legalReady=true
  return mount(PhoneLogin,{props:{bind,agreed},global:{plugins:[pinia,i18n]},attachTo:document.body})
 }
 it('requires consent before spending an SMS and preserves leading zero codes',async()=>{
@@ -29,7 +29,10 @@ it('requires consent before spending an SMS and preserves leading zero codes',as
  await wrapper.get('form').trigger('submit');await flushPromises()
  const args=vi.mocked(request).mock.calls[1]!
  expect(args[0]).toBe('/auth/phone/login')
- expect(JSON.parse(String(args[1]?.body))).toMatchObject({code:'012345',register:false,agreed:true})
+ const payload=JSON.parse(String(args[1]?.body))
+ expect(payload).toMatchObject({code:'012345',agreed:true})
+ expect(payload).not.toHaveProperty('register')
+ expect(wrapper.text()).not.toContain('注册')
  expect(wrapper.emitted('authenticated')).toHaveLength(1)
  wrapper.unmount()
 })

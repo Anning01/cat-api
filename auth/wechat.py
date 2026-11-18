@@ -34,11 +34,16 @@ def now():
     return datetime.now(timezone.utc)
 
 
-async def start() -> dict:
+def _attempt_hash(token: str, user_id: int | None) -> str:
+    # Binding attempts can only be looked up by the account that started them.
+    return hash_token(token if user_id is None else f"wechat-bind:{user_id}:{token}")
+
+
+async def start(user: User | None = None) -> dict:
     require_enabled()
     state, token = secrets.token_hex(24), new_session_token()
     await WechatLoginAttempt.filter(expires_at__lte=now() - timedelta(days=1)).delete()
-    await WechatLoginAttempt.create(token_hash=hash_token(token), state_hash=hash_token(state),
+    await WechatLoginAttempt.create(token_hash=_attempt_hash(token, user.id if user else None), state_hash=hash_token(state),
                                    app_id=settings.WECHAT_LOGIN_APP_ID, expires_at=now()+timedelta(minutes=5))
     query = urlencode({"appid": settings.WECHAT_LOGIN_APP_ID,
                        "redirect_uri": settings.WECHAT_LOGIN_ORIGIN + "/api/auth/wechat/callback",
@@ -97,15 +102,15 @@ async def confirm(token: str) -> None:
         raise HTTPException(400, "微信确认已失效，请重新扫码")
 
 
-async def _attempt(token: str):
-    return await WechatLoginAttempt.get_or_none(token_hash=hash_token(token),
-        app_id=settings.WECHAT_LOGIN_APP_ID, expires_at__gt=now()).select_for_update()
+def _attempt(token: str, user_id: int | None = None):
+    return WechatLoginAttempt.get_or_none(token_hash=_attempt_hash(token, user_id),
+        app_id=settings.WECHAT_LOGIN_APP_ID, expires_at__gt=now())
 
 
-async def poll(token: str) -> dict:
+async def poll(token: str, user: User | None = None) -> dict:
     require_enabled()
     async with in_transaction():
-        attempt = await _attempt(token)
+        attempt = await _attempt(token, user.id if user else None).select_for_update()
         if not attempt or attempt.status == "consumed":
             return {"status": "expired"}
         if attempt.status in {"pending", "exchanging", "confirm"}:
@@ -113,7 +118,9 @@ async def poll(token: str) -> dict:
         if attempt.status != "verified" or not attempt.subject_hash:
             return {"status": "failed"}
         identity = await WechatIdentity.get_or_none(app_id=attempt.app_id, subject_hash=attempt.subject_hash)
-        if not identity:
+        if user and identity and identity.user_id != user.id:
+            raise HTTPException(409, "此微信已绑定其他账号，请使用另一个微信")
+        if user or not identity:
             return {"status": "phone_required", "expires_in": max(0,int((attempt.expires_at-now()).total_seconds()))}
         user = await User.get(id=identity.user_id).select_for_update()
         if user.status != 1 or not await PhoneIdentity.filter(user_id=user.id).exists():
@@ -123,10 +130,17 @@ async def poll(token: str) -> dict:
         return {"status": "completed", "session": await auth_service.issue_session(user)}
 
 
-async def link_verified_phone(token: str, user: User):
+async def require_confirmed_binding(token: str, user: User):
+    require_enabled()
+    attempt = await _attempt(token, user.id)
+    if not attempt or attempt.status != "verified" or not attempt.subject_hash:
+        raise HTTPException(400, "微信授权已失效，请重新扫码后验证手机号")
+
+
+async def link_verified_phone(token: str, user: User, *, binding: bool = False):
     """Called only inside the successful SMS verification transaction, before login."""
     require_enabled()
-    attempt = await _attempt(token)
+    attempt = await _attempt(token, user.id if binding else None).select_for_update()
     if not attempt or attempt.status != "verified" or not attempt.subject_hash:
         raise HTTPException(400, "微信授权已失效，请重新扫码后验证手机号")
     target = await User.get(id=user.id).select_for_update()

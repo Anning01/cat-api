@@ -8,8 +8,9 @@ import pytest
 from fastapi import HTTPException
 
 from auth import phone, wechat
-from auth.models import PhoneIdentity, User, UserSession, WechatIdentity, WechatLoginAttempt
+from auth.models import PhoneAuthGuard, PhoneIdentity, User, UserSession, WechatIdentity, WechatLoginAttempt
 from auth.security import hash_token
+from auth.service import auth_service
 from config import settings
 from test.test_phone_auth import sms, challenge
 
@@ -24,9 +25,9 @@ def wx(sms,monkeypatch):
     return exchange
 
 
-async def scan(wx,subject="wechat-person-a",confirm=True):
+async def scan(wx,subject="wechat-person-a",confirm=True,user=None):
     wx.return_value=subject
-    result=await wechat.start()
+    result=await wechat.start(user)
     state=parse_qs(urlsplit(result["authorization_url"]).query)["state"][0]
     confirmation=await wechat.callback("only-test-code",state)
     if confirm:
@@ -77,17 +78,64 @@ async def test_phone_verification_links_existing_account_then_scan_logs_it_in(wx
     assert await wechat.poll(token)=={"status":"expired"}
 
 
-async def test_unbound_wechat_can_only_create_a_phone_account_with_explicit_signup(wx,sms,monkeypatch):
+@pytest.mark.parametrize("already_has_phone", [False, True])
+async def test_signed_in_migration_links_the_current_account(wx, sms, already_has_phone):
+    number = "13800138000"
+    owner = await phone_user(number) if already_has_phone else await User.create(username="legacy-user")
+    other = await User.create(username="other-user")
+    old_session = await auth_service.issue_session(owner)
+    attempt, _, _ = await scan(wx, user=owner)
+    assert (await wechat.poll(attempt, owner))["status"] == "phone_required"
+    assert await wechat.poll(attempt, other) == {"status": "expired"}
+    assert await wechat.poll(attempt) == {"status": "expired"}
+
+    with pytest.raises(HTTPException):
+        await phone.start(number, "127.0.0.1", other, wechat_attempt=attempt)
+    sent = await phone.start(number, "127.0.0.1", owner, wechat_attempt=attempt)
+    code = sms.await_args.args[1]
+    with pytest.raises(HTTPException):
+        await phone.verify(number, sent["challenge"], code, owner)
+    result = await phone.verify(number, sent["challenge"], code, owner, wechat_attempt=attempt)
+
+    assert result.user.id == owner.id
+    assert (await WechatIdentity.get()).user_id == owner.id
+    assert (await PhoneIdentity.get()).user_id == owner.id
+    assert await UserSession.filter(token_hash=hash_token(old_session.token)).exists() == already_has_phone
+    assert await wechat.poll(attempt, owner) == {"status": "expired"}
+    public_attempt, _, _ = await scan(wx)
+    assert (await wechat.poll(public_attempt))["session"].user.id == owner.id
+
+
+async def test_signed_in_migration_cannot_claim_a_phone_owned_by_another_account(wx, sms):
+    other = await phone_user()
+    owner = await User.create(username="legacy-user")
+    attempt, _, _ = await scan(wx, user=owner)
+    sent = await phone.start("13800138000", "127.0.0.1", owner, wechat_attempt=attempt)
+
+    with pytest.raises(HTTPException, match="不能合并账号"):
+        await phone.verify("13800138000", sent["challenge"], sms.await_args.args[1], owner, wechat_attempt=attempt)
+
+    assert (await PhoneIdentity.get()).user_id == other.id
+    assert not await WechatIdentity.exists()
+
+
+async def test_unbound_wechat_creates_one_account_shared_with_sms_after_phone_verification(wx,sms,monkeypatch):
     token,_,_=await scan(wx)
     args=await challenge(sms)
-    with pytest.raises(HTTPException):await phone.verify(*args,wechat_attempt=token)
+    with pytest.raises(HTTPException):await phone.verify(*args,agreed=True,wechat_attempt=token)
     assert not await User.all().exists() and not await WechatIdentity.all().exists()
     monkeypatch.setattr(settings,"PHONE_SIGNUP_ENABLED",True)
     monkeypatch.setattr("services.legal_documents.require_profile",lambda:None)
     args=await challenge(sms,number="13900139000")
-    result=await phone.verify(*args,register=True,wechat_attempt=token)
+    result=await phone.verify(*args,agreed=True,wechat_attempt=token)
     assert (await PhoneIdentity.get()).user_id==result.user.id
     assert (await WechatIdentity.get()).user_id==result.user.id
+    public_attempt, _, _ = await scan(wx)
+    assert (await wechat.poll(public_attempt))["session"].user.id == result.user.id
+    await PhoneAuthGuard.all().update(events=[])
+    sms_session = await phone.verify(*await challenge(sms, number=args[0]), agreed=True)
+    assert sms_session.user.id == result.user.id
+    assert await User.all().count() == 1
 
 
 async def test_wrong_sms_never_binds_wechat(wx,sms):
@@ -120,7 +168,7 @@ async def test_cannot_replace_existing_wechat_and_failed_link_rolls_back_new_sig
     monkeypatch.setattr(settings,"PHONE_SIGNUP_ENABLED",True)
     monkeypatch.setattr("services.legal_documents.require_profile",lambda:None)
     with pytest.raises(HTTPException):
-        await phone.verify(*await challenge(sms,number="13900139000"),register=True,wechat_attempt="invalid"*8)
+        await phone.verify(*await challenge(sms,number="13900139000"),agreed=True,wechat_attempt="invalid"*8)
     assert await User.all().count()==1 and await PhoneIdentity.all().count()==1
 
 

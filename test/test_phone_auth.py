@@ -47,19 +47,27 @@ async def test_binding_preserves_user_and_revokes_sessions(sms):
         await phone.verify(*args, user)
 
 
-async def test_login_uses_phone_identity_and_cannot_create_account_implicitly(sms):
+async def test_login_cannot_create_account_when_signup_is_disabled(sms):
     args = await challenge(sms)
     with pytest.raises(HTTPException) as error:
-        await phone.verify(*args)
+        await phone.verify(*args, agreed=True)
     assert error.value.status_code == 409
     assert await User.all().count() == 0
 
 
-async def test_explicit_registration_and_existing_phone_login(sms, monkeypatch):
+async def test_phone_sign_in_creates_an_account_once_after_verification_and_consent(sms, monkeypatch):
     monkeypatch.setattr(settings, "PHONE_SIGNUP_ENABLED", True)
     monkeypatch.setattr("services.legal_documents.require_profile", lambda: None)
     args = await challenge(sms)
-    result = await phone.verify(*args, register=True)
+    with pytest.raises(HTTPException) as error:
+        await phone.verify(*args)
+    assert error.value.status_code == 400
+    assert not await User.exists()
+    results = await asyncio.gather(phone.verify(*args, agreed=True), phone.verify(*args, agreed=True),
+                                   return_exceptions=True)
+    successes = [result for result in results if not isinstance(result, Exception)]
+    assert len(successes) == 1
+    result = successes[0]
     assert result.user.username.startswith("phone-")
     assert (await PhoneIdentity.get(phone_hash=phone.digest("phone:"+args[0]))).user_id == result.user.id
     await PhoneAuthGuard.all().update(events=[])
@@ -204,6 +212,8 @@ async def test_api_validates_input_and_requires_auth_for_binding(sms,monkeypatch
     from main import app
     from httpx import AsyncClient,ASGITransport
     from services.security.login_throttle import login_throttle
+    monkeypatch.setattr(settings, "PHONE_SIGNUP_ENABLED", True)
+    monkeypatch.setattr("services.legal_documents.require_profile", lambda: None)
     await login_throttle.reset()
     async with AsyncClient(transport=ASGITransport(app=app),base_url="http://test") as client:
         for number in ["13800138000,13900139000", "1380013800", "+8613800138000", "１３８００１３８０００"]:
@@ -215,8 +225,11 @@ async def test_api_validates_input_and_requires_auth_for_binding(sms,monkeypatch
         reply=await client.post("/api/auth/phone/start",json={"phone":"13800138000"})
         payload=reply.json()["data"]
         assert set(payload)=={"challenge","expires_in","retry_after"}
-        reply=await client.post("/api/auth/phone/login",json={"phone":"13800138000","code":sms.call_args.args[1],"challenge":payload["challenge"],"register":True,"agreed":False})
+        body = {"phone":"13800138000","code":sms.call_args.args[1],"challenge":payload["challenge"]}
+        reply=await client.post("/api/auth/phone/login",json={**body,"agreed":False})
         assert reply.json()["code"]==400
+        reply=await client.post("/api/auth/phone/login",json={**body,"agreed":True})
+        assert reply.json()["data"]["user"]["id"] == (await PhoneIdentity.get()).user_id
 
 
 async def test_provider_uses_approved_template_and_does_not_retry_or_expose_secrets(monkeypatch):

@@ -41,17 +41,29 @@ async def _guard(now: float):
     return guard
 
 
-async def start(phone: str, ip: str, user: User | None = None) -> dict:
+def _challenge_hash(token: str, binding_attempt: str | None) -> str:
+    return hash_token(f"wechat-bind:{binding_attempt}:{token}" if binding_attempt else token)
+
+
+async def start(phone: str, ip: str, user: User | None = None, *, wechat_attempt: str | None = None) -> dict:
     require_enabled()
+    key = digest("phone:" + phone)
     if user:
         if str(user.id) in settings.PHONE_BIND_BLOCKED_USER_IDS:
             raise HTTPException(403, "当前账号暂不能绑定手机，请联系支持处理账号异常")
-        if await PhoneIdentity.filter(user_id=user.id).exists():
+        if wechat_attempt:
+            from auth.wechat import require_confirmed_binding
+            await require_confirmed_binding(wechat_attempt, user)
+            current = await PhoneIdentity.get_or_none(user_id=user.id)
+            if current and current.phone_hash != key:
+                raise HTTPException(409, "请验证当前账号已绑定的手机号")
+        elif await PhoneIdentity.filter(user_id=user.id).exists():
             raise HTTPException(409, "账号已绑定手机号；更换手机号请联系支持")
     await PhoneAuthGuard.get_or_create(name="sms")
     now = datetime.now(timezone.utc)
-    stamp, key, ip_key = now.timestamp(), digest("phone:" + phone), digest("ip:" + ip)
+    stamp, ip_key = now.timestamp(), digest("ip:" + ip)
     token, code = new_session_token(), f"{secrets.randbelow(1000000):06d}"
+    challenge_hash = _challenge_hash(token, wechat_attempt if user else None)
     async with in_transaction():
         guard = await _guard(stamp)
         sent = [e for e in guard.events if e[1] == "send"]
@@ -68,17 +80,17 @@ async def start(phone: str, ip: str, user: User | None = None) -> dict:
         await guard.save(update_fields=["events", "updated_at"])
         await PhoneChallenge.filter(expires_at__lte=now - timedelta(days=1)).delete()
         await PhoneChallenge.filter(phone_hash=key, consumed=False).update(consumed=True)
-        await PhoneChallenge.create(token_hash=hash_token(token), phone_hash=key,
+        await PhoneChallenge.create(token_hash=challenge_hash, phone_hash=key,
                                     purpose="bind" if user else "login", user=user,
                                     code_hash=digest(token + ":" + code),
                                     expires_at=now + timedelta(minutes=5))
     await sms.send_code(phone, code)
-    await PhoneChallenge.filter(token_hash=hash_token(token), consumed=False).update(ready=True)
+    await PhoneChallenge.filter(token_hash=challenge_hash, consumed=False).update(ready=True)
     return {"challenge": token, "expires_in": 300, "retry_after": 60}
 
 
-async def verify(phone: str, token: str, code: str, user: User | None = None,
-                 register: bool = False, wechat_attempt: str | None = None):
+async def verify(phone: str, token: str, code: str, user: User | None = None, *,
+                 agreed: bool = False, wechat_attempt: str | None = None):
     require_enabled()
     await PhoneAuthGuard.get_or_create(name="sms")
     now = datetime.now(timezone.utc)
@@ -88,7 +100,8 @@ async def verify(phone: str, token: str, code: str, user: User | None = None,
     try:
         async with in_transaction():
             guard = await _guard(now.timestamp())
-            challenge = await PhoneChallenge.get_or_none(token_hash=hash_token(token)).select_for_update()
+            challenge = await PhoneChallenge.get_or_none(
+                token_hash=_challenge_hash(token, wechat_attempt if user else None)).select_for_update()
             if (not challenge or not challenge.ready or challenge.consumed or challenge.expires_at <= now
                     or challenge.phone_hash != key or challenge.user_id != (user.id if user else None)
                     or challenge.purpose != ("bind" if user else "login")):
@@ -108,23 +121,38 @@ async def verify(phone: str, token: str, code: str, user: User | None = None,
                 identity = await PhoneIdentity.get_or_none(phone_hash=key).select_related("user")
                 if user:
                     target = await User.get(id=user.id).select_for_update()
+                    current = await PhoneIdentity.get_or_none(user_id=target.id)
                     if target.status != 1 or str(user.id) in settings.PHONE_BIND_BLOCKED_USER_IDS:
                         error = HTTPException(403, "当前账号暂不能绑定手机，请联系支持")
-                    elif identity or await PhoneIdentity.filter(user_id=user.id).exists():
+                    elif current and wechat_attempt and current.phone_hash != key:
+                        error = HTTPException(409, "请验证当前账号已绑定的手机号")
+                    elif (identity and identity.user_id != target.id) or (current and not wechat_attempt):
                         error = HTTPException(409, "手机号或账号已绑定，不能合并账号")
                     else:
-                        await PhoneIdentity.create(user=target, phone_hash=key, masked_phone=masked(phone))
-                        await UserAdminEvent.create(account_user_id=user.id, operator_user_id=user.id,
-                                                    action="phone_bind", note=masked(phone))
-                        await UserSession.filter(user_id=user.id).delete()
-                        result = {"status": "bound"}
+                        if not current:
+                            await PhoneIdentity.create(user=target, phone_hash=key, masked_phone=masked(phone))
+                            await UserAdminEvent.create(account_user_id=user.id, operator_user_id=user.id,
+                                                        action="phone_bind", note=masked(phone))
+                            await UserSession.filter(user_id=user.id).delete()
+                        if wechat_attempt:
+                            from auth.wechat import link_verified_phone
+                            await link_verified_phone(wechat_attempt, target, binding=True)
+                            result = await auth_service.issue_session(target)
+                        else:
+                            result = {"status": "bound"}
                 else:
                     if identity:
                         target = identity.user
-                    elif not register or not settings.PHONE_SIGNUP_ENABLED:
+                    elif not settings.PHONE_SIGNUP_ENABLED:
                         target = None
-                        error = HTTPException(409, "手机号尚未绑定；老用户请先登录原账号绑定，新用户请选择注册")
+                        error = HTTPException(409, (
+                            "手机号尚未绑定账号，请联系支持"
+                            if settings.AUTH_PROVIDER == "wechat"
+                            else "手机号尚未绑定，请先登录原账号绑定"
+                        ))
                     else:
+                        if not agreed:
+                            raise HTTPException(400, "请先阅读并同意用户协议和隐私政策")
                         from services.legal_documents import require_profile
                         require_profile()
                         target = await User.create(username="phone-" + uuid4().hex, nickname="手机用户")

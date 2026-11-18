@@ -8,6 +8,7 @@ const router=createRouter({history:createWebHashHistory(),routes:[
   {path:'/projects',redirect:'/legacy-works'},
   {path:'/legacy-works',component:()=>import('./pages/LegacyWorksPage.vue')},
   {path:'/login',component:()=>import('./pages/LoginPage.vue'),meta:{public:true}},
+  {path:'/contact',component:()=>import('./pages/ContactPage.vue'),meta:{public:true}},
   {path:'/settings',component:()=>import('./pages/ConfigPage.vue'),meta:{admin:true}},
   {path:'/:pathMatch(.*)*',redirect:'/platform/models'},
 ]})

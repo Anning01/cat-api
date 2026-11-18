@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, watchEffect } from 'vue'
+import { computed, defineAsyncComponent, nextTick, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElConfigProvider } from 'element-plus'
-import { Layers, BookOpen, ChartNoAxesCombined, KeyRound, Receipt, UserRound, Users, Settings, LogOut, PanelLeftClose, Menu, ChevronDown } from 'lucide-vue-next'
+import { Layers, BookOpen, ChartNoAxesCombined, KeyRound, Receipt, UserRound, Users, Settings, LogOut, PanelLeftClose, Menu, ChevronDown, MessageCircle } from 'lucide-vue-next'
 import { useAuthStore } from '@/features/auth/authStore'
 import { useAppThemeController } from '@/shared/appTheme'
 import { rechargeOpen, money } from '@/shared/console'
@@ -15,8 +15,33 @@ import AppDialog from '@/components/AppDialog.vue'
 import RechargeDialog from '@/features/account/RechargeDialog.vue'
 import AppConfirmDialog from '@/components/AppConfirmDialog.vue'
 import AppNotice from '@/components/AppNotice.vue'
+import WechatLogin from '@/features/auth/WechatLogin.vue'
+import type { LoginResult } from '@/types'
+const LoginPage = defineAsyncComponent(() => import('@/pages/LoginPage.vue'))
 const auth = useAuthStore(), theme = useAppThemeController(), route = useRoute(), router = useRouter()
 const mobileNav = ref(false), collapsed = ref(false)
+const loginPrompt = ref(false), bindError = ref('')
+const standaloneLogin = computed(() => route.path === '/login' && !auth.isLoggedIn)
+const loginAudience = computed(() => {
+  if (!auth.ready || !auth.wechatEnabled) return null
+  if (!auth.isLoggedIn) return route.path === '/contact' ? null : 'guest'
+  return auth.qilingBound && !auth.wechatBound ? auth.user?.id ?? null : null
+})
+const migrationTitle = computed(() => tr(loginAudience.value==='guest'?'新版微信扫码登录':'请切换到新版微信登录'))
+watch(loginAudience, audience => {
+  bindError.value = ''
+  loginPrompt.value = audience !== null
+}, { immediate:true })
+async function finishWechatBinding(session: LoginResult) {
+  bindError.value = ''
+  try {
+    await auth.acceptSession(session)
+    notice.success(tr('微信已绑定，下次可直接扫码登录。'))
+    if (route.path === '/login') await router.replace('/platform/usage')
+  } catch (cause) {
+    bindError.value = cause instanceof Error ? cause.message : tr('登录失败，请重试')
+  }
+}
 const name = computed(() => auth.user?.nickname || auth.user?.username || '')
 const groups = computed(() => [
   { title: '开发接入', links: [
@@ -30,6 +55,7 @@ const groups = computed(() => [
   ] }] : [{title:'账户与费用',links:[{path:'/login',label:'登录控制台',icon:UserRound}]}]),
   ...(auth.isSuperAdmin ? [{ title: '平台管理', links: [{ path: '/users', label: '用户管理', icon: Users }, { path: '/settings', label: '模型配置', icon: Settings }] }] : []),
   ...(auth.isLoggedIn && auth.legacyWorksEnabled ? [{ title: '历史兼容', links: [{ path: '/legacy-works', label: '历史作品迁移', icon: Layers }] }] : []),
+  { title: '帮助', links: [{ path: '/contact', label: '联系我们', icon: MessageCircle }] },
 ])
 const current = computed(() => groups.value.flatMap(group => group.links.map(link => ({ ...link, group: group.title }))).find(link => link.path === route.path))
 watchEffect(()=>{document.title=tr(current.value?.label||'登录')+' · Cat API'})
@@ -47,7 +73,8 @@ watch(() => route.fullPath, () => {
 <template>
   <ElConfigProvider :locale="elementLocale">
     <a href="#console-page-title" class="console-skip-link" @click.prevent="focusContent">{{ tr('跳转到内容') }}</a>
-  <div class="console-shell" :class="{ 'is-collapsed': collapsed, 'is-nav-open': mobileNav }" @keydown.esc="mobileNav = false">
+  <RouterView v-if="standaloneLogin"/>
+  <div v-else class="console-shell" :class="{ 'is-collapsed': collapsed, 'is-nav-open': mobileNav }" @keydown.esc="mobileNav = false">
     <aside id="console-navigation" class="console-nav">
       <RouterLink class="console-brand" to="/platform/models"><img src="/logo.png" alt="" width="36" height="36"/><span>Cat API</span></RouterLink>
       <nav :aria-label="tr('主导航')"><section v-for="group in groups" :key="group.title" class="console-nav-group"><h2>{{ tr(group.title) }}</h2><RouterLink v-for="link in group.links" :key="link.path" :to="link.path" :title="tr(link.label)"><component :is="link.icon" :size="18" aria-hidden="true"/><span>{{ tr(link.label) }}</span></RouterLink></section></nav>
@@ -67,15 +94,33 @@ watch(() => route.fullPath, () => {
           <RouterLink v-else class="console-login-link" to="/login">{{ tr('登录') }}</RouterLink>
         </div>
       </header>
-      <div id="main-content" class="console-content"><p v-if="auth.isLoggedIn&&auth.phoneEnabled&&!auth.phoneMasked&&route.path!=='/profile'" class="phone-migration-reminder" role="status">{{ tr('请绑定手机号，后续将使用手机号登录。') }} <RouterLink to="/profile">{{ tr('前往绑定') }}</RouterLink></p><RouterView/></div>
+      <div id="main-content" class="console-content">
+        <div v-if="loginAudience!==null && route.path!=='/login'" class="phone-migration-reminder wechat-migration-reminder">
+          <strong>{{ migrationTitle }}</strong>
+          <AppButton size="sm" variant="danger" @click="loginPrompt=true">{{ tr(loginAudience==='guest'?'打开登录':'扫码绑定微信') }}</AppButton>
+        </div>
+        <p v-else-if="loginAudience===null&&auth.isLoggedIn&&auth.phoneEnabled&&!auth.phoneMasked&&route.path!=='/profile'" class="phone-migration-reminder" role="status">{{ tr('请绑定手机号，后续将使用手机号登录。') }} <RouterLink to="/profile">{{ tr('前往绑定') }}</RouterLink></p>
+        <RouterView v-if="route.path!=='/login'||!loginPrompt"/>
+      </div>
     </div>
     <RechargeDialog v-if="auth.isLoggedIn" v-model="rechargeOpen"/>
+    <AppDialog v-if="loginAudience!==null" v-model="loginPrompt" :title="migrationTitle" width="440px" class="wechat-migration-dialog">
+      <LoginPage v-if="loginAudience==='guest'" embedded/>
+      <template v-else>
+        <p class="wechat-migration-copy">{{ tr('请绑定 Cat API 的公众号微信登录。绑定到当前账号，保留余额、账单和 API Key。') }}</p>
+        <WechatLogin :key="loginAudience" bind :agreed="true" @authenticated="finishWechatBinding"/>
+        <p v-if="bindError" class="console-error" role="alert">{{ bindError }}</p>
+      </template>
+    </AppDialog>
+  </div>
     <div class="console-notices" aria-live="polite"><AppNotice v-for="item in notice.state.notices" :key="item.id" :item="item"/></div>
     <AppConfirmDialog :dark="theme.resolvedTheme.value === 'dark'"/>
-  </div>
   </ElConfigProvider>
 </template>
 <style scoped>
 .phone-migration-reminder{margin:16px 24px 0;padding:12px 16px;background:var(--app-surface-muted);border:1px solid var(--app-border);border-radius:8px;font-size:13px;line-height:1.6}
 .phone-migration-reminder a{margin-inline-start:8px;text-decoration:underline;text-underline-offset:3px}
+.wechat-migration-reminder{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:var(--app-danger-soft);color:var(--app-danger);border-color:var(--app-danger)}
+:global(.wechat-migration-dialog .app-dialog-header){color:var(--app-danger);background:var(--app-danger-soft);border-bottom-color:var(--app-danger)}
+.wechat-migration-copy{margin:0 0 16px;font-size:14px;line-height:1.6}
 </style>

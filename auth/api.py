@@ -78,12 +78,14 @@ class PhoneIn(BaseModel):
     phone: str = Field(pattern=r"^1[3-9][0-9]{9}$", min_length=11, max_length=11)
 
 
-class PhoneVerifyIn(PhoneIn):
+class PhoneBindingIn(PhoneIn):
+    wechat_attempt: str | None = Field(default=None, min_length=32, max_length=64)
+
+
+class PhoneVerifyIn(PhoneBindingIn):
     challenge: str = Field(min_length=32, max_length=64)
     code: str = Field(pattern=r"^[0-9]{6}$", min_length=6, max_length=6)
-    create_account: bool = Field(default=False, alias="register")
     agreed: bool = False
-    wechat_attempt: str | None = Field(default=None, min_length=32, max_length=64)
 
 
 @router.post("/phone/start")
@@ -95,10 +97,10 @@ async def phone_start(data: PhoneIn, request: Request):
 @router.post("/phone/login")
 async def phone_login(data: PhoneVerifyIn, request: Request):
     await login_throttle.before_attempt(request, "phone-verify")
-    if (data.create_account or data.wechat_attempt) and not data.agreed:
+    if data.wechat_attempt and not data.agreed:
         raise HTTPException(400, "请先阅读并同意用户协议和隐私政策")
     return ResponseSchema(data=await phone.verify(data.phone, data.challenge, data.code,
-        register=data.create_account, wechat_attempt=data.wechat_attempt))
+        agreed=data.agreed, wechat_attempt=data.wechat_attempt))
 
 
 @router.post("/wechat/start")
@@ -111,6 +113,18 @@ async def wechat_start(request: Request):
 async def wechat_poll(data: QilingPollIn, request: Request):
     await login_throttle.before_attempt(request, "wechat-poll")
     return ResponseSchema(data=await wechat.poll(data.attempt))
+
+
+@router.post("/wechat/bind/start")
+async def wechat_bind_start(request: Request, user=Depends(get_current_user)):
+    await login_throttle.before_attempt(request, "wechat-start")
+    return ResponseSchema(data=await wechat.start(user))
+
+
+@router.post("/wechat/bind/poll")
+async def wechat_bind_poll(data: QilingPollIn, request: Request, user=Depends(get_current_user)):
+    await login_throttle.before_attempt(request, "wechat-poll")
+    return ResponseSchema(data=await wechat.poll(data.attempt, user))
 
 
 @router.get("/wechat/callback", response_class=HTMLResponse)
@@ -150,15 +164,15 @@ def wechat_page(message: str, status: int):
 
 
 @router.post("/phone/bind/start")
-async def phone_bind_start(data: PhoneIn, request: Request, user=Depends(get_current_user)):
+async def phone_bind_start(data: PhoneBindingIn, request: Request, user=Depends(get_current_user)):
     await login_throttle.before_attempt(request, "phone-bind-send")
-    return ResponseSchema(data=await phone.start(data.phone, client_ip(request), user))
+    return ResponseSchema(data=await phone.start(data.phone, client_ip(request), user, wechat_attempt=data.wechat_attempt))
 
 
 @router.post("/phone/bind")
 async def phone_bind(data: PhoneVerifyIn, request: Request, user=Depends(get_current_user)):
     await login_throttle.before_attempt(request, "phone-bind-verify")
-    return ResponseSchema(data=await phone.verify(data.phone, data.challenge, data.code, user))
+    return ResponseSchema(data=await phone.verify(data.phone, data.challenge, data.code, user, wechat_attempt=data.wechat_attempt))
 
 
 @router.post("/qiling/start")
