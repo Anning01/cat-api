@@ -30,7 +30,7 @@ import {
   Image,
   LayoutGrid,
   List,
-  Monitor,
+  Mic,
   RotateCcw,
   Search,
   X,
@@ -39,7 +39,7 @@ import { tr } from '@/i18n'
 import { notice } from '@/shared/notice'
 import AppUnitPrice from '@/components/AppUnitPrice.vue'
 import AppSelect from '@/components/AppSelect.vue'
-import { getModelDiscount, getDiscountRate, pricingRows } from './modelPricing'
+import { catalogVideoPrices, getModelDiscount, getDiscountRate, pricingRows } from './modelPricing'
 
 const props = defineProps<{ models: CatalogModel[]; canManage?: boolean; loggedIn?: boolean }>()
 const kind = ref('all')
@@ -51,10 +51,11 @@ const selectedSeries = ref<string[]>([])
 const selectedResolutions = ref<string[]>([])
 const selectedFeatures = ref<string[]>([])
 
-const categoryOrder = ['image', 'video', 'text']
+const categoryOrder = ['image', 'video', 'text', 'media_processing', 'asr', 'voice_design']
 const labels = computed<Record<string, string>>(() => ({
   all: tr('全部'), text: tr('文本'), image: tr('图片'), video: tr('视频'),
   media_processing: tr('画质增强'), asr: tr('语音识别'),
+  voice_design: tr('音色设计'),
 }))
 const categories = computed(() => ['all', ...categoryOrder, ...new Set(props.models.flatMap(model => model.kinds))]
   .filter((value, index, values) => values.indexOf(value) === index)
@@ -220,9 +221,14 @@ const filtered = computed(() => {
 })
 
 const groups = computed(() => {
-  if (viewMode.value !== 'list' || sort.value !== 'default' || kind.value !== 'all') return [{ kind: '', models: filtered.value }]
+  const models = filtered.value.map(model => {
+    if (model.pricing.type === 'video') return { model, ...catalogVideoPrices(model.pricing) }
+    const rows = pricingRows(model)
+    return { model, primary: rows.filter(row => !row.reference), details: rows.filter(row => row.reference) }
+  })
+  if (viewMode.value !== 'list' || sort.value !== 'default' || kind.value !== 'all') return [{ kind: '', models }]
   return categories.value.filter(value => value !== 'all')
-    .map(value => ({ kind: value, models: filtered.value.filter(model => model.kinds[0] === value) }))
+    .map(value => ({ kind: value, models: models.filter(({ model }) => model.kinds[0] === value) }))
     .filter(group => group.models.length)
 })
 
@@ -231,11 +237,7 @@ function count(value: string) {
 }
 
 function icon(value: string) {
-  return { image: Image, video: Film }[value] ?? Braces
-}
-
-function isResolution(label: string): boolean {
-  return /^\d+p|4k|\d+(\.\d+)?k$/i.test(label)
+  return { image: Image, video: Film, voice_design: Mic }[value] ?? Braces
 }
 
 async function copyId(id: string) {
@@ -270,6 +272,7 @@ function onModelAction(model: CatalogModel) {
         <button
           v-for="value in categories"
           :key="value"
+          type="button"
           class="filter-pill"
           :aria-pressed="kind === value"
           @click="kind = value"
@@ -409,7 +412,7 @@ function onModelAction(model: CatalogModel) {
             </h2>
             <div class="catalog" :class="`is-${viewMode}`">
               <article
-                v-for="model in group.models"
+                v-for="{ model, primary, details } in group.models"
                 :key="model.id"
                 class="model-card"
                 :data-model-id="model.id"
@@ -462,22 +465,21 @@ function onModelAction(model: CatalogModel) {
                 </div>
 
                 <!-- Pricing Rows -->
-                <dl class="model-prices">
-                  <template v-for="row in pricingRows(model).filter(row => !row.reference)" :key="row.label">
-                    <div class="price-line">
-                      <dt><Monitor v-if="model.kinds.includes('video') && isResolution(row.label)" :size="12" class="price-icon" aria-hidden="true" />{{ row.label }}</dt>
-                      <dd><AppUnitPrice :amount="row.value" :multiplier="getModelDiscount(model)" :unit="row.unit"/></dd>
-                    </div>
-                  </template>
+                <dl v-if="primary.length" class="model-prices">
+                  <div v-for="row in primary" :key="row.label" class="price-line">
+                    <dt>{{ row.label }}</dt>
+                    <dd><AppUnitPrice :amount="row.value" :multiplier="getModelDiscount(model)" :unit="row.unit" :approximate="row.approximate"/></dd>
+                  </div>
                 </dl>
+                <p v-else-if="model.kinds.includes('video')" class="price-unavailable">{{ tr('价格未配置') }}</p>
 
-                <!-- Reference Pricing -->
-                <details v-if="model.pricing.input_image || model.pricing.video_reference_prices" class="reference-prices">
-                  <summary>{{ tr('参考素材价格') }}<ChevronDown :size="13" aria-hidden="true" /></summary>
-                  <dl class="model-prices">
-                    <template v-for="row in pricingRows(model).filter(row => row.reference)" :key="row.label">
-                      <div class="price-line"><dt>{{ row.label }}</dt><dd><AppUnitPrice :amount="row.value" :multiplier="getModelDiscount(model)" :unit="row.unit"/></dd></div>
-                    </template>
+                <details v-if="details.length || model.pricing.input_image" class="reference-prices">
+                  <summary>{{ tr(model.pricing.type === 'video' ? '更多价格' : '参考素材价格') }}<ChevronDown :size="13" aria-hidden="true" /></summary>
+                  <dl v-if="details.length" class="model-prices">
+                    <div v-for="row in details" :key="row.label" class="price-line">
+                      <dt>{{ row.label }}</dt>
+                      <dd><AppUnitPrice :amount="row.value" :multiplier="getModelDiscount(model)" :unit="row.unit" :approximate="row.approximate"/></dd>
+                    </div>
                   </dl>
                   <p v-if="model.pricing.input_image">{{ model.pricing.input_image.first_free === 0 ? tr('输入参考图片') : tr('输入图前 {p0} 张免费，之后', { p0: model.pricing.input_image.first_free }) }} <AppUnitPrice :amount="model.pricing.input_image.price_per_image" :multiplier="getModelDiscount(model)" :unit="tr('张')"/></p>
                 </details>
@@ -507,7 +509,7 @@ function onModelAction(model: CatalogModel) {
 .catalog-setup-link { display:inline-flex; align-items:center; min-height:40px; padding:8px 16px; border-radius:6px; background:var(--app-primary); color:var(--app-on-primary)!important; }
 
 .catalog-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; margin-block-end:12px; }
-.filters { display:flex; flex:1 1 400px; align-items:center; gap:4px; min-width:0; overflow-x:auto; }
+.filters { display:flex; flex:1 1 400px; flex-wrap:wrap; align-items:center; gap:4px; min-width:0; }
 .filter-pill { display:inline-flex; flex-shrink:0; align-items:center; gap:5px; min-height:34px; padding:0 8px; border:1px solid transparent; border-radius:8px; background:transparent; color:var(--app-text-secondary); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; }
 .pill-badge { font-size:11px; font-variant-numeric:tabular-nums; padding:0 3px; }
 .filter-pill:hover { color:var(--app-text); background:var(--app-surface-muted); }
@@ -572,6 +574,7 @@ function onModelAction(model: CatalogModel) {
 .price-line { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:2px 8px; padding-block:2px; }
 .price-line dt { display:inline-flex; align-items:center; gap:4px; color:var(--app-text-secondary); font-size:12px; }
 .price-line dd { min-width:0; margin:0; margin-inline-start:auto; font-size:12px; font-variant-numeric:tabular-nums; }
+.price-unavailable { margin:4px 0 0; color:var(--app-text-secondary); font-size:12px; }
 .reference-prices { margin-block-start:0; }
 .reference-prices summary { display:flex; align-items:center; gap:6px; min-height:24px; width:fit-content; list-style:none; color:var(--app-text-secondary); font-size:12px; cursor:pointer; }
 .reference-prices summary::-webkit-details-marker { display:none; }
@@ -587,7 +590,7 @@ function onModelAction(model: CatalogModel) {
   .catalog.is-list .model-card-heading { grid-column:1; grid-row:1; }
   .catalog.is-list .model-title { grid-column:1; grid-row:2; }
   .catalog.is-list .model-meta-bar { grid-column:1; grid-row:3; }
-  .catalog.is-list .model-card > .model-prices { grid-column:2; grid-row:1 / span 3; border:0; margin:0; padding:0; }
+  .catalog.is-list .model-card > :is(.model-prices,.price-unavailable) { grid-column:2; grid-row:1 / span 3; border:0; margin:0; padding:0; }
   .catalog.is-list .reference-prices { grid-column:2; }
 }
 @container model-directory (max-width:640px) {

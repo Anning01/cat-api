@@ -3,14 +3,20 @@ import { computed } from 'vue'
 import { money } from '@/shared/console'
 import { tr } from '@/i18n'
 
-const props = defineProps<{ amount: number; multiplier: number; unit: string }>()
+const props = defineProps<{ amount: number; multiplier: number; unit: string; approximate?: boolean }>()
 const discounted = computed(() => props.multiplier < 1 && props.amount > 0)
+
+function displayPrice(amount: number) {
+  const decimals = props.approximate && amount >= 0.001 ? 3 : 6
+  const formatted = `¥${money(amount, decimals)}`
+  return props.approximate ? tr('约 {p0}', { p0: formatted }) : formatted
+}
 </script>
 
 <template>
   <span class="unit-price">
-    <strong :class="{ discounted }"><span v-if="discounted" class="visually-hidden">{{ tr('折后价') }}</span>¥{{ money(amount * multiplier) }}</strong>
-    <del v-if="discounted"><span class="visually-hidden">{{ tr('原价') }}</span>¥{{ money(amount) }}</del>
+    <strong :class="{ discounted }"><span v-if="discounted" class="visually-hidden">{{ tr('折后价') }}</span>{{ displayPrice(amount * multiplier) }}</strong>
+    <del v-if="discounted"><span class="visually-hidden">{{ tr('原价') }}</span>{{ displayPrice(amount) }}</del>
     <small>/ {{ unit }}</small>
   </span>
 </template>

@@ -42,6 +42,11 @@ const VIDEO_TOKENS_PER_SECOND: Record<string, number> = {
   '4k': 194400,
 }
 
+export function videoTokenRatePerSecond(pricePerMillion: number, resolution: string): number | undefined {
+  const tokens = VIDEO_TOKENS_PER_SECOND[resolution.toLowerCase()]
+  return tokens ? pricePerMillion * tokens / 1_000_000 : undefined
+}
+
 export function estimateVideoCost(
   pricing: ModelPricing | null | undefined,
   resolution: string | null | undefined,
@@ -66,7 +71,6 @@ export function estimateVideoCost(
   }
   const table = hasVideoReference ? (pricing.video_reference_prices || pricing.prices) : pricing.prices
   const tokenPrice = table?.[resolutionKey] ?? 0
-  const tokensPerSecond = VIDEO_TOKENS_PER_SECOND[resolutionKey] ?? 0
-  const tokens = tokensPerSecond * (Number(durationSeconds || 0) + Number(inputVideoSeconds || 0))
-  return Number(tokenPrice || 0) * tokens / 1_000_000 + imageFee
+  const rate = videoTokenRatePerSecond(tokenPrice, resolutionKey) ?? 0
+  return rate * (Number(durationSeconds || 0) + Number(inputVideoSeconds || 0)) + imageFee
 }

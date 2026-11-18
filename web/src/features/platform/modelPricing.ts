@@ -1,8 +1,9 @@
 import { tr } from '@/i18n'
+import { videoTokenRatePerSecond } from '@/shared/modelPricing'
 import type { ModelPricing } from '@/types'
 
 interface PricedModel { kinds: readonly string[]; pricing: ModelPricing }
-export interface ModelPriceRow { label: string; value: number; unit: string; reference?: boolean }
+export interface ModelPriceRow { label: string; value: number; unit: string; reference?: boolean; approximate?: boolean }
 
 export function getModelDiscount(model: PricedModel): number {
   const value = model.pricing?.discount
@@ -51,4 +52,27 @@ export function pricingRows(model: PricedModel): ModelPriceRow[] {
     rows.push({ label: `${tr(pricing.billing_unit === 'second' ? '输入参考视频' : '含参考视频')} · ${tier}`, value, unit, reference: true })
   }
   return rows
+}
+
+export function catalogVideoPrices(pricing: ModelPricing) {
+  const output: ModelPriceRow[] = []
+  const references: ModelPriceRow[] = []
+  const bySecond = pricing.billing_unit === 'second'
+  const unit = tr('秒')
+
+  for (const [tier, price] of Object.entries(pricing.prices ?? {}).sort(([a], [b]) => compareTiers(a, b))) {
+    if (!Number.isFinite(price) || price <= 0) continue  // Zero output prices disable the tier.
+    const factor = bySecond ? 1 : videoTokenRatePerSecond(1, tier)
+    if (factor === undefined) continue
+    output.push({ label: `${tier} · ${tr('无参考素材')}`, value: price * factor, unit, approximate: !bySecond })
+
+    const referencePrice = pricing.video_reference_prices?.[tier]
+    if (referencePrice == null || !Number.isFinite(referencePrice) || referencePrice < 0 || (!bySecond && referencePrice === 0)) continue
+    references.push({
+      label: `${tr(bySecond ? '输入参考视频' : '含参考视频')} · ${tier}`,
+      value: referencePrice * factor, unit: bySecond ? unit : tr('秒（输入与输出合计）'), approximate: !bySecond,
+    })
+  }
+
+  return { primary: output.slice(0, 1), details: [...output.slice(1), ...references] }
 }
