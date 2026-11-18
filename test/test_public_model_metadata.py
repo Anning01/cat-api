@@ -73,3 +73,24 @@ async def test_private_endpoint_is_never_published_as_a_model_name():
     assert rows[0]['input_modalities']==['text','image','video']
     assert rows[0]['output_modalities']==['text']
     assert 'ep-' not in str(rows) and 'unknown nickname' not in str(rows)
+
+
+async def test_public_minimax_hides_internal_channel_and_keeps_legacy_calls():
+    from services.platform.model_aliases import ensure_model_alias
+    row=await model('MiniMax H3 · AutoDL（优惠渠道）','private-workflow',4,
+        api_protocol='autodl',video_model_type='minimax_h3_autodl')
+    await ensure_model_alias(row)
+    assert row.public_alias=='minimax-h3-discount'
+    row.public_alias='minimax-h3-autodl-discount';await row.save()
+    entries=await model_catalog()
+    item=next(m for m in entries if m['id']==f'nv-{row.id}')
+    assert 'autodl' not in str(item).lower() and 'comfyui' not in str(item).lower()
+    assert item['video_model_type']=='minimax_h3' and item['endpoints']==['/v1/videos']
+    assert 'private-workflow' not in str(item)
+    user=await User.create(username='minimax-channel-client');await UserWallet.create(user=user,balance=10)
+    ctx=AuthContext(user=user)
+    for alias in ('minimax-h3-discount','minimax-h3-autodl-discount'):
+        config,receipt=await admit(ctx,alias,{},None,kind='video',validate=lambda c,b:{})
+        assert config.id==row.id and config.model=='private-workflow'
+        from auth.models import PlatformCallReceipt
+        await PlatformCallReceipt.filter(id=receipt.id).update(state='rejected')

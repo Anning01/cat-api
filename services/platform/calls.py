@@ -95,6 +95,12 @@ async def admit(ctx, model, body, key, *, validate=chat_options, kind="text"):
         else:
             from services.platform.catalog import PUBLIC_KINDS
             alias = await eligible.filter(public_alias=model.lower()).first()
+            if not alias and model.lower().startswith('minimax-h3-autodl'):
+                alias = await eligible.filter(public_alias=model.lower().replace('minimax-h3-autodl','minimax-h3',1),
+                    video_model_type='minimax_h3_autodl').first()
+            if not alias and model.lower().startswith('minimax-h3') and 'autodl' not in model.lower():
+                alias = await eligible.filter(public_alias=model.lower().replace('minimax-h3','minimax-h3-autodl',1),
+                    video_model_type='minimax_h3_autodl').first()
             candidates = ([{"id":alias.id,"task_type":alias.task_type,"task_types":alias.task_types}] if alias else
                 await eligible.filter(Q(name=model) | Q(model=model)).values("id", "task_type", "task_types"))
             kinds = {kind} if isinstance(kind, str) else set(kind)

@@ -268,9 +268,13 @@ async def find_task(ctx, task_id, protocols, model=None):
     for receipt in rows:
         job = await PlatformVideoJob.get_or_none(receipt_id=receipt.id)
         if job and job.inputs.get("native_protocol") in protocols:
-            candidate = await AiModelConfig.filter(id=receipt.model_config_id).only("public_alias").first() if model else None
+            candidate = await AiModelConfig.filter(id=receipt.model_config_id).only("public_alias", "video_model_type").first() if model else None
             alias = candidate.public_alias if candidate else None
-            if not model or model == f"nv-{receipt.model_config_id}" or model.lower() == alias:
+            query_model = model.lower() if model else None
+            if candidate and candidate.video_model_type == 'minimax_h3_autodl':
+                alias = (alias or '').replace('minimax-h3-autodl','minimax-h3',1)
+                query_model = query_model.replace('minimax-h3-autodl','minimax-h3',1)
+            if not model or model == f"nv-{receipt.model_config_id}" or query_model == alias:
                 matches.append((receipt, job))
     if not matches:
         raise HTTPException(404, "任务不存在")

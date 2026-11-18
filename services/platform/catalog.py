@@ -1,5 +1,6 @@
 """Public labels and tariffs come from active platform-owned configurations."""
 from math import isfinite
+import re
 from models.config import AiModelConfig
 from utils.enums import AiTaskTypeEnum
 from services.video_enhancement.contract import EnhancementOptions
@@ -78,17 +79,22 @@ async def model_catalog():
         kinds = list(dict.fromkeys(PUBLIC_KINDS[task] for task in task_types if task in PUBLIC_KINDS))
         if not kinds:
             continue
+        private_channel = row['api_protocol'] == 'autodl' or row['video_model_type'] == 'minimax_h3_autodl'
+        public_name = re.sub('autodl', '', row['name'], flags=re.I).strip(' -·/') if private_channel else row['name']
+        public_alias = row['public_alias']
+        if private_channel and public_alias:
+            public_alias = public_alias.replace('-autodl', '')
         models.append({
-            "id": f"nv-{row['id']}", "name": row["name"], "alias":row["public_alias"], "kinds": kinds,
+            "id": f"nv-{row['id']}", "name": public_name, "alias":public_alias, "kinds": kinds,
             "model_id":model_identifier(row),
             "task_types": [task for task in task_types if task in PUBLIC_KINDS],
             "created": int(row["created_at"].timestamp()),
-            "image_model_type": row["image_model_type"], "video_model_type": row["video_model_type"],
+            "image_model_type": row["image_model_type"], "video_model_type": "minimax_h3" if row["video_model_type"] == "minimax_h3_autodl" else row["video_model_type"],
             "reference_image_urls": bool(row["image_model_type"] and row["api_protocol"] in {"openai_compatible", "volcengine_ark", "openrouter_compatible"}),
             "pricing": public_tariff(row["pricing"]), "tool_calls": row["supports_tool_calls"],
             "json_output": row["supports_json_output"], "strict_output": row["supports_strict_output"], "text_api": row["text_api"],
             "concurrency": max(1, row["concurrency"]),
-            **({"native_api":NATIVE_APIS[row["api_protocol"]]} if row["api_protocol"] in NATIVE_APIS
+            **({"native_api":NATIVE_APIS[row["api_protocol"]]} if row["api_protocol"] in NATIVE_APIS and row["api_protocol"] != "autodl"
                and any(kind in kinds for kind in ("video", "asr", "media_processing")) else {}),
             **({"processing_options": public_processing_options(row["processing_options"])}
                if AiTaskTypeEnum.video_enhancement in task_types else {}),
