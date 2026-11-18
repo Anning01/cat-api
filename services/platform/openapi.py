@@ -85,7 +85,7 @@ def public_openapi(app):
     pricing = obj({"type":string(),"currency":string(enum=["CNY"]),"billing_unit":string(enum=["token","second","minute","pixel_tier"]),
         "discount":number,"prices":{"type":"object","additionalProperties":number},
         "input_image":obj({"first_free":integer,"price_per_image":number}),"tiers":array(obj({"short_side_max":integer,"fps_max":number,"price":number})),
-        "input_price_per_1m":number,"output_price_per_1m":number,"cache_input_price_per_1m":number,"price_per_minute":number})
+        "input_price_per_1m":number,"output_price_per_1m":number,"cache_input_price_per_1m":number,"price_per_minute":number,"price_per_second":number})
     model = obj({"id":string("兼容模式为 nv-ID；identifier=alias 模式为可读调用名"),
         "alias":{"type":["string","null"],"description":"推荐用于 model 的稳定可读调用名","examples":["seedream-5.5"]},
         "legacy_id":string("兼容和授权使用的配置 ID",pattern=r"^nv-[1-9][0-9]{0,9}$"),"object":string(),"owned_by":string(),"name":string(),"created":integer,
@@ -98,7 +98,8 @@ def public_openapi(app):
         "ModelList":obj({"object":string(enum=["list"]),"data":array(model)},required=["object","data"]),
         "ResponseResult":obj({"id":string(), "object":string(), "status":string(), "output":array(obj()), "usage":obj()}),
         "ChatCompletion":obj({"id":string(),"object":string(),"created":integer,"model":string("供应商原始模型标识，不保证等于请求的 nv-ID"),
-            "choices":array(obj({"index":integer,"message":obj({"role":string(),"content":{"type":["string","null"]},"tool_calls":array(obj()),"reasoning_content":string()}),
+            "choices":array(obj({"index":integer,"message":obj({"role":string(),"content":{"type":["string","null"]},"tool_calls":array(obj()),"reasoning_content":string(),
+                "audio":obj({"data":string("音色设计渠道返回原始 Base64 WAV，不裁剪试听样本")})}),
                 "finish_reason":{"type":["string","null"]}})),"usage":usage}),
         "ImageResult":obj({"created":integer,"data":array(obj({"url":url,"size":string(),"revised_prompt":string(),"error":obj()})),
             "images":array({"anyOf":[url,obj({"url":url})]}),"usage":obj()},description="供应商 URL 图片结果及原生扩展字段。平台不新增 data 包装、不接收 b64_json。"),
@@ -195,6 +196,7 @@ def public_openapi(app):
             responses["200"]["content"]["text/event-stream"] = {"schema":string("供应商原始 Responses SSE 事件")}
         if path == "/chat/completions":
             operation['description'] = operation.get('description', '') + '\n客户端显式参数及扩展字段原样透传，支持的 thinking／reasoning_effort 格式与档位由上游模型决定；模型能力标签不拦截请求。仅在客户端省略参数时使用管理员配置的默认思考参数。'
+            operation['description'] += '\n音色设计须选择 task_types=[12] 的渠道，提供 user 描述、assistant 试听台词、audio.format=wav、stream=false。返回原始 Base64 WAV；按完整 WAV 实际输出秒数和受理时 price_per_second 结算，回执 usage.seconds 由 X-Cat-Request-Id 关联。'
             responses["200"]["content"]["text/event-stream"] = {"schema":string("上游 SSE 原始事件，保留心跳、扩展字段和 [DONE]；需要计费用量时显式发送 include_usage=true。"),
                 "example":'data: {"id":"chatcmpl-example","object":"chat.completion.chunk","model":"vendor-model","choices":[{"index":0,"delta":{"content":"你好"}}]}\n\ndata: [DONE]\n\n'}
         if "/auc/bigmodel/" in path:
@@ -212,7 +214,8 @@ def public_openapi(app):
         "/chat/completions":{"非流式":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}]}},
             "流式与用量":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}],"stream":True,"stream_options":{"include_usage":True}}},
             "上游推理参数":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}],"reasoning_effort":"low","thinking":{"type":"enabled"}}},
-            "顶层 thinking 字符串":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}],"thinking":"low"}}},
+            "顶层 thinking 字符串":{"value":{"model":"nv-42","messages":[{"role":"user","content":"你好"}],"thinking":"low"}},
+            "音色设计 WAV":{"value":{"model":"nv-42","messages":[{"role":"user","content":"沉稳的年轻男声"},{"role":"assistant","content":"你好，这是试听台词。"}],"audio":{"format":"wav"},"stream":False}}},
         "/images/generations":{"URL 图片":{"value":{"model":"nv-42","prompt":"山中庭院","size":"1024x1024","n":1,"response_format":"url"}}},
         "/api/v3/images/generations":{"Seedream 5.5":{"value":{"model":"nv-42","prompt":"保持参考图人物特征","size":"2048x1152","image":["https://cdn.example/reference.png"],"n":1,"response_format":"url"}}},
         "/images/edits":{"URL 参考图与蒙版":{"value":{"model":"nv-42","prompt":"更换背景","images":[{"image_url":"https://cdn.example/reference.png"}],"mask":{"image_url":"https://cdn.example/mask.png"},"response_format":"url"}}},

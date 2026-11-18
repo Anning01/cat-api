@@ -198,6 +198,19 @@ class AiModelConfigController(CRUDBase[AiModelConfig, AiModelConfigCreate, AiMod
     @classmethod
     def _validate_generation_payload(cls, data: dict, instance: AiModelConfig | None = None) -> None:
         tasks = data.get('task_types', (instance.task_types or [instance.task_type]) if instance else [])
+        if AiTaskTypeEnum.voice_design.value in tasks:
+            from services.platform.voice_design import MODEL, voice_pricing
+            if (tasks != [12] or data.get('model', instance.model if instance else None) != MODEL
+                or str(data.get('api_protocol', instance.api_protocol if instance else 'openai_compatible')) != 'openai_compatible'
+                or data.get('text_api', instance.text_api if instance else 'chat_completions') != 'chat_completions'):
+                raise HTTPException(400, '音色设计须独立配置 MiMo VoiceDesign Chat Completions 渠道')
+            pricing = data.get('pricing', instance.pricing if instance else None)
+            if pricing is not None or data.get('is_active', instance.is_active if instance else False):
+                try:
+                    voice_pricing(pricing)
+                except ValueError as exc:
+                    raise HTTPException(400, str(exc)) from None
+            return
         if AiTaskTypeEnum.video_enhancement.value in tasks:
             from pydantic import ValidationError
             from services.video_enhancement.contract import EnhancementOptions, EnhancementPricing, enhancement_cost, RESOLUTION_SHORT_SIDE

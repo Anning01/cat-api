@@ -136,8 +136,8 @@ def response_usage(usage):
 
 async def complete(ctx, body, key, *, responses=False):
     params = body.model_dump(mode="json", exclude_unset=True)
-    config, receipt = await admit(ctx, body.model, params, key)
-    headers = {"X-Request-Id":str(receipt.public_id), "Cache-Control":"no-store"}
+    config, receipt = await admit(ctx, body.model, params, key, kind="text" if responses else ("text", "voice_design"))
+    headers = {"X-Request-Id":str(receipt.public_id), "X-Cat-Request-Id":str(receipt.public_id), "Cache-Control":"no-store"}
     client = None
     deadline = asyncio.get_running_loop().time() + CALL_TIMEOUT
     try:
@@ -169,7 +169,10 @@ async def complete(ctx, body, key, *, responses=False):
             return response
         raw = raw_result.http_response
         result = raw.json()
-        if responses and result.get("status") not in {"completed", "incomplete"}:
+        if receipt.pricing.get("type") == "voice_design":
+            from services.platform.voice_design import finish_voice
+            await preserve_result(receipt, finish_voice(receipt, result))
+        elif responses and result.get("status") not in {"completed", "incomplete"}:
             await mark_failure(receipt, ValueError("unconfirmed response status"))
         else:
             await preserve_result(receipt, finish(receipt, response_usage(result.get("usage")) if responses else result.get("usage"), result.get("id")))

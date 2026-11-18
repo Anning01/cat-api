@@ -44,6 +44,7 @@ export function pricingRows(model: PricedModel): ModelPriceRow[] {
   for (const [label, value] of outputPrices) {
     rows.push({ label: pricing.billing_unit === 'pixel_tier' ? pixelTierLabel(label) : label, value, unit })
   }
+  if (pricing.price_per_second != null) rows.push({ label: tr('标准单价'), value: pricing.price_per_second, unit: tr('秒') })
   if (pricing.price_per_minute != null) rows.push({ label: tr('标准单价'), value: pricing.price_per_minute, unit: tr('分钟') })
   for (const tier of pricing.tiers ?? []) rows.push({ label: `≤${tier.short_side_max}p · ≤${tier.fps_max}fps`, value: tier.price, unit: tr('分钟') })
   for (const [tier, value] of Object.entries(pricing.video_reference_prices ?? {}).sort(([a], [b]) => compareTiers(a, b))) {

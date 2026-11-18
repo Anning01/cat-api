@@ -73,7 +73,23 @@ for chunk in stream:
         print(chunk.choices[0].delta.content or "", end="")
 ```
 
-返回上游原始 ChatCompletion 或 SSE 事件与 `[DONE]`，不包裹 data/result，不重写返回 model。建议显式请求 include_usage；平台不会修改该选项，缺少 usage 时仅将账单记为待核对，不影响成功结果。保留 tools、tool_choice、response_format、tool_calls、tool_call_id 与模型扩展字段。多模态图片使用 image_url.url 中的 HTTPS 链接。对话音频 Base64 输出模式不开放。
+返回上游原始 ChatCompletion 或 SSE 事件与 `[DONE]`，不包裹 data/result，不重写返回 model。建议显式请求 include_usage；平台不会修改该选项，缺少 usage 时仅将账单记为待核对，不影响成功结果。保留 tools、tool_choice、response_format、tool_calls、tool_call_id 与模型扩展字段。多模态图片使用 image_url.url 中的 HTTPS 链接。普通文本渠道不开放音频 Base64 输出；task_types=[12] 的音色设计渠道支持下述 WAV 返回契约。
+
+## 音色设计：POST /chat/completions
+
+从 `/models` 选择 `task_types=[12]`、`kinds=["voice_design"]` 的已启用渠道；使用返回的 `nv-ID` 或别名，不把供应商模型名当平台编号。后台超管通过现有 `/api/config` 配置独立 task_types=[12]、api_protocol=openai_compatible、text_api=chat_completions、model=mimo-v2.5-tts-voicedesign，供应商地址为 `https://api.xiaomimimo.com/v1`，密钥仅保存在平台。启用前须配置 pricing.type=voice_design、billing_unit=second、currency=CNY、price_per_second（非负数字）。不提供默认收费单价，不自动创建或启用渠道。
+
+```json
+{"model":"nv-<目录实际编号>","messages":[{"role":"user","content":"沉稳、有磁性的年轻男声"},{"role":"assistant","content":"你好，这是我的试听台词。"}],"audio":{"format":"wav","optimize_text_preview":false},"stream":false}
+```
+
+使用 Bearer 用户 Key 和 `Idempotency-Key`；响应保持供应商原始 JSON，`choices[0].message.audio.data` 为 Base64 WAV。保留样本全部字节，不裁剪、不固定为若干秒；客户端保存时应自行校验音频。此专用渠道仅支持非流式单音频输出，必须同时提供描述和试听台词，不支持音频克隆输入。
+
+`X-Cat-Request-Id` 为本次平台回执 UUID；供应商自己的 `X-Request-Id` 保持原义。查询 `/requests/{id}` 或 `/requests?request_key=<原幂等键>` 获取 `usage.seconds` 和实际结算金额。重复幂等键返回 409 和原回执编号，不能因此自动换键重发。
+
+计费取完整 WAV 的实际样本帧数 / 采样率，按秒数 × 受理时后台每秒单价 × discount 结算，金额按六位小数 HALF_UP；不按等待耗时、文本长度或供应商 token 数计费，不向上取整秒，也不套用语音识别每分钟费率。usage 同时保存 frames/sample_rate 用于精确复核。没有可靠 WAV 时保留响应供客户端校验，回执为 review，不猜测时长扣费；遇到网络超时或不确定结果必须查询原回执，不能盲目重复生成。
+
+官方协议：[MiMo 音频 API](https://mimo.mi.com/docs/en-US/api/audio/tts-post)。供应商的活动价不代表本平台对用户收费价，平台以后台配置及回执快照为准。尚未配置渠道或未部署本实现时，不可将测试样例编号当作可联调的真实模型编号。
 
 ## 图片：POST /images/generations
 

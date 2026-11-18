@@ -68,6 +68,11 @@ def require_video_price(rates, resolution, *, has_video_reference=False):
 
 
 def chat_options(config, body):
+    if AiTaskTypeEnum.voice_design in (config.task_types or [config.task_type]):
+        from services.platform.voice_design import voice_options
+        return voice_options(config, body)
+    if "audio" in (body.get("modalities") or []) or body.get("audio") is not None:
+        raise HTTPException(422, "所选模型不是音色设计渠道")
     if not set(config.task_types or [config.task_type]).intersection({1,3,5,6,7,10,11}):
         raise HTTPException(422, "该模型不支持对话请求")
     # Capability labels help clients choose models; upstream validates requested features.
@@ -92,7 +97,8 @@ async def admit(ctx, model, body, key, *, validate=chat_options, kind="text"):
             alias = await eligible.filter(public_alias=model.lower()).first()
             candidates = ([{"id":alias.id,"task_type":alias.task_type,"task_types":alias.task_types}] if alias else
                 await eligible.filter(Q(name=model) | Q(model=model)).values("id", "task_type", "task_types"))
-            matched = [row["id"] for row in candidates if any(PUBLIC_KINDS.get(task) == kind for task in
+            kinds = {kind} if isinstance(kind, str) else set(kind)
+            matched = [row["id"] for row in candidates if any(PUBLIC_KINDS.get(task) in kinds for task in
                                                                (row["task_types"] or [row["task_type"]]))]
             if not matched:
                 raise HTTPException(404, "平台模型不存在或已停用")
@@ -108,7 +114,7 @@ async def admit(ctx, model, body, key, *, validate=chat_options, kind="text"):
         previous = await PlatformCallReceipt.filter(dedup_key__in=await request_keys(ctx.user.id, key or str(identifier))).first().using_db(db)
         if previous:
             detail = "请求标识已用于不同的请求" if previous.payload_hash != signature else "该请求已受理，请查询原请求状态"
-            raise HTTPException(409, detail, headers={"X-Request-Id":str(previous.public_id)})
+            raise HTTPException(409, detail, headers={"X-Request-Id":str(previous.public_id), "X-Cat-Request-Id":str(previous.public_id)})
         rates = validate(config, body)
         try:
             await ensure_solvent(ctx.user.id)
@@ -153,10 +159,13 @@ async def settle(receipt_id):
         elif kind == "media_processing":
             from services.video_enhancement.contract import enhancement_cost
             cost = enhancement_cost(r.usage["seconds"], r.usage["short_side"], r.usage["fps"], r.pricing)
+        elif kind == "voice_design":
+            from services.platform.voice_design import voice_cost
+            cost = voice_cost(r.usage, r.pricing)
         else:
             cost = compute_text_cost(r.usage, r.pricing)
         record = await ModelUsageRecord.create(using_db=db, novel_id=0, task_type={"image":AiTaskTypeEnum.reference_image,"video":AiTaskTypeEnum.video,"text":AiTaskTypeEnum.creation_agent, "asr":AiTaskTypeEnum.audio_recognition,
-                "media_processing":AiTaskTypeEnum.video_enhancement}[kind],
+                "media_processing":AiTaskTypeEnum.video_enhancement, "voice_design":AiTaskTypeEnum.voice_design}[kind],
             billing_type=kind, model_config_id=r.model_config_id, model_name=r.model_name, model=r.model,
             pricing_snapshot=r.pricing, usage={**r.usage, "platform_request_id":str(r.public_id)},
             cost=cost, platform_cost=cost, local_charge=0, settlement_status="settled",

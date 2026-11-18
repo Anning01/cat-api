@@ -5,11 +5,12 @@ export type ImageModelType = 'seedream_5_5' | 'seedream_5_lite' | 'seedream_5_pr
 export type VideoGenerationModelType = 'seedance_2' | 'seedance_2_fast' | 'seedance_2_mini' | 'seedance_2_5' | 'seedance_2_5_flash' | 'minimax_h3' | 'minimax_h3_autodl' | 'wan_3'
 
 export interface ModelPricing {
-  type: 'text' | 'image' | 'video' | 'media_processing' | 'asr'
+  type: 'text' | 'image' | 'video' | 'media_processing' | 'asr' | 'voice_design'
   currency: string
   input_price_per_1m?: number
   cache_input_price_per_1m?: number
   output_price_per_1m?: number
+  price_per_second?: number
   price_per_minute?: number
   prices?: Record<string, number>
   input_image?: { first_free: number; price_per_image: number }

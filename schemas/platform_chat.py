@@ -1,5 +1,5 @@
 from typing import Any, Literal
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 class TextPart(BaseModel):
@@ -51,12 +51,6 @@ class ChatRequest(BaseModel):
     tool_choice: str | dict | None = None
     parallel_tool_calls: bool | None = None
     response_format: dict | None = None
-
-    @model_validator(mode="after")
-    def validate_options(self):
-        if "audio" in ((self.model_extra or {}).get("modalities") or []):
-            raise ValueError("Inline audio output is not supported; use media URLs")
-        return self
 
 
 class ResponsesRequest(BaseModel):

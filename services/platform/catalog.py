@@ -17,6 +17,7 @@ PUBLIC_KINDS = {
     AiTaskTypeEnum.creation_agent: "text",
     AiTaskTypeEnum.screenplay: "text",
     AiTaskTypeEnum.prompt_optimization: "text",
+    AiTaskTypeEnum.voice_design: "voice_design",
 }
 
 NATIVE_APIS = {
@@ -49,10 +50,10 @@ def public_tariff(raw):
     def number(v):
         return isinstance(v, (float, int)) and not isinstance(v, bool) and isfinite(v) and v >= 0
     data = {k: v for k,v in raw.items() if k in {
-        "input_price_per_1m","cache_input_price_per_1m","output_price_per_1m","price_per_minute","discount"
+        "input_price_per_1m","cache_input_price_per_1m","output_price_per_1m","price_per_minute","price_per_second","discount"
     } and number(v)}
     data["currency"] = "CNY"
-    if raw.get("type") in {"text", "image", "video", "asr", "media_processing"}:
+    if raw.get("type") in {"text", "image", "video", "asr", "media_processing", "voice_design"}:
         data["type"] = raw["type"]
     if raw.get("billing_unit") in {"token", "second", "minute", "pixel_tier"}:
         data["billing_unit"] = raw["billing_unit"]
