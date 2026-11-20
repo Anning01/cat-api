@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 import re
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import HTTPException
@@ -83,6 +84,22 @@ async def owned_media_url(user_id: int, media_id: int, kind: str) -> str:
     if not bucket or (lease.bucket, lease.region) != (bucket.bucket, bucket.region):
         raise HTTPException(503, "平台临时素材存储不可用")
     return bucket.sign("GET", lease.object_key, now, min(READ_SECONDS, lease.expires_epoch - int(now.timestamp())))
+
+
+async def known_upload_bytes(user_id: int, urls: list[str]) -> int:
+    """Sum account-owned uploads without making requests to caller-supplied URLs."""
+    objects = []
+    for url in urls:
+        parts = urlsplit(url)
+        key = parts.path.lstrip("/")
+        if parts.scheme == "https" and parts.port in (None, 443) and key.startswith(f"{PREFIX}{user_id}/"):
+            objects.append((key, parts.hostname))
+    if not objects:
+        return 0
+    rows = await StudioMediaLease.filter(account_user_id=user_id, object_key__in={key for key, _ in objects},
+                                         expires_epoch__gt=int(datetime.now(timezone.utc).timestamp()))
+    sizes = {(row.object_key, f"{row.bucket}.oss-{row.region}.aliyuncs.com"): row.byte_length for row in rows}
+    return sum(sizes.get(item, 0) for item in objects)
 
 
 async def expire_uploads():

@@ -3,6 +3,7 @@ from services.platform.calls import request_keys
 import asyncio
 from collections import Counter
 from decimal import Decimal, ROUND_HALF_UP
+import json
 import logging
 from math import gcd
 import re
@@ -23,6 +24,7 @@ from services.platform.http_contract import UpstreamResponseError, public_upstre
 from services.video import get_generator
 from services.video.base import VideoProviderError
 from services.video.capabilities import capabilities_for, validate_selection
+from services.video.provider_http import REFERENCE_MEDIA_SIZE_ERROR, REFERENCE_MEDIA_SIZE_MESSAGE, structured_video_error
 from utils.enums import TaskStatusEnum
 
 logger = logging.getLogger(__name__)
@@ -140,6 +142,10 @@ async def submit_video(ctx, request, key):
         return ("@音频" if kind=="audio" else "@视频") + number
     prompt = re.sub(r"@(audio|video)(\d+)", media_label, prompt)
     try:
+        if config.api_protocol == "autodl" and config.video_model_type == "minimax_h3_autodl":
+            from services.platform.temporary_media import known_upload_bytes
+            if await known_upload_bytes(ctx.user.id, [ref.url for ref in refs]) > 50 * 1024**2:
+                raise VideoProviderError(f"{REFERENCE_MEDIA_SIZE_MESSAGE}（{REFERENCE_MEDIA_SIZE_ERROR}）")
         with public_upstream(str(receipt.public_id), config.api_key):
             async with asyncio.timeout(CALL_TIMEOUT):
                 upstream_id = await get_generator(config).submit(prompt=prompt, duration=request.duration,
@@ -153,11 +159,27 @@ async def submit_video(ctx, request, key):
     except (Exception, asyncio.CancelledError) as exc:
         definite = (isinstance(exc,VideoProviderError) and not exc.submission_uncertain) or (
             isinstance(exc,UpstreamResponseError) and exc.status < 500 and exc.status != 408)
-        await PlatformCallReceipt.filter(id=receipt.id,state="submitted").update(state="rejected" if definite else "review")
+        error = {}
+        if definite:
+            if isinstance(exc, UpstreamResponseError):
+                try:
+                    error = structured_video_error(json.loads(exc.content), secrets=(config.api_key,))
+                except ValueError:
+                    pass  # The original HTTP response still reaches the caller.
+            else:
+                error = structured_video_error({"message": str(exc)}, secrets=(config.api_key,))
+        async with in_transaction():
+            if error:
+                await PlatformVideoJob.filter(id=job.id).update(status="failed", output={"error": error})
+            await PlatformCallReceipt.filter(id=receipt.id,state="submitted").update(state="rejected" if definite else "review")
         if isinstance(exc, asyncio.CancelledError):
             raise
         if isinstance(exc, UpstreamResponseError):
             raise
+        if message := error.get("message"):
+            code = error.get("code")
+            detail = f"{message}（{code}）" if code else message
+            raise HTTPException(422, detail, headers={"X-Request-Id": str(receipt.public_id)}) from None
         raise HTTPException(422 if definite else 502,"未能确认视频提交，请凭请求编号核对",
                             headers={"X-Request-Id":str(receipt.public_id)}) from None
     return video_object(receipt, job)

@@ -45,12 +45,15 @@ async def sdk_api(monkeypatch):
             assert "authorization" not in req.headers
             return httpx.Response(200, content=b"video result", headers={"content-type":"video/mp4"})
         assert req.url.host == "vendor.example"
-        assert req.headers["authorization"] == "Bearer upstream-fixture"
+        autodl = "/comfyui_workflow" in req.url.path
+        assert req.headers["authorization"] == ("upstream-fixture" if autodl else "Bearer upstream-fixture")
         await req.aread()
         state.seen.append(req)
         if state.failure:
             status, content, headers = state.failure
             return httpx.Response(status, content=content, headers=headers)
+        if autodl:
+            return httpx.Response(200, json={"code":"Success", "data":{"task_id":"discount-task"}})
         if req.url.path.endswith("chat/completions"):
             return httpx.Response(200, json={"id":"chatcmpl-fixture", "object":"chat.completion", "created":1,
                 "model":"official-chat", "choices":[{"index":0,"message":{"role":"assistant","content":None,
@@ -250,6 +253,79 @@ async def test_native_failed_video_payload_is_preserved(sdk_api):
     failed = await sdk.videos.retrieve(created.id)
     assert failed.status == "failed"
     assert failed.error.model_dump(exclude_unset=True) == failure
+
+
+@pytest.mark.parametrize(("discount", "audio_mb", "status"), [(True, 25, 422), (True, 24, 200), (False, 25, 200)])
+async def test_video_material_limit_applies_only_to_discount_channel(sdk_api, discount, audio_mb, status):
+    from time import time
+    from auth.models import StudioMediaLease
+
+    sdk, state, models = sdk_api
+    model = models[2]
+    if discount:
+        model = await AiModelConfig.create(name="MiniMax H3 Discount", model="discount-workflow", task_type=4,
+            is_active=True, base_url="https://vendor.example", api_key="upstream-fixture",
+            api_protocol="autodl", video_model_type="minimax_h3_autodl",
+            pricing={"type":"video", "billing_unit":"second", "prices":{"768p":0.1}})
+    user_id = (await User.get(username="sdk-client")).id
+    references = []
+    if discount:
+        inputs = [("image", "ref.png", 26), ("audio", "ref.wav", audio_mb)]
+    else:
+        inputs = [("image", "first.png", 26), ("image", "second.png", audio_mb)]
+    for kind, filename, mb in inputs:
+        key = f"studio-temporary/v1/{user_id}/{filename}"
+        await StudioMediaLease.create(object_key=key, bucket="fixture-bucket", region="cn-hangzhou",
+            account_user_id=user_id, byte_length=mb * 1024**2, expires_epoch=int(time()) + 60)
+        references.append({"type":kind, "url":f"https://fixture-bucket.oss-cn-hangzhou.aliyuncs.com/{key}"})
+    params = {"model":f"nv-{model.id}", "prompt":"pan", "duration":4, "aspect_ratio":"16:9",
+              "resolution":"768p" if discount else "720p", "references":references}
+    headers = {"authorization":"Bearer " + sdk.api_key, "idempotency-key":"discount-limit"}
+    response = await sdk._client.post("https://platform.example/v1/videos", json=params, headers=headers)
+    assert response.status_code == status
+    if status == 422:
+        assert "参考素材总大小不能超过 50 MB" in response.json()["error"]["message"]
+        repeated = await sdk._client.post("https://platform.example/v1/videos", json=params, headers=headers)
+        assert repeated.json()["error"]["code"] == "ReferenceMediaTotalSizeExceeded"
+        assert not state.seen
+    else:
+        assert len(state.seen) == 1
+
+
+async def test_discount_video_polling_preserves_channel_failure(sdk_api):
+    sdk, state, _ = sdk_api
+    model = await AiModelConfig.create(name="MiniMax H3 Discount", model="discount-workflow", task_type=4,
+        is_active=True, base_url="https://vendor.example", api_key="upstream-fixture",
+        api_protocol="autodl", video_model_type="minimax_h3_autodl",
+        pricing={"type":"video", "billing_unit":"second", "prices":{"768p":0.1}})
+    submitted = await sdk._client.post("https://platform.example/v1/videos",
+        headers={"authorization":"Bearer " + sdk.api_key},
+        json={"model":f"nv-{model.id}", "prompt":"pan", "duration":4, "resolution":"768p", "aspect_ratio":"16:9"})
+    assert submitted.status_code == 200
+    state.failure = 200, json.dumps({"code":"Success", "msg":"", "data":{
+        "status":"FAILED", "error_code":"AudioDecodeError",
+        "error_msg":"Audio file cannot be decoded https://vendor.example/file?token=upstream-fixture",
+    }}).encode(), {"content-type":"application/json"}
+    result = await sdk.videos.retrieve(submitted.json()["id"])
+    assert result.status == "failed"
+    assert result.error.code == "AudioDecodeError"
+    assert result.error.message.startswith("Audio file cannot be decoded")
+    assert "vendor.example" not in result.error.message and "upstream-fixture" not in result.error.message
+
+
+async def test_discount_video_submission_preserves_provider_message(sdk_api):
+    sdk, state, _ = sdk_api
+    model = await AiModelConfig.create(name="MiniMax H3 Discount", model="discount-workflow", task_type=4,
+        is_active=True, base_url="https://vendor.example", api_key="upstream-fixture",
+        api_protocol="autodl", video_model_type="minimax_h3_autodl",
+        pricing={"type":"video", "billing_unit":"second", "prices":{"768p":0.1}})
+    state.failure = 200, json.dumps({"code":"InvalidInput", "msg":"Reference image format is invalid"}).encode(), {
+        "content-type":"application/json"},
+    reply = await sdk._client.post("https://platform.example/v1/videos",
+        headers={"authorization":"Bearer " + sdk.api_key},
+        json={"model":f"nv-{model.id}", "prompt":"pan", "duration":4, "resolution":"768p", "aspect_ratio":"16:9"})
+    assert reply.status_code == 422
+    assert "Reference image format is invalid" in reply.json()["error"]["message"]
 
 
 async def test_video_uses_uploaded_url_and_rejects_multipart(sdk_api):
