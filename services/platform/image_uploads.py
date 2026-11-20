@@ -18,16 +18,20 @@ def image_mime(data):
     raise HTTPException(422, '参考图须为 PNG、JPEG 或 WebP 文件')
 
 
-async def parse_image_edit(request: Request):
+async def read_bounded_form(request: Request):
     length = request.headers.get('content-length','')
     if length.isdigit() and int(length) > MAX_EDIT_BYTES:
-        raise HTTPException(413, '图片编辑请求总大小不能超过 64 MiB')
+        raise HTTPException(413, '文件请求总大小不能超过 64 MiB')
     content = bytearray()
     async for chunk in request.stream():
         if len(content) + len(chunk) > MAX_EDIT_BYTES:
-            raise HTTPException(413, '图片编辑请求总大小不能超过 64 MiB')
+            raise HTTPException(413, '文件请求总大小不能超过 64 MiB')
         content.extend(chunk)
     request._body = bytes(content)
+
+
+async def parse_image_edit(request: Request):
+    await read_bounded_form(request)
     values, files = {}, []
     try:
         async with request.form(max_files=17,max_fields=32,max_part_size=1024**2) as form:

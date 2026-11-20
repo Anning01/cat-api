@@ -15,7 +15,7 @@ from services.video.base import BaseVideoGenerator
 from services.video.capabilities import capabilities_for
 from services.video.minimax import MiniMaxH3Generator
 from services.video.seedance import SeedanceGenerator
-from services.video.unified import UnifiedVideoGenerator
+from services.video.unified import OpenAIVideoGenerator, UnifiedVideoGenerator
 from services.video.wan import Wan3Generator
 from utils.enums import VideoGenerationModelTypeEnum, VideoModelTypeEnum
 from utils.image_protocol import ImageApiProtocol
@@ -74,6 +74,7 @@ class VideoGeneratorFactory:
 
 
 video_generator_factory = VideoGeneratorFactory({
+    VideoGenerationModelTypeEnum.openai_video: VideoGeneratorAdapterSpec(OpenAIVideoGenerator, VideoModelTypeEnum.sora2),
     VideoGenerationModelTypeEnum.seedance_2: VideoGeneratorAdapterSpec(
         SeedanceGenerator, VideoModelTypeEnum.seedance
     ),

@@ -31,6 +31,8 @@ export const api = {
   configs: () => request<PaginationResponse<AiModelConfig>>('/config?page=1&page_size=100'),
   enums: () => request<SingleResponse<AllEnums>>('/config/enums/all'),
   generationCapabilities: () => request<SingleResponse<GenerationCapabilities>>('/config/generation/capabilities'),
+  discoverModels: (base_url: string, api_key: string) => request<SingleResponse<string[]>>('/config/channel/models', {method:'POST', body:JSON.stringify({base_url, api_key})}),
+  importModels: (template: Partial<AiModelConfig>, models: string[]) => request<SingleResponse<number[]>>('/config/channel/import', {method:'POST', body:JSON.stringify({template, models})}),
   createConfig: (data: Partial<AiModelConfig>) => request<SingleResponse<AiModelConfig>>('/config', { method:'POST',body:JSON.stringify(data) }),
   updateConfig: (id: number, data: Partial<AiModelConfig>) => request<SingleResponse<AiModelConfig>>(`/config/${id}`, {method:'PATCH',body:JSON.stringify(data)}),
   activateConfig: (id: number) => request(`/config/${id}/activate`, {method:'POST'}),

@@ -20,11 +20,11 @@ def reject_inline_media(value):
         raise HTTPException(422, "Inline media is not accepted; use temporary OSS URLs")
 
 
-async def bounded_json_body(request: Request, *, image_edit=False):
+async def bounded_json_body(request: Request, *, allow_form=False):
     if request.method not in {"POST", "PUT", "PATCH"}:
         return
     content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
-    if image_edit and content_type == "multipart/form-data":
+    if allow_form and content_type == "multipart/form-data":
         return  # Authenticate in the endpoint before reading a bounded file body.
     if content_type != "application/json":
         raise HTTPException(400, "Send JSON with media URLs; request a direct upload at /v1/media/uploads")
@@ -53,7 +53,7 @@ def validated_body(schema, values):
         raise HTTPException(422, f"{field}: {detail['msg']}") from None
 
 
-def sdk_request_schema(model, *, multipart=False):
+def sdk_request_schema(model, *, multipart=False, video_file=False):
     schema = model.model_json_schema()
     definitions = schema.pop("$defs", {})
     def inline(value):
@@ -65,6 +65,13 @@ def sdk_request_schema(model, *, multipart=False):
             return [inline(item) for item in value]
         return value
     content = {"application/json":{"schema":inline(schema)}}
+    if video_file:
+        for key in ("duration","resolution","aspect_ratio"):
+            schema["properties"][key].pop("default", None)
+            schema["properties"][key]["description"] = "省略时使用所选视频渠道的默认规格"
+        properties = {k: v for k, v in schema["properties"].items() if k in {"model", "prompt", "seconds", "size"}}
+        properties["input_reference"] = {"type": "string", "format": "binary"}
+        content["multipart/form-data"] = {"schema": {"type": "object", "properties": properties, "required": ["prompt"]}}
     if multipart:
         file_schema = inline(schema)
         file_schema['properties']['image'] = {'type':'array','minItems':1,'maxItems':16,

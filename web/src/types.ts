@@ -1,8 +1,8 @@
-export type ImageApiProtocol = 'novelvids' | 'openai_compatible' | 'openrouter_compatible' | 'volcengine_ark' | 'minimax' | 'autodl' | 'dashscope' | 'volcengine_mediakit' | 'volcengine_openspeech'
+export type ImageApiProtocol = 'openai_video' | 'novelvids' | 'openai_compatible' | 'openrouter_compatible' | 'volcengine_ark' | 'minimax' | 'autodl' | 'dashscope' | 'volcengine_mediakit' | 'volcengine_openspeech'
 
 export type ImageModelType = 'seedream_5_5' | 'seedream_5_lite' | 'seedream_5_pro' | 'seedream_5_flash' | 'gpt_image_2' | 'gpt_image_2_5' | 'gpt_image_2_6' | 'gpt_image_2_6_sunburst' | 'gpt_image_2_6_flare'
 
-export type VideoGenerationModelType = 'seedance_2' | 'seedance_2_fast' | 'seedance_2_mini' | 'seedance_2_5' | 'seedance_2_5_flash' | 'minimax_h3' | 'minimax_h3_autodl' | 'wan_3'
+export type VideoGenerationModelType = 'openai_video' | 'seedance_2' | 'seedance_2_fast' | 'seedance_2_mini' | 'seedance_2_5' | 'seedance_2_5_flash' | 'minimax_h3' | 'minimax_h3_autodl' | 'wan_3'
 
 export interface ModelPricing {
   type: 'text' | 'image' | 'video' | 'media_processing' | 'asr' | 'voice_design'

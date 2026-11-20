@@ -23,6 +23,7 @@ IMAGE_PRICING = {
 }
 
 VIDEO_PRICING: dict[str, dict] = {
+    "openai_video": {"type": "video", "currency": "CNY", "billing_unit": "second", "prices": {}},
     "seedance_2": {
         "type": "video",
         "currency": "CNY",

@@ -2,7 +2,7 @@
 
 Base URL：`{{BASE_URL}}`
 
-公共对话和 URL 图片接口保留上游返回。新视频、识别和增强接入使用下方各供应商原生协议；历史统一视频接口仅作兼容。文件由客户端直接上传临时 OSS，猫影只接收元数据和 URL。
+公共对话和 URL 图片接口保留上游返回。视频生成使用目录公布的 /videos 或原生入口。识别和增强使用各自原生协议。
 
 ## 认证与模型
 
@@ -63,7 +63,7 @@ reference_url = upload_reference("reference.png", "image/png")
 
 upload_url 的 PUT 授权有效期为 10 分钟，read_url 有效期为 48 小时。PUT 只使用票据内的 headers，不向 OSS 发送猫影 API Key。保留 read_url 供同一任务重试；过期后重新申请并上传。上传完成后再调用生成接口。
 
-普通生成接口只接收 JSON，单次最多 1 MB；data URL、内联音频或文件数据在供应商调用前被拒绝。OpenAI 兼容图片渠道的 `/images/edits` 例外支持标准 multipart 文件表单，见下文；其他渠道仍使用上传完成的 URL。
+普通生成接口只接收 JSON，单次最多 1 MB；data URL、内联音频或文件数据在供应商调用前被拒绝。OpenAI 兼容图片渠道的 `/images/edits` 例外支持标准 multipart 文件表单，见下文；/videos 也接受单张参考图文件。
 
 ## 对话：POST /chat/completions
 
@@ -129,14 +129,14 @@ OpenAI 兼容图片渠道的 `/images/edits` 同时接收官方 SDK 的 multipar
 
 文件编辑的 `response_format` 支持 `url`（默认）或 `b64_json`，原样保留供应商结果；Base64 模式响应上限 64 MiB。仍禁止内联输入和图片二进制 SSE；其他生成接口的 URL 约束不变。沿用实际图片张数、参考图数、规格费率快照和一次性结算；缺少可靠计费规格时保留结果，账单待核对，不自动重提生成。
 
-## 历史统一视频兼容接口：POST /videos，GET /videos/{id}
+## 通用视频生成与查询
 
 ```python
 video = client.videos.create(
     model=os.environ["NOVELVIDS_VIDEO_MODEL"],
     prompt="镜头沿街道缓慢前移",
     seconds="4",
-    size="1280x720",
+    # 省略 size 时使用所选渠道的默认规格。
     extra_body={"input_reference": reference_url},
 )
 
@@ -151,9 +151,9 @@ else:
     print(video.error)
 ```
 
-input_reference 的 URL 放入 extra_body，避免 SDK 将文件参数编码为 multipart。纯文生视频可省略参考图。
+HTTPS 参考图可放在 extra_body.input_reference。文件可直接传给 SDK 的 input_reference，支持 PNG、JPEG 和 WebP。纯文生视频省略参考图。
 
-返回标准 Video 对象：id、object="video"、model、created_at、completed_at、seconds、size、status、progress、error。`GET /videos/{id}/content` 跳转到成片下载地址，SDK 自动跟随，猫影不转发视频内容。当前不提供 thumbnail/spritesheet。
+返回标准 Video 对象：id、object="video"、model、created_at、completed_at、seconds、size、status、progress、error。`GET /videos/{id}/content` 可读取视频字节，HEAD 可读取媒体头。历史任务保留跳转下载。当前不提供 thumbnail/spritesheet。
 
 多参考图片、视频或音频：通过 extra_body.references 传数组，元素为 {"type":"image|video|audio", "role":"reference|first_frame|last_frame", "url":"HTTPS 地址"}。input_reference 和 references 二选一。首尾帧分别提供一张图片。
 

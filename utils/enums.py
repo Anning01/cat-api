@@ -153,6 +153,7 @@ class VideoGenerationModelTypeEnum(NicknameStrEnum):
     seedance_2_5_flash = "seedance_2_5_flash", "Doubao Seedance 2.5 Flash"
     minimax_h3 = "minimax_h3", "MiniMax H3"
     minimax_h3_autodl = "minimax_h3_autodl", "MiniMax H3 · AutoDL"
+    openai_video = "openai_video", "OpenAI Videos 兼容渠道"
     wan_3 = "wan_3", "Wan 3.0"
 
 

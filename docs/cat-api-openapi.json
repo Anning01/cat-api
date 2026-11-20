@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Cat API · 模型开放平台",
-    "description": "Cat API 模型开放平台。供应商原生请求与结果按原格式转发，仅进行鉴权、模型路由、任务归属与计费。\n\n**媒体规则**：先调用 `/media/uploads` 申请临时直传，文件直接 PUT 到 OSS，再把 `read_url` 放入生成请求。平台不接收 multipart、Base64 文件、data URL、内联音频或文件；不开放携带内联媒体的图片流式输出。MD5 摘要的 Base64 编码不属于文件内容。\n\n**身份与编号**：平台 Key 填入 Bearer；部分原生协议也支持对应鉴权头。使用目录 `nv-ID` 或 `X-Cat-Model` 选择通道。供应商 `X-Request-Id` 和任务 ID 保留，平台账务 UUID 位于 `X-Cat-Request-Id`（兼容 `X-Novelvids-Request-Id`）。\n\n**计费**：成功结果不因计费暂时失败而被替换。使用 `/requests` 查询 pending、settled、review、not_charged。平台金额包含折扣，不能重复打折。Seedream 5.5/5.0 Pro 可按 pixel_tier 与实际输出档位计费，模型与价格以运行环境 `/models` 为准。\n\n**接入**：新供应商任务使用原生路径；历史 `/videos` 保留统一格式兼容，不是供应商原生返回。原生路径在平台根地址和本文件 server `/v1` 下均可使用。示例模型 ID、URL 与任务 ID 仅供导入和阅读，不代表真实可用配置。",
+    "description": "Cat API 模型开放平台。供应商原生请求与结果按原格式转发，仅进行鉴权、模型路由、任务归属与计费。\n\n**媒体规则**：先调用 `/media/uploads` 申请临时直传，文件直接 PUT 到 OSS，再把 `read_url` 放入生成请求。普通生成接口不接收 Base64 文件、data URL、内联音频或文件；OpenAI 兼容图片渠道的 `/images/edits` 支持标准 multipart 文件编辑和按请求返回 URL/Base64，视频 /videos 也接收单张参考图文件，其他接口沿用 URL 规则。不开放图片二进制流式输出。MD5 摘要的 Base64 编码不属于文件内容。\n\n**身份与编号**：平台 Key 填入 Bearer；部分原生协议也支持对应鉴权头。使用目录 `nv-ID` 或 `X-Cat-Model` 选择通道。供应商 `X-Request-Id` 和任务 ID 保留，平台账务 UUID 位于 `X-Cat-Request-Id`（兼容 `X-Novelvids-Request-Id`）。\n\n**计费**：成功结果不因计费暂时失败而被替换。使用 `/requests` 查询 pending、settled、review、not_charged。平台金额包含折扣，不能重复打折。Seedream 5.5/5.0 Pro 可按 pixel_tier 与实际输出档位计费，模型与价格以运行环境 `/models` 为准。\n\n**接入**：视频生成使用 `/videos` 或目录声明的供应商原生入口。原生路径在平台根地址和本文件 server `/v1` 下均可使用。示例模型 ID、URL 与任务 ID 仅供导入和阅读，不代表真实可用配置。",
     "version": "1.1.0"
   },
   "paths": {
@@ -878,7 +878,7 @@
           }
         ],
         "x-apifox-folder": "视频/Seedance",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -1779,7 +1779,7 @@
           }
         ],
         "x-apifox-folder": "视频/Seedance",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
       }
     },
     "/v2/video_generation": {
@@ -2658,7 +2658,7 @@
           }
         ],
         "x-apifox-folder": "视频/MiniMax",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -3555,7 +3555,7 @@
           }
         ],
         "x-apifox-folder": "视频/MiniMax",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
       }
     },
     "/api/v1/services/aigc/video-generation/video-synthesis": {
@@ -4433,7 +4433,7 @@
           }
         ],
         "x-apifox-folder": "视频/Wan3",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -5342,7 +5342,7 @@
           }
         ],
         "x-apifox-folder": "视频/Wan3",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。 此路径也用于 MediaKit 画质增强查询，由任务归属自动选择通道；无需创建重复接口。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。 此路径也用于 MediaKit 画质增强查询，由任务归属自动选择通道；无需创建重复接口。"
       }
     },
     "/api/v1/comfyui/comfyui_workflow/result/{task_id}": {
@@ -6226,7 +6226,7 @@
           }
         ],
         "x-apifox-folder": "视频/AutoDL",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
       }
     },
     "/api/v1/comfyui/comfyui_workflow/{workflow_id}": {
@@ -7132,7 +7132,7 @@
           }
         ],
         "x-apifox-folder": "视频/AutoDL",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
       }
     },
     "/api/v1/tools/enhance-video-generative": {
@@ -8003,7 +8003,7 @@
           }
         ],
         "x-apifox-folder": "视频/画质增强",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -8903,7 +8903,7 @@
           }
         ],
         "x-apifox-folder": "图片/Seedream",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -9820,7 +9820,7 @@
           }
         ],
         "x-apifox-folder": "图片/OpenAI 兼容",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。 此目录按 OpenAI 兼容形状展示；原通用入口仍可用 model 路由其他图片通道。Seedream 和 OpenRouter 各有独立原生入口。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。 此目录按 OpenAI 兼容形状展示；原通用入口仍可用 model 路由其他图片通道。Seedream 和 OpenRouter 各有独立原生入口。"
       }
     },
     "/images/edits": {
@@ -10819,8 +10819,12 @@
                     "title": "Frame Duration Ms"
                   },
                   "response_format": {
-                    "const": "url",
                     "default": "url",
+                    "description": "b64_json 仅用于 OpenAI 文件编辑接口",
+                    "enum": [
+                      "url",
+                      "b64_json"
+                    ],
                     "title": "Response Format",
                     "type": "string"
                   },
@@ -10940,6 +10944,204 @@
                   }
                 }
               }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "additionalProperties": true,
+                "properties": {
+                  "model": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "title": "Model",
+                    "type": "string"
+                  },
+                  "prompt": {
+                    "minLength": 1,
+                    "title": "Prompt",
+                    "type": "string"
+                  },
+                  "size": {
+                    "anyOf": [
+                      {
+                        "maxLength": 32,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Size"
+                  },
+                  "aspect_ratio": {
+                    "anyOf": [
+                      {
+                        "maxLength": 16,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Aspect Ratio"
+                  },
+                  "n": {
+                    "default": 1,
+                    "exclusiveMinimum": 0,
+                    "title": "N",
+                    "type": "integer"
+                  },
+                  "output_format": {
+                    "default": "png",
+                    "maxLength": 10,
+                    "title": "Output Format",
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  },
+                  "mask": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "可选 PNG 蒙版"
+                  },
+                  "frame_count": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Frame Count"
+                  },
+                  "frame_duration_ms": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Frame Duration Ms"
+                  },
+                  "response_format": {
+                    "default": "url",
+                    "description": "b64_json 仅用于 OpenAI 文件编辑接口",
+                    "enum": [
+                      "url",
+                      "b64_json"
+                    ],
+                    "title": "Response Format",
+                    "type": "string"
+                  },
+                  "quality": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Quality"
+                  },
+                  "background": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Background"
+                  },
+                  "moderation": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Moderation"
+                  },
+                  "output_compression": {
+                    "anyOf": [
+                      {
+                        "maximum": 100,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Output Compression"
+                  },
+                  "layer_decomposition": {
+                    "default": false,
+                    "title": "Layer Decomposition",
+                    "type": "boolean"
+                  },
+                  "style": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Style"
+                  },
+                  "user": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "User"
+                  },
+                  "stream": {
+                    "default": false,
+                    "title": "Stream",
+                    "type": "boolean"
+                  },
+                  "partial_images": {
+                    "anyOf": [
+                      {
+                        "maximum": 3,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Partial Images"
+                  }
+                },
+                "required": [
+                  "model",
+                  "prompt",
+                  "image"
+                ],
+                "title": "ImageRequest",
+                "type": "object"
+              }
             }
           }
         },
@@ -10952,7 +11154,7 @@
           }
         ],
         "x-apifox-folder": "图片/OpenAI 兼容",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。 此目录按 OpenAI 兼容形状展示；原通用入口仍可用 model 路由其他图片通道。Seedream 和 OpenRouter 各有独立原生入口。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。\nOpenAI 兼容图片渠道支持 multipart 文件表单：1 至 16 张 image/image[]，可选一张 PNG mask；单文件最多 50 MiB，总请求最多 64 MiB。支持 response_format=url 或 b64_json；其他协议仅支持 JSON URL。文件先鉴权后解析，按文件摘要保证幂等，不自动重提。 此目录按 OpenAI 兼容形状展示；原通用入口仍可用 model 路由其他图片通道。Seedream 和 OpenRouter 各有独立原生入口。"
       }
     },
     "/images": {
@@ -11855,7 +12057,7 @@
           }
         ],
         "x-apifox-folder": "图片/OpenRouter",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
       }
     },
     "/chat/completions": {
@@ -11941,6 +12143,25 @@
                       }
                     ],
                     "thinking": "low"
+                  }
+                },
+                "音色设计 WAV": {
+                  "value": {
+                    "model": "deepseek-flash",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "沉稳的年轻男声"
+                      },
+                      {
+                        "role": "assistant",
+                        "content": "你好，这是试听台词。"
+                      }
+                    ],
+                    "audio": {
+                      "format": "wav"
+                    },
+                    "stream": false
                   }
                 }
               }
@@ -12814,7 +13035,7 @@
           }
         ],
         "x-apifox-folder": "LLM/对话与流式输出",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。\n客户端显式参数及扩展字段原样透传，支持的 thinking／reasoning_effort 格式与档位由上游模型决定；模型能力标签不拦截请求。仅在客户端省略参数时使用管理员配置的默认思考参数。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。\n客户端显式参数及扩展字段原样透传，支持的 thinking／reasoning_effort 格式与档位由上游模型决定；模型能力标签不拦截请求。仅在客户端省略参数时使用管理员配置的默认思考参数。\n音色设计须选择 task_types=[12] 的渠道，提供 user 描述、assistant 试听台词、audio.format=wav、stream=false。返回原始 Base64 WAV；按完整 WAV 实际输出秒数和受理时 price_per_second 结算，回执 usage.seconds 由 X-Cat-Request-Id 关联。"
       }
     },
     "/responses": {
@@ -13733,7 +13954,7 @@
           }
         ],
         "x-apifox-folder": "LLM/对话与流式输出",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。\n原生 Responses 透传；text.format 支持范围由上游决定，包含 json_schema；终态为 response.completed / response.incomplete / response.failed，不添加 [DONE]。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。\n原生 Responses 透传；text.format 支持范围由上游决定，包含 json_schema；终态为 response.completed / response.incomplete / response.failed，不添加 [DONE]。"
       }
     },
     "/api/v3/auc/bigmodel/submit": {
@@ -14628,7 +14849,7 @@
           }
         ],
         "x-apifox-folder": "音频/SeedASR",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -15576,7 +15797,7 @@
           }
         ],
         "x-apifox-folder": "音频/SeedASR",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -15640,12 +15861,18 @@
             "in": "query",
             "required": false,
             "schema": {
-              "enum": [
-                "legacy",
-                "alias"
+              "anyOf": [
+                {
+                  "enum": [
+                    "legacy",
+                    "alias"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
               ],
-              "type": "string",
-              "default": "legacy",
               "title": "Identifier"
             }
           }
@@ -16521,7 +16748,7 @@
           }
         ],
         "x-apifox-folder": "公共能力/模型与账户",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。 默认兼容 nv-ID。新软件可使用 identifier=alias，让 data[].id 为可读调用名；legacy_id 保留授权与历史关联 ID。两种视图按同一 Key 模型权限过滤。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。 普通客户端默认返回公开调用别名（如 gpt-image-2.6-sunburst-discount），name 与 ID 相同，不使用后台显示昵称。平台把该别名映射到唯一渠道和供应商原模型名；保留折扣渠道和独立价格，不合并或切换渠道。architecture 提供 OpenRouter 形式的输入/输出模态，endpoints 为平台实际可调用路径。identifier=legacy 返回历史 nv-ID；X-NovelVids-Capabilities 请求头保留旧工作台视图。identifier=alias 可显式请求公开别名视图。所有视图按同一 Key 权限过滤。"
       }
     },
     "/account": {
@@ -17372,7 +17599,7 @@
           }
         ],
         "x-apifox-folder": "公共能力/模型与账户",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
         "parameters": []
       }
     },
@@ -18249,7 +18476,7 @@
           }
         ],
         "x-apifox-folder": "公共能力/临时上传",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -19148,7 +19375,7 @@
           }
         ],
         "x-apifox-folder": "公共能力/调用与结算",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
       }
     },
     "/requests": {
@@ -20037,12 +20264,12 @@
           }
         ],
         "x-apifox-folder": "公共能力/调用与结算",
-        "description": "原生扩展字段保留。平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL；不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
       }
     },
     "/videos": {
       "post": {
-        "summary": "提交历史统一视频任务",
+        "summary": "提交视频任务",
         "operationId": "createLegacyVideo",
         "parameters": [
           {
@@ -21065,24 +21292,74 @@
                   }
                 }
               }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "default": "sora-2",
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "title": "Model",
+                    "type": "string"
+                  },
+                  "prompt": {
+                    "minLength": 1,
+                    "title": "Prompt",
+                    "type": "string"
+                  },
+                  "seconds": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[1-9][0-9]*$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Seconds"
+                  },
+                  "size": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[1-9][0-9]*x[1-9][0-9]*$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Size"
+                  },
+                  "input_reference": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "prompt"
+                ]
+              }
             }
           }
         },
         "tags": [
-          "兼容接口/历史视频"
+          "视频/OpenAI Videos"
         ],
         "security": [
           {
             "PlatformKey": []
           }
         ],
-        "x-apifox-folder": "兼容接口/历史视频",
-        "description": "历史统一格式兼容入口，保留平台 UUID、completed 与 metadata.url；新供应商接入优先使用原生任务接口。"
+        "x-apifox-folder": "视频/OpenAI Videos",
+        "description": "通用视频接口，支持 JSON 和单图文件表单，使用平台 UUID 查询和下载。"
       }
     },
     "/videos/{identifier}": {
       "get": {
-        "summary": "查询历史统一任务及结果 URL",
+        "summary": "查询视频任务",
         "operationId": "getLegacyVideo",
         "parameters": [
           {
@@ -21953,20 +22230,20 @@
           }
         },
         "tags": [
-          "兼容接口/历史视频"
+          "视频/OpenAI Videos"
         ],
         "security": [
           {
             "PlatformKey": []
           }
         ],
-        "x-apifox-folder": "兼容接口/历史视频",
-        "description": "历史统一格式兼容入口，保留平台 UUID、completed 与 metadata.url；新供应商接入优先使用原生任务接口。"
+        "x-apifox-folder": "视频/OpenAI Videos",
+        "description": "通用视频接口，支持 JSON 和单图文件表单，使用平台 UUID 查询和下载。"
       }
     },
     "/videos/{identifier}/content": {
       "get": {
-        "summary": "跳转下载已完成的视频",
+        "summary": "下载已完成的视频",
         "operationId": "downloadLegacyVideo",
         "parameters": [
           {
@@ -21995,6 +22272,17 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "成片",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
           "422": {
             "description": "字段、URL 或价格配置不符合要求；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
             "headers": {
@@ -22827,15 +23115,890 @@
           }
         },
         "tags": [
-          "兼容接口/历史视频"
+          "视频/OpenAI Videos"
         ],
         "security": [
           {
             "PlatformKey": []
           }
         ],
-        "x-apifox-folder": "兼容接口/历史视频",
-        "description": "历史统一格式兼容入口，保留平台 UUID、completed 与 metadata.url；新供应商接入优先使用原生任务接口。"
+        "x-apifox-folder": "视频/OpenAI Videos",
+        "description": "通用视频接口，支持 JSON 和单图文件表单，使用平台 UUID 查询和下载。"
+      },
+      "head": {
+        "summary": "检查成片",
+        "operationId": "headVideoContent",
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Identifier"
+            }
+          },
+          {
+            "name": "variant",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "video",
+                "thumbnail",
+                "spritesheet"
+              ],
+              "type": "string",
+              "default": "video",
+              "title": "Variant"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成片可用"
+          },
+          "422": {
+            "description": "字段、URL 或价格配置不符合要求；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "字段、URL 或价格配置不符合要求",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "307": {
+            "description": "跳转至供应商视频下载地址，不通过平台转发视频文件。",
+            "headers": {
+              "Location": {
+                "description": "成片 URL",
+                "schema": {
+                  "type": "string",
+                  "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                  "format": "uri",
+                  "pattern": "^https://"
+                }
+              },
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或媒体模式不支持；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "请求参数或媒体模式不支持",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "平台 Key 缺失、无效或到期；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "平台 Key 缺失、无效或到期",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "账户余额不足；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "账户余额不足",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "账户／模型权限不足；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "账户／模型权限不足",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "模型或当前账户任务不存在；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "模型或当前账户任务不存在",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "幂等冲突、任务标识冲突或通道已变化；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "幂等冲突、任务标识冲突或通道已变化",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "JSON 请求超过大小限制；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "JSON 请求超过大小限制",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "并发／限流；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "并发／限流",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "内部错误",
+                    "type": "server_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游结果不确定、网络异常或返回了禁止的内联媒体；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "上游结果不确定、网络异常或返回了禁止的内联媒体",
+                    "type": "server_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务或临时存储不可用；供应商的错误正文与状态码保留，error 对象是平台错误示例，不强制包装供应商错误。",
+            "headers": {
+              "X-Cat-Request-Id": {
+                "description": "平台回执 UUID，用于 /requests/{request_id} 查询账单。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Novelvids-Request-Id": {
+                "description": "兼容旧客户端的平台回执 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "供应商原始追踪编号；未提供时才使用平台编号，不保证是 UUID。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "并发／限流时的建议重试间隔。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "param": {},
+                        "code": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "example": {
+                  "error": {
+                    "message": "服务或临时存储不可用",
+                    "type": "server_error",
+                    "param": null,
+                    "code": null
+                  }
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "视频/OpenAI Videos"
+        ],
+        "security": [
+          {
+            "PlatformKey": []
+          }
+        ],
+        "x-apifox-folder": "视频/OpenAI Videos",
+        "description": "通用视频接口，支持 JSON 和单图文件表单，使用平台 UUID 查询和下载。"
       }
     }
   },
@@ -23311,8 +24474,12 @@
           },
           "response_format": {
             "type": "string",
-            "const": "url",
+            "enum": [
+              "url",
+              "b64_json"
+            ],
             "title": "Response Format",
+            "description": "b64_json 仅用于 OpenAI 文件编辑接口",
             "default": "url"
           },
           "quality": {
@@ -23799,7 +24966,7 @@
               "properties": {
                 "id": {
                   "type": "string",
-                  "description": "兼容模式为 nv-ID；identifier=alias 模式为可读调用名"
+                  "description": "默认返回公开调用别名；identifier=legacy 返回历史 nv-ID"
                 },
                 "alias": {
                   "type": [
@@ -23939,6 +25106,10 @@
                     "price_per_minute": {
                       "type": "number",
                       "minimum": 0
+                    },
+                    "price_per_second": {
+                      "type": "number",
+                      "minimum": 0
                     }
                   },
                   "additionalProperties": true
@@ -23977,6 +25148,57 @@
                     }
                   },
                   "additionalProperties": true
+                },
+                "architecture": {
+                  "type": "object",
+                  "properties": {
+                    "input_modalities": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "output_modalities": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "modality": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true
+                },
+                "input_modalities": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "output_modalities": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "endpoints": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "supported_parameters": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "operations": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true,
+                  "description": "按模型公布的具体操作、输入形式和规格"
                 }
               },
               "additionalProperties": true,
@@ -24070,6 +25292,16 @@
                     },
                     "reasoning_content": {
                       "type": "string"
+                    },
+                    "audio": {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "string",
+                          "description": "音色设计渠道返回原始 Base64 WAV，不裁剪试听样本"
+                        }
+                      },
+                      "additionalProperties": true
                     }
                   },
                   "additionalProperties": true
@@ -24130,6 +25362,10 @@
                 "revised_prompt": {
                   "type": "string"
                 },
+                "b64_json": {
+                  "type": "string",
+                  "description": "仅文件编辑且请求 b64_json 时返回"
+                },
                 "error": {
                   "type": "object",
                   "properties": {},
@@ -24171,7 +25407,7 @@
           }
         },
         "additionalProperties": true,
-        "description": "供应商 URL 图片结果及原生扩展字段。平台不新增 data 包装、不接收 b64_json。"
+        "description": "供应商 URL 图片结果及原生扩展字段。平台不新增 data 包装；b64_json 只支持文件编辑请求。"
       },
       "UploadTicket": {
         "type": "object",
@@ -25121,7 +26357,7 @@
       "name": "公共能力/调用与结算"
     },
     {
-      "name": "兼容接口/历史视频"
+      "name": "视频/OpenAI Videos"
     }
   ]
 }

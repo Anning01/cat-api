@@ -25,7 +25,9 @@ def alias_base(config):
     base = IMAGE_NAMES.get(config.image_model_type) or VIDEO_NAMES.get(config.video_model_type)
     name = config.name.lower()
     if not base:
-        if 'seed-evolving' in name:
+        if config.api_protocol == 'openai_video':
+            base = config.model.lower()
+        elif 'seed-evolving' in name:
             base = 'doubao-seed-evolving'
         elif config.api_protocol == 'volcengine_mediakit':
             base = 'mediakit-video-enhancement'

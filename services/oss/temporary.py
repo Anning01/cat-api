@@ -41,7 +41,7 @@ class TemporaryBucket:
 def redact_signed_urls(record):
     if isinstance(record.args, tuple):
         record.args = tuple(arg.copy_with(query=None) if isinstance(arg, httpx.URL)
-                            and "x-oss-signature" in arg.params else arg for arg in record.args)
+                            and arg.query else arg for arg in record.args)
     return True
 
 

@@ -2,7 +2,7 @@
 from utils.messages import localized_message
 import re
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, SecretStr, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 from auth.deps import AuthContext, get_auth_context, require_user, require_super_admin
 from config import settings
@@ -61,6 +61,28 @@ def _mask_official_key(item: AiModelConfigOut, ctx: AuthContext) -> AiModelConfi
     if item.scope == "studio_platform" or (ctx.user is not None and not ctx.is_super_admin and item.scope == "official"):
         item.api_key = None
     return item
+
+
+class ChannelDiscovery(BaseModel):
+    base_url: str = Field(min_length=1, max_length=500)
+    api_key: SecretStr
+
+
+class ChannelImport(BaseModel):
+    template: AiModelConfigCreate
+    models: list[str] = Field(min_length=1, max_length=100)
+
+
+@router.post("/channel/models", summary="读取上游模型目录")
+async def channel_models(body: ChannelDiscovery, ctx: AuthContext = _ADMIN):
+    from services.platform.channel_models import discover_models
+    return ResponseSchema(data=await discover_models(body.base_url, body.api_key.get_secret_value()))
+
+
+@router.post("/channel/import", summary="按同一配置导入多个上游模型")
+async def channel_import(body: ChannelImport, ctx: AuthContext = _ADMIN):
+    from services.platform.channel_models import import_models
+    return ResponseSchema(data=await import_models(body.template, body.models))
 
 
 @router.post("", summary="创建模型配置", response_model=ResponseSchema[AiModelConfigOut])

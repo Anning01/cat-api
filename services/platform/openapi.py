@@ -34,13 +34,13 @@ def parameter(name, description, *, required=False, location="header", schema=No
 
 DESCRIPTION = """Cat API 模型开放平台。供应商原生请求与结果按原格式转发，仅进行鉴权、模型路由、任务归属与计费。
 
-**媒体规则**：先调用 `/media/uploads` 申请临时直传，文件直接 PUT 到 OSS，再把 `read_url` 放入生成请求。普通生成接口不接收 Base64 文件、data URL、内联音频或文件；OpenAI 兼容图片渠道的 `/images/edits` 支持标准 multipart 文件编辑和按请求返回 URL/Base64，其他接口沿用 URL 规则。不开放图片二进制流式输出。MD5 摘要的 Base64 编码不属于文件内容。
+**媒体规则**：先调用 `/media/uploads` 申请临时直传，文件直接 PUT 到 OSS，再把 `read_url` 放入生成请求。普通生成接口不接收 Base64 文件、data URL、内联音频或文件；OpenAI 兼容图片渠道的 `/images/edits` 支持标准 multipart 文件编辑和按请求返回 URL/Base64，视频 /videos 也接收单张参考图文件，其他接口沿用 URL 规则。不开放图片二进制流式输出。MD5 摘要的 Base64 编码不属于文件内容。
 
 **身份与编号**：平台 Key 填入 Bearer；部分原生协议也支持对应鉴权头。使用目录 `nv-ID` 或 `X-Cat-Model` 选择通道。供应商 `X-Request-Id` 和任务 ID 保留，平台账务 UUID 位于 `X-Cat-Request-Id`（兼容 `X-Novelvids-Request-Id`）。
 
 **计费**：成功结果不因计费暂时失败而被替换。使用 `/requests` 查询 pending、settled、review、not_charged。平台金额包含折扣，不能重复打折。Seedream 5.5/5.0 Pro 可按 pixel_tier 与实际输出档位计费，模型与价格以运行环境 `/models` 为准。
 
-**接入**：新供应商任务使用原生路径；历史 `/videos` 保留统一格式兼容，不是供应商原生返回。原生路径在平台根地址和本文件 server `/v1` 下均可使用。示例模型 ID、URL 与任务 ID 仅供导入和阅读，不代表真实可用配置。"""
+**接入**：视频生成使用 `/videos` 或目录声明的供应商原生入口。原生路径在平台根地址和本文件 server `/v1` 下均可使用。示例模型 ID、URL 与任务 ID 仅供导入和阅读，不代表真实可用配置。"""
 
 
 OPERATIONS = {
@@ -55,9 +55,10 @@ OPERATIONS = {
     ("/media/uploads","post"):("createTemporaryUpload","临时素材","申请 OSS 临时直传票据","UploadTicket"),
     ("/requests","get"):("getReceiptByKey","调用与结算","按原幂等键查询回执","PlatformReceiptOut"),
     ("/requests/{request_id}","get"):("getReceipt","调用与结算","按平台 UUID 查询回执","PlatformReceiptOut"),
-    ("/videos","post"):("createLegacyVideo","视频兼容","提交历史统一视频任务","LegacyVideo"),
-    ("/videos/{identifier}","get"):("getLegacyVideo","视频兼容","查询历史统一任务及结果 URL","LegacyVideo"),
-    ("/videos/{identifier}/content","get"):("downloadLegacyVideo","视频兼容","跳转下载已完成的视频",None),
+    ("/videos","post"):("createLegacyVideo","视频兼容","提交视频任务","LegacyVideo"),
+    ("/videos/{identifier}","get"):("getLegacyVideo","视频兼容","查询视频任务","LegacyVideo"),
+    ("/videos/{identifier}/content","head"):("headVideoContent","视频兼容","检查成片",None),
+    ("/videos/{identifier}/content","get"):("downloadLegacyVideo","视频兼容","下载已完成的视频",None),
     ("/api/v3/contents/generations/tasks","post"):("createSeedanceTask","Seedance","提交 Seedance 原生任务","ArkTask"),
     ("/api/v3/contents/generations/tasks/{task_id}","get"):("getSeedanceTask","Seedance","查询 Seedance 原生结果","ArkTask"),
     ("/v2/video_generation","post"):("createMiniMaxTask","MiniMax","提交 MiniMax H3 原生任务","MiniMaxTask"),
@@ -96,7 +97,7 @@ def public_openapi(app):
     model['properties'].update({
         'architecture':obj({'input_modalities':array(string()),'output_modalities':array(string()),'modality':string()}),
         'input_modalities':array(string()), 'output_modalities':array(string()), 'endpoints':array(string()),
-        'supported_parameters':array(string()),
+        'supported_parameters':array(string()), 'operations':obj(description='按模型公布的具体操作、输入形式和规格'),
     })
     schemas.update({
         "PlatformError":obj({"error":obj({"message":string(),"type":string(),"param":{"type":["string","null"]},"code":{"type":["string","null"]}})},required=["error"]),
@@ -158,7 +159,7 @@ def public_openapi(app):
         if path.startswith("/contents/"):
             del document["paths"][path]  # Alias remains callable, but isn't duplicated in imported docs.
     folders = {"模型与账户":"公共能力/模型与账户", "文本对话":"LLM/对话与流式输出", "图片生成":"图片/OpenAI 兼容",
-        "临时素材":"公共能力/临时上传", "调用与结算":"公共能力/调用与结算", "视频兼容":"兼容接口/历史视频",
+        "临时素材":"公共能力/临时上传", "调用与结算":"公共能力/调用与结算", "视频兼容":"视频/OpenAI Videos",
         "Seedance":"视频/Seedance", "MiniMax":"视频/MiniMax", "Wan":"视频/Wan3", "Wan 与 MediaKit":"视频/Wan3",
         "AutoDL":"视频/AutoDL", "MediaKit":"视频/画质增强", "SeedASR":"音频/SeedASR"}
     for (path, method), (identifier, tag, title, result_schema) in OPERATIONS.items():
@@ -166,9 +167,9 @@ def public_openapi(app):
         folder = "图片/OpenRouter" if path == "/images" else folders.get(tag, tag)
         operation.update(operationId=identifier,tags=[folder],summary=title,security=[{"PlatformKey":[]}])
         operation["x-apifox-folder"] = folder
-        operation["description"] = "原生扩展字段保留。除文件编辑接口的明确例外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
+        operation["description"] = "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
         if tag == "视频兼容":
-            operation["description"] = "历史统一格式兼容入口，保留平台 UUID、completed 与 metadata.url；新供应商接入优先使用原生任务接口。"
+            operation["description"] = "通用视频接口，支持 JSON 和单图文件表单，使用平台 UUID 查询和下载。"
         parameters = operation.setdefault("parameters", [])
         if method == "post":
             if not any(p.get("name", "").lower()=="idempotency-key" for p in parameters):
@@ -193,7 +194,7 @@ def public_openapi(app):
             responses["200"] = {"description":"成功结果按上游结构保留；HTTP 200 也可能携带供应商业务错误，请同时检查正文及状态头。",
                 "headers":deepcopy(headers),"content":{"application/json":{"schema":ref(result_schema)}}}
         else:
-            responses.pop("200", None)
+            responses["200"] = {"description":"成片", "content":{"video/mp4":{"schema":{"type":"string","format":"binary"}}}} if method=="get" else {"description":"成片可用"}
             responses["307"] = {"description":"跳转至供应商视频下载地址，不通过平台转发视频文件。",
                 "headers":{"Location":{"description":"成片 URL","schema":url},**deepcopy(headers)}}
         if path == "/images/edits":
@@ -288,7 +289,7 @@ def public_openapi(app):
         "metadata":{"url":"https://cdn.example/video.mp4","duration":4}, "billing_status":"completed"}
     ordered_folders = ["视频/Seedance","视频/MiniMax","视频/Wan3","视频/AutoDL","视频/画质增强",
         "图片/Seedream","图片/OpenAI 兼容","图片/OpenRouter","LLM/对话与流式输出","音频/SeedASR",
-        "公共能力/模型与账户","公共能力/临时上传","公共能力/调用与结算","兼容接口/历史视频"]
+        "公共能力/模型与账户","公共能力/临时上传","公共能力/调用与结算","视频/OpenAI Videos"]
     document["tags"] = [{"name":folder} for folder in ordered_folders]
     rank = {name:index for index,name in enumerate(ordered_folders)}
     document["paths"] = dict(sorted(document["paths"].items(), key=lambda pair: min(rank[op["x-apifox-folder"]] for op in pair[1].values())))

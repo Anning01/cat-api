@@ -1,8 +1,8 @@
-from services.platform.calls import request_keys
-"""Remote video jobs are durable control-plane records. Video bytes are fetched by the caller."""
+"""Durable public video jobs, provider reconciliation and account settlement."""
 import asyncio
 from collections import Counter
 from decimal import Decimal, ROUND_HALF_UP
+import hashlib
 import json
 import logging
 from math import gcd
@@ -13,12 +13,12 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 from tortoise.transactions import in_transaction
 from auth.models import PlatformCallReceipt, PlatformVideoJob
 from models.config import AiModelConfig
 from services.billing.pricing import compute_input_image_cost, compute_video_cost
-from services.platform.calls import CALL_TIMEOUT, admit, digest, settle, require_video_price
+from services.platform.calls import CALL_TIMEOUT, admit, digest, settle, require_video_price, video_price_resolution, request_keys
 from services.platform.images import media_url
 from services.platform.http_contract import UpstreamResponseError, public_upstream
 from services.video import get_generator
@@ -54,9 +54,11 @@ class VideoRequest(BaseModel):
     return_last_frame: bool = False
     watermark: Literal[False] = False
     request_id: UUID | None = None
+    _specified: set = PrivateAttr(default_factory=set)
 
     @model_validator(mode="after")
     def reference_roles(self):
+        self._specified = set(self.model_fields_set)
         if not self.model_fields_set.intersection({"size", "aspect_ratio", "resolution", "duration"}):
             self.size = "720x1280"
         if self.seconds is not None:
@@ -67,6 +69,10 @@ class VideoRequest(BaseModel):
             width, height = (int(value) for value in self.size.split("x"))
             divisor = gcd(width, height)
             ratio, resolution = f"{width // divisor}:{height // divisor}", f"{min(width, height)}p"
+            for candidate in ("16:9", "9:16"):
+                if self.size == video_size(resolution, candidate):
+                    ratio = candidate
+                    break
             if "aspect_ratio" in self.model_fields_set and self.aspect_ratio != ratio:
                 raise ValueError("size and aspect_ratio must agree")
             if "resolution" in self.model_fields_set and self.resolution.lower() != resolution:
@@ -107,32 +113,96 @@ def route_hash(config):
     return digest([config.base_url,config.api_protocol,config.model,config.video_model_type])
 
 
-async def submit_video(ctx, request, key):
+async def submit_video(ctx, request, key, *, image=None):
     body = request.model_dump(mode="json",exclude_none=True)
+    legacy_hash = digest(body)
+    body["specified_size_fields"] = sorted(request._specified & {"resolution", "aspect_ratio", "size", "duration"})
+    if image:
+        body["file_sha256"] = hashlib.sha256(image[1]).hexdigest()
+    def validate(config, _):
+        if config.api_protocol == "autodl" and not request._specified.intersection({"size", "resolution"}):
+            request.resolution = "768p"
+            request.size = None
+            if "aspect_ratio" not in request._specified:
+                request.aspect_ratio = "16:9"
+        # Older workbenches always serialize these two fields on fixed-spec JSON orders.
+        legacy_workbench_order = request.request_id is not None and {
+            "duration", "resolution", "aspect_ratio"
+        }.issubset(request._specified) and not request._specified.intersection({"seconds", "size"})
+        strict_switches = config.api_protocol == "openai_video" or (
+            config.api_protocol == "autodl" and not legacy_workbench_order
+        )
+        if strict_switches and (request.generate_audio is not None or request.return_last_frame):
+            raise HTTPException(422, "该视频渠道不支持切换音轨或返回尾帧")
+        if config.api_protocol == "openai_video":
+            if 4 not in (config.task_types or [config.task_type]) or config.video_model_type != "openai_video":
+                raise HTTPException(422, "所选配置不是通用视频模型")
+            from services.video.compatible import compatible_options
+            caps = compatible_options(config.processing_options)
+            if not request._specified.intersection({"size","resolution","aspect_ratio"}):
+                defaults = VideoRequest(prompt=request.prompt, size=caps.sizes[0])
+                request.size, request.resolution, request.aspect_ratio = defaults.size, defaults.resolution, defaults.aspect_ratio
+            if not request._specified.intersection({"seconds","duration"}):
+                request.duration = caps.seconds[0]
+            size = request.size
+            if size is None and re.fullmatch(r"[1-9][0-9]{0,3}:[1-9][0-9]{0,3}", request.aspect_ratio) and re.fullmatch(r"[1-9][0-9]{1,3}p", request.resolution):
+                size = video_size(request.resolution, request.aspect_ratio)
+            if size not in caps.sizes or request.duration not in caps.seconds:
+                raise HTTPException(422, "所选通道不支持该尺寸或时长")
+            if image and "file" not in caps.reference_inputs or request.references and (
+                "url" not in caps.reference_inputs or len(request.references) != 1 or request.references[0].type != "image"
+                or request.references[0].role != "reference"
+            ):
+                raise HTTPException(422, "不支持该参考素材")
+            require_video_price(config.pricing or {}, request.resolution)
+            return config.pricing
+        options = request.model_dump()
+        if image:
+            options["references"] = [{"type": "image", "role": "reference"}]
+        return video_options(config, options)
+
     if request.request_id and key and str(request.request_id) != key:
         raise HTTPException(422, "request_id 与 Idempotency-Key 不一致")
     key = str(request.request_id) if request.request_id else key
-    try:
-        config, receipt = await admit(ctx,request.model,body,key,validate=video_options,kind="video")
-    except HTTPException as exc:
-        if exc.status_code != 409 or not key:
-            raise
-        previous = await PlatformCallReceipt.get_or_none(dedup_key__in=await request_keys(ctx.user.id,key))
-        if not previous or previous.pricing.get("type")!="video" or previous.payload_hash!=digest(body):
-            raise
+
+    async def replay():
+        if not key:
+            return None
+        matches = await PlatformCallReceipt.filter(user_id=ctx.user.id, dedup_key__in=await request_keys(ctx.user.id,key)).limit(2)
+        if not matches:
+            return None
+        if len(matches) != 1:
+            raise HTTPException(409, "请使用原回执编号查询")
+        previous = matches[0]
+        from services.platform.access import authorize_model
+        authorize_model(ctx, previous.model_config_id)
+        hashes = {digest(body)} if image else {digest(body), legacy_hash}
+        if previous.pricing.get("type") != "video" or previous.payload_hash not in hashes:
+            raise HTTPException(409, "请求标识已用于不同的请求", headers={"X-Request-Id":str(previous.public_id), "X-Cat-Request-Id":str(previous.public_id)})
         prior_job = await PlatformVideoJob.get_or_none(receipt_id=previous.id)
         status = prior_job.status if prior_job else "queued"
         if previous.state in {"review","rejected"} and status!="completed":
             status="failed"
-        return video_object(previous, prior_job, status=status)
-    refs = request.references
-    frames = {r.role:r.url for r in refs if r.role!="reference"}
-    types = {kind:[r.url for r in refs if r.type==kind and r.role=="reference"] for kind in ("image","video","audio")}
-    resolution = next(r for r in capabilities_for(config.video_model_type,config.api_protocol).resolutions
-                      if r.lower()==request.resolution.lower())
-    job = await PlatformVideoJob.create(receipt=receipt,route_hash=route_hash(config),inputs={
-        "duration":request.duration, "resolution":resolution, "input_image_count":len(frames) + len(types["image"]),
-        "has_video_reference":bool(types["video"]), "public_model":request.model, "size":request.size or video_size(request.resolution, request.aspect_ratio)})
+        return {**video_object(previous, prior_job, status=status), "billing_status":previous.state,
+                "metadata":prior_job.output if prior_job else None}
+
+    if previous_job := await replay():
+        return previous_job
+    try:
+        async with in_transaction():
+            config, receipt = await admit(ctx, request.model, body, key, validate=validate, kind="video")
+            refs = request.references
+            frames = {r.role:r.url for r in refs if r.role!="reference"}
+            types = {kind:[r.url for r in refs if r.type==kind and r.role=="reference"] for kind in ("image","video","audio")}
+            resolution = request.resolution if config.api_protocol == "openai_video" else next(r for r in capabilities_for(config.video_model_type,config.api_protocol).resolutions
+                              if r.lower()==request.resolution.lower())
+            job = await PlatformVideoJob.create(receipt=receipt,route_hash=route_hash(config),inputs={
+                "duration":request.duration, "resolution":resolution, "stream_content":True, "input_image_count":int(image is not None) + len(frames) + len(types["image"]),
+                "has_video_reference":bool(types["video"]), "public_model":request.model, "size":request.size or video_size(request.resolution, request.aspect_ratio)})
+    except HTTPException as exc:
+        if exc.status_code == 409 and (previous_job := await replay()):
+            return previous_job
+        raise
     label = IMAGE_REFERENCE_FORMATS.get(config.video_model_type, "[图{}]")
     prompt = re.sub(r"@image(\d+)", lambda m: label.format(int(m[1])), request.prompt)
     def media_label(match):
@@ -146,9 +216,13 @@ async def submit_video(ctx, request, key):
             from services.platform.temporary_media import known_upload_bytes
             if await known_upload_bytes(ctx.user.id, [ref.url for ref in refs]) > 50 * 1024**2:
                 raise VideoProviderError(f"{REFERENCE_MEDIA_SIZE_MESSAGE}（{REFERENCE_MEDIA_SIZE_ERROR}）")
+        if image and config.api_protocol != "openai_video":
+            from services.platform.video_uploads import store_video_reference
+            types["image"] = [await store_video_reference(ctx.user.id, image)]
         with public_upstream(str(receipt.public_id), config.api_key):
             async with asyncio.timeout(CALL_TIMEOUT):
-                upstream_id = await get_generator(config).submit(prompt=prompt, duration=request.duration,
+                upstream_id = await get_generator(config).submit(prompt=request.prompt if config.api_protocol == "openai_video" else prompt,
+                    size=job.inputs["size"], reference_file=image, platform_request_key=receipt.public_id, duration=request.duration,
                     resolution=resolution, aspect_ratio=request.aspect_ratio, output_format="mp4", generate_audio=request.generate_audio,
                     return_last_frame=request.return_last_frame, generation_mode="keyframes" if frames else "reference",
                     first_frame_url=frames.get("first_frame"),last_frame_url=frames.get("last_frame"),reference_images=types["image"],
@@ -157,7 +231,7 @@ async def submit_video(ctx, request, key):
             raise ValueError("missing upstream task")
         await PlatformCallReceipt.filter(id=receipt.id,state="submitted").update(provider_id=upstream_id,state="processing")
     except (Exception, asyncio.CancelledError) as exc:
-        definite = (isinstance(exc,VideoProviderError) and not exc.submission_uncertain) or (
+        definite = isinstance(exc, HTTPException) or (isinstance(exc,VideoProviderError) and not exc.submission_uncertain) or (
             isinstance(exc,UpstreamResponseError) and exc.status < 500 and exc.status != 408)
         error = {}
         if definite:
@@ -176,6 +250,9 @@ async def submit_video(ctx, request, key):
             raise
         if isinstance(exc, UpstreamResponseError):
             raise
+        if isinstance(exc, HTTPException):
+            raise HTTPException(exc.status_code, exc.detail, headers={**(exc.headers or {}),
+                "X-Request-Id":str(receipt.public_id), "X-Cat-Request-Id":str(receipt.public_id)}) from None
         if message := error.get("message"):
             code = error.get("code")
             detail = f"{message}（{code}）" if code else message
@@ -217,7 +294,7 @@ def measured(inputs, metadata, rates):
         seconds = inputs["duration"]  # Fixed-duration order; auto duration is not accepted here.
     if not nonnegative(seconds) or seconds <= 0:
         return None
-    usage = {**inputs, "seconds":seconds, "duration_source":"provider" if metadata.get("duration") is not None else "order"}
+    usage = {**{k:v for k,v in inputs.items() if k not in {"stream_content", "poll_errors"}}, "seconds":seconds, "duration_source":"provider" if metadata.get("duration") is not None else "order"}
     tokens = raw.get("completion_tokens") if isinstance(raw,dict) else None
     if rates.get("billing_unit") != "second" and type(tokens) is int and tokens > 0:
         return {**usage,"video_tokens":tokens}
@@ -228,12 +305,16 @@ def measured(inputs, metadata, rates):
 
 
 def video_cost(usage,rates):
+    resolution = video_price_resolution(usage["resolution"])
+    rates = {**rates, **{name:{video_price_resolution(k):v for k,v in rates[name].items()}
+                         for name in ("prices","video_reference_prices") if rates.get(name)}}
+    require_video_price(rates, resolution, has_video_reference=usage["has_video_reference"])
     if "video_tokens" in usage:
         prices = (rates.get("video_reference_prices") or rates["prices"]) if usage["has_video_reference"] else rates["prices"]
-        charge = Decimal(usage["video_tokens"]) * Decimal(str(prices[usage["resolution"]])) / Decimal(1000000)
+        charge = Decimal(usage["video_tokens"]) * Decimal(str(prices[resolution])) / Decimal(1000000)
         charge *= Decimal(str(rates.get("discount") or 1))
         return charge.quantize(Decimal("0.000001"),rounding=ROUND_HALF_UP) + compute_input_image_cost(usage["input_image_count"],rates)
-    return compute_video_cost(usage["seconds"],usage["resolution"],rates,usage["input_video_seconds"],
+    return compute_video_cost(usage["seconds"],resolution,rates,usage["input_video_seconds"],
                               usage["has_video_reference"],usage["input_image_count"])
 
 
@@ -277,7 +358,10 @@ async def refresh_job(job, receipt, *, renew=False):
             return
         if status == TaskStatusEnum.completed:
             try:
-                output = {"url":media_url(result.get("url"))}
+                if config.api_protocol == "openai_video" and metadata.get("protected_content"):
+                    output = {"url": f"/v1/videos/{receipt.public_id}/content"}
+                else:
+                    output = {"url":media_url(result.get("url"))}
                 if metadata.get("last_frame_url"):
                     output["last_frame_url"] = media_url(metadata["last_frame_url"])
             except ValueError:
@@ -309,13 +393,18 @@ async def refresh_job(job, receipt, *, renew=False):
                     await PlatformCallReceipt.filter(id=receipt.id,state="processing").update(state="rejected")
         else:
             await ours.update(status="queued" if status==TaskStatusEnum.queued else "in_progress",
-                              progress=result.get("progress") or 0,poll_after=now+5,poll_token=None)
-    except UpstreamResponseError:
-        await ours.update(poll_after=int(time.time())+15,poll_token=None)
-        raise
-    except Exception:
-        await ours.update(poll_after=int(time.time())+15,poll_token=None)
-        logger.warning("Platform video status check deferred: receipt=%s",receipt.public_id)
+                              inputs={**job.inputs, "poll_errors":0}, progress=result.get("progress") or 0,poll_after=now+5,poll_token=None)
+    except Exception as exc:
+        errors = job.inputs.get("poll_errors", 0) + 1
+        if errors >= 8 and not renew:
+            async with in_transaction():
+                if await ours.update(status="failed", poll_token=None):
+                    await PlatformCallReceipt.filter(id=receipt.id, state="processing").update(state="review")
+        else:
+            await ours.update(inputs={**job.inputs, "poll_errors":errors}, poll_after=int(time.time())+15, poll_token=None)
+        if isinstance(exc, UpstreamResponseError):
+            raise
+        logger.warning("Video status check deferred: receipt=%s",receipt.public_id)
 
 
 async def video_status(ctx, public_id=None, key=None, *, refresh=False):

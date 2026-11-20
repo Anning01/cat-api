@@ -8,7 +8,7 @@ import AppStatusBadge from '@/components/AppStatusBadge.vue'
 import AppUnitPrice from '@/components/AppUnitPrice.vue'
 import { pricingRows, getDiscountRate, pixelTierLabel } from '@/features/platform/modelPricing'
 
-import { computed, onMounted, ref, useId } from 'vue'
+import { computed, onMounted, ref, useId, watch } from 'vue'
 import {
   Bot,
   Eye,
@@ -82,6 +82,7 @@ categories.push({
 })
 categories.push({ id: 'voice_design', get label() { return tr('音色设计') }, eyebrow: 'VOICE', get description() { return tr('根据描述生成试听音色，按生成音频实际秒数计费。') }, taskTypes: [12], icon: Mic })
 const VIDEO_MODEL_PRESETS: Record<VideoGenerationModelType, { baseUrl: string; model: string; protocol: ImageApiProtocol }> = {
+  openai_video: { baseUrl: '', model: '', protocol: 'openai_video' },
   seedance_2: { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seedance-2-0-260128', protocol: 'volcengine_ark' },
   seedance_2_fast: { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seedance-2-0-fast-260128', protocol: 'volcengine_ark' },
   seedance_2_mini: { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seedance-2-0-mini-260615', protocol: 'volcengine_ark' },
@@ -92,6 +93,31 @@ const VIDEO_MODEL_PRESETS: Record<VideoGenerationModelType, { baseUrl: string; m
   wan_3: { baseUrl: 'https://YOUR_WORKSPACE_ID.cn-beijing.maas.aliyuncs.com', model: 'wan3.0-video', protocol: 'dashscope' },
 }
 
+const discoveredModels = ref<string[]>([])
+const selectedUpstreamModels = ref<string[]>([])
+const discovering = ref(false)
+let discoveryRevision = 0
+function clearDiscovery() {
+  discoveryRevision++
+  discovering.value = false
+  discoveredModels.value = []
+  selectedUpstreamModels.value = []
+}
+async function discoverModels() {
+  const revision = ++discoveryRevision
+  discovering.value = true
+  try {
+    const response = await api.discoverModels(form.value.base_url, form.value.api_key)
+    if (revision !== discoveryRevision) return
+    discoveredModels.value = response.data
+    selectedUpstreamModels.value = selectedUpstreamModels.value.filter(id => response.data.includes(id))
+    if (!response.data.length) notice.error(tr('上游目录为空，可手动填写模型 ID'))
+  } catch (error) {
+    if (revision === discoveryRevision) notice.error((error as Error).message)
+  } finally {
+    if (revision === discoveryRevision) discovering.value = false
+  }
+}
 const configs = ref<AiModelConfig[]>([])
 const taskTypes = ref<EnumItem[]>([])
 const imageModelTypes = ref<ConfigEnumItem[]>([])
@@ -140,6 +166,17 @@ const reasoningControlId = useId()
 
 const generationCapabilities = ref<GenerationCapabilities>({ image: {}, video: {} })
 const enhancementPricing = ref<NonNullable<ModelPricing['tiers']>>([])
+const compatibleSizes = ref('')
+const compatibleSeconds = ref('')
+const referenceInputs = ref<string[]>([])
+const valuesFrom = (value: string) => value.trim().split(/[，,\s]+/).filter(Boolean)
+function loadVideoOptions(options?: Record<string, unknown>) {
+  const video = options?.video as {sizes?:string[]; seconds?:number[]; reference_inputs?:string[]}|undefined
+  compatibleSizes.value = (video?.sizes ?? ['720x1280','1280x720','1792x1024','1024x1792']).join(', ')
+  compatibleSeconds.value = (video?.seconds ?? [4,8,12]).join(', ')
+  referenceInputs.value = [...(video?.reference_inputs ?? ['url','file'])]
+}
+const visualInputs = ref<string[]>([])
 const processingOptions = ref<Record<string, unknown>>({})
 const enhancementResolutions = computed(() => generationCapabilities.value.media_processing?.resolutions || [])
 function toggleEnhancementResolution(value: string, shortSide: number, enabled: boolean) {
@@ -179,6 +216,10 @@ function applyImagePreset() {
 const pricingTierOptions = computed<string[]>(() => {
   if (selectedCategoryId.value === 'image' && pixelBilling.value) return Object.keys(imagePreset.value?.prices ?? {})
   if (selectedCategoryId.value === 'image') return generationCapabilities.value.image[form.value.image_model_type] || []
+  if (form.value.api_protocol === 'openai_video') {
+    return [...new Set(valuesFrom(compatibleSizes.value).filter(size => /^[1-9]\d{1,3}x[1-9]\d{1,3}$/.test(size))
+      .map(size => Math.min(...size.split('x').map(Number))+'p'))]
+  }
   if (selectedCategoryId.value === 'video') return selectedVideoProtocol.value?.resolutions
     || generationCapabilities.value.video[form.value.video_model_type] || []
   return []
@@ -226,6 +267,7 @@ function taskLabel(value: number) {
 function protocolLabel(value: ImageApiProtocol) {
   if (value === 'novelvids') return tr('猫影开放平台')
   if (value === 'volcengine_mediakit') return 'AI MediaKit'
+  if (value === 'openai_video') return 'OpenAI Videos'
   if (value === 'autodl') return 'AutoDL ComfyUI'
   if (value === 'minimax') return tr('MiniMax 官方')
   if (value === 'dashscope') return tr('阿里云百炼 DashScope')
@@ -248,6 +290,7 @@ const videoProtocolOptions = computed(() => {
 const selectedVideoProtocol = computed(() => videoProtocolOptions.value.find(option => option.value === form.value.api_protocol))
 const selectedVideoProtocolHint = computed(() => {
   if (form.value.api_protocol === 'novelvids') return tr('使用平台的 /v1 地址、视频模型 ID 和 API Key。')
+  if (form.value.api_protocol === 'openai_video') return tr('填写兼容上游的地址、Key 与模型 ID，按成片秒数计费。')
   if (form.value.video_model_type === 'minimax_h3_autodl') {
     return tr('填写 ComfyUI 分组 Token；模型名称填写工作流 ID。支持参考图和音频，不支持参考视频或首尾帧。')
   }
@@ -280,7 +323,12 @@ async function load() {
   }
 }
 
+watch(() => [form.value.base_url, form.value.api_key, form.value.api_protocol], clearDiscovery)
+
 function openCreate(categoryId: ModelCategoryId = selectedCategoryId.value) {
+  clearDiscovery()
+  visualInputs.value = []
+  loadVideoOptions()
   editingSyncedPricing.value = false
   pixelBilling.value = false
   selectedCategoryId.value = categoryId
@@ -314,6 +362,7 @@ function openCreate(categoryId: ModelCategoryId = selectedCategoryId.value) {
 }
 
 function openEdit(item: AiModelConfig) {
+  clearDiscovery()
   editingSyncedPricing.value = item.scope === 'studio_platform'
   pixelBilling.value = item.pricing?.billing_unit === 'pixel_tier'
   syncedVideoBillingUnit.value = item.pricing?.billing_unit
@@ -353,12 +402,21 @@ function openEdit(item: AiModelConfig) {
     : { first_free: 1, price_per_image: 0 }
   videoRefPrices.value = item.pricing?.video_reference_prices ? { ...item.pricing.video_reference_prices } : {}
   enhancementPricing.value = (item.pricing?.tiers || []).map(tier => ({ ...tier }))
+  visualInputs.value = Array.isArray(item.processing_options?.input_modalities) ? item.processing_options.input_modalities.filter((v): v is string => v === "image" || v === "video") : []
   processingOptions.value = { ...(item.processing_options || {}) }
+  loadVideoOptions(item.processing_options ?? {})
   discountPricing.value = {
     discount: item.pricing?.discount ?? 1,
     description: item.pricing?.discount_description ?? '',
   }
   showCreate.value = true
+}
+
+function addFromChannel(item: AiModelConfig) {
+  openEdit(item)
+  editingConfigId.value = null
+  form.value.name = ''
+  form.value.model = ''
 }
 
 function changeImageModelType() {
@@ -407,8 +465,6 @@ function selectVideoModelType(value: string) {
 function selectImageProtocol(value: string) {
   form.value.api_protocol = value as ImageApiProtocol
 }
-
-
 
 async function saveConfig() {
   if (!form.value.task_types.length) {
@@ -490,7 +546,7 @@ async function saveConfig() {
     const payload = {
       ...form.value,
       api_protocol: form.value.api_protocol,
-      processing_options: selectedCategoryId.value === 'enhancement' ? processingOptions.value : null,
+      processing_options: form.value.api_protocol === 'openai_video' ? {video:{sizes:valuesFrom(compatibleSizes.value), seconds:valuesFrom(compatibleSeconds.value).map(Number), reference_inputs:referenceInputs.value}} : selectedCategoryId.value === 'enhancement' ? processingOptions.value : selectedCategoryId.value === 'llm' ? {...(isEditing.value ? processingOptions.value : {}), input_modalities:visualInputs.value.length ? ['text',...visualInputs.value] : undefined} : null,
       task_type: taskTypes[0],
       task_types: taskTypes,
       max_context_characters: form.value.max_context_characters || null,
@@ -504,7 +560,11 @@ async function saveConfig() {
     if (editingConfigId.value !== null) {
       await api.updateConfig(editingConfigId.value, editingSyncedPricing.value ? { pricing } : payload)
     } else {
-      await api.createConfig(payload)
+      if (selectedUpstreamModels.value.length) {
+        await api.importModels({...payload, name:selectedUpstreamModels.value[0].slice(0,100), model:selectedUpstreamModels.value[0]}, selectedUpstreamModels.value)
+      } else {
+        await api.createConfig(payload)
+      }
     }
     showCreate.value = false
     await load()
@@ -579,22 +639,19 @@ onMounted(()=>{void load()})
           <td><dl v-if="configPrices(item).length" class="config-prices"><div v-for="(price,index) in configPrices(item)" :key="index"><dt>{{ price.label }}</dt><dd><AppUnitPrice :amount="price.value" :multiplier="item.pricing?.discount??1" :unit="price.unit"/></dd></div></dl><span v-else class="muted">{{ tr('未配置价格') }}</span></td>
           <td class="numeric">{{ item.concurrency }}</td>
           <td><AppStatusBadge :tone="item.is_active?'success':'neutral'">{{ tr(item.is_active?'已启用':'已停用') }}</AppStatusBadge></td>
-          <td class="row-actions"><div class="config-actions"><template v-if="canManage(item)"><AppButton variant="ghost" size="sm" :title="tr(item.is_active?'停用配置':'启用配置')" @click="item.is_active?deactivate(item):activate(item)"><Power :size="14"/>{{ tr(item.is_active?'停用':'启用') }}</AppButton><AppButton variant="ghost" size="sm" :aria-label="tr('编辑配置')" @click="openEdit(item)"><Pencil :size="14"/>{{ tr('编辑') }}</AppButton><AppButton variant="ghost" size="sm" icon-only class="config-delete" :aria-label="tr('删除配置')" :title="tr('删除配置')" @click="remove(item)"><Trash2 :size="15"/></AppButton></template><span v-else class="official-badge" :title="tr('此配置仅可读取')">{{ tr('只读') }}</span></div></td>
+          <td class="row-actions"><div class="config-actions"><template v-if="canManage(item)"><AppButton variant="ghost" size="sm" :title="tr(item.is_active?'停用配置':'启用配置')" @click="item.is_active?deactivate(item):activate(item)"><Power :size="14"/>{{ tr(item.is_active?'停用':'启用') }}</AppButton><AppButton variant="ghost" size="sm" :aria-label="tr('编辑配置')" @click="openEdit(item)"><Pencil :size="14"/>{{ tr('编辑') }}</AppButton><AppButton v-if="['openai_video','openai_compatible','openrouter_compatible'].includes(item.api_protocol) && item.scope !== 'studio_platform'" variant="ghost" size="sm" icon-only :aria-label="tr('从此渠道添加模型')" :title="tr('从此渠道添加模型')" @click="addFromChannel(item)"><Plus :size="15"/></AppButton><AppButton variant="ghost" size="sm" icon-only class="config-delete" :aria-label="tr('删除配置')" :title="tr('删除配置')" @click="remove(item)"><Trash2 :size="15"/></AppButton></template><span v-else class="official-badge" :title="tr('此配置仅可读取')">{{ tr('只读') }}</span></div></td>
         </tr></tbody>
       </ConsoleTable>
       <div v-else class="model-empty-state"><component :is="selectedCategory.icon" :size="28" aria-hidden="true"/><h3>{{ tr('还没有') }}{{ selectedCategory.label }}</h3><p>{{ selectedCategory.description }}</p><AppButton variant="primary" size="sm" @click="openCreate(selectedCategory.id)"><Plus :size="15"/>{{ tr('添加第一个配置') }}</AppButton></div>
     </section>
     <AppDialog ref="configDialog" v-model="showCreate" class="model-editor-dialog" :title="editingSyncedPricing ? tr('编辑本地价格') : (isEditing ? tr('编辑') : tr('添加')) + selectedCategory.label" width="900px" guard-changes :show-close="!creating" :close-on-click-modal="!creating" :close-on-press-escape="!creating">
-      <form class="model-modal" autocomplete="off" @submit.prevent="saveConfig">
+      <form :id="reasoningControlId + '-form'" class="model-modal" autocomplete="off" @submit.prevent="saveConfig">
         <div v-if="!editingSyncedPricing" class="model-form-grid">
-          <label v-if="selectedCategory.taskTypes.length > 1" class="is-full">
-            <span>{{ tr('能力用途') }}</span>
-            <AppMultiSelect v-model="form.task_types" :ariaLabel="tr('能力用途')" :options="taskOptions" />
-            <small>{{ tr('可同时选择多个用途；勾选“重制”表示该模型支持视频输入并可用于来源视频拆解。') }}</small>
-          </label>
-          <label class="is-full"><span>{{ tr('配置名称') }}</span><input v-model="form.name" name="model-config-name" autofocus required autocomplete="off" :placeholder="tr('例如：豆包 Seed 1.6')" /></label>
-          <label class="is-full"><span>Base URL</span><span class="input-with-icon"><Server :size="15" /><input v-model="form.base_url" name="model-service-base-url" required autocomplete="off" inputmode="url" spellcheck="false" placeholder="https://api.example.com/v1" /></span></label>
-          <label class="is-full">
+
+          <label v-if="!selectedUpstreamModels.length"><span>{{ tr('配置名称') }}</span><input v-model="form.name" name="model-config-name" autofocus required autocomplete="off" :placeholder="tr('例如：豆包 Seed 1.6')" /></label>
+          <label><span>{{ tr('并发数') }}</span><input v-model.number="form.concurrency" name="model-concurrency" type="number" min="1" required /></label>
+          <label><span>Base URL</span><span class="input-with-icon"><Server :size="15" /><input v-model="form.base_url" name="model-service-base-url" required autocomplete="off" inputmode="url" spellcheck="false" placeholder="https://api.example.com/v1" /></span></label>
+          <label>
             <span>API Key</span>
             <span class="input-with-icon secret-input">
               <KeyRound :size="15" />
@@ -605,8 +662,26 @@ onMounted(()=>{void load()})
               </AppButton>
             </span>
           </label>
-          <label><span>{{ tr('模型名称') }}</span><input v-model="form.model" name="model-id" required autocomplete="off" spellcheck="false" :placeholder="tr('模型 ID')" /></label>
-          <label><span>{{ tr('并发数') }}</span><input v-model.number="form.concurrency" name="model-concurrency" type="number" min="1" required /></label>
+          <div class="model-picker">
+            <label v-if="!selectedUpstreamModels.length" :for="reasoningControlId + '-model-id'">{{ tr('模型名称') }}</label>
+            <span v-else>{{ tr('选择要导入的模型') }}</span>
+            <div class="model-picker-controls">
+              <input v-if="!selectedUpstreamModels.length" :id="reasoningControlId + '-model-id'" v-model="form.model" name="model-id" required autocomplete="off" spellcheck="false" :placeholder="tr('模型 ID')" />
+              <AppButton v-if="!isEditing && ['openai_video','openai_compatible','openrouter_compatible'].includes(form.api_protocol)" type="button" size="sm" variant="secondary" :disabled="discovering || !form.base_url || !form.api_key" @click="discoverModels">{{ tr('读取上游模型') }}</AppButton>
+              <AppMultiSelect v-if="discoveredModels.length" v-model="selectedUpstreamModels" class="model-picker-list" :ariaLabel="tr('选择要导入的模型')" :placeholder="tr('选择要导入的模型')" :options="discoveredModels.map(value => ({value, label:value}))" />
+            </div>
+          </div>
+          <label v-if="selectedCategory.id === 'llm'">
+            <span>{{ tr('文本接口') }}</span>
+            <AppSelect v-model="form.text_api" :ariaLabel="tr('文本接口')" :menu-z-index="2000"
+              :options="[{ value: 'chat_completions', label: 'Chat Completions' }, { value: 'responses', label: 'Responses' }]" />
+          </label>
+          <label v-if="selectedCategory.taskTypes.length > 1" :class="{ 'is-full': selectedCategory.id !== 'llm' }">
+            <span>{{ tr('能力用途') }}</span>
+            <AppMultiSelect v-model="form.task_types" :ariaLabel="tr('能力用途')" :options="taskOptions" />
+            <small>{{ tr('可同时选择多个用途；勾选“重制”表示该模型支持视频输入并可用于来源视频拆解。') }}</small>
+          </label>
+          <label v-if="selectedCategory.id === 'llm'"><span>{{ tr('视觉输入') }}</span><AppMultiSelect v-model="visualInputs" :ariaLabel="tr('视觉输入')" :options="[{value:'image',label:tr('图片')},{value:'video',label:tr('视频')}]" /></label>
           <label v-if="selectedCategory.id === 'image'" class="is-full">
             <span>{{ tr('生图模型类型') }}</span>
             <AppSelect
@@ -627,8 +702,12 @@ onMounted(()=>{void load()})
               :menu-z-index="2000"
               @update:model-value="selectVideoModelType"
             />
-            <small>{{ tr('支持 Seedance 系列与 MiniMax H3；分辨率、比例、时长和请求格式由后台能力与适配器定义。') }}</small>
           </label>
+          <template v-if="form.api_protocol === 'openai_video'">
+            <label><span>{{ tr('支持的像素尺寸（首项为默认值）') }}</span><input v-model="compatibleSizes" required name="video-sizes" /></label>
+            <label><span>{{ tr('支持的时长（秒，首项为默认值）') }}</span><input v-model="compatibleSeconds" required name="video-seconds" /></label>
+            <label class="is-full"><span>{{ tr('参考图输入') }}</span><AppMultiSelect v-model="referenceInputs" :ariaLabel="tr('参考图输入')" :options="[{value:'url',label:'HTTPS URL'},{value:'file',label:tr('文件')}]" /></label>
+          </template>
           <label v-if="selectedCategory.id === 'video'" class="is-full">
             <span>{{ tr('接口协议') }}</span>
             <AppSelect
@@ -673,22 +752,11 @@ onMounted(()=>{void load()})
             />
             <small>{{ tr('限制单次请求输出，避免 JSON 因达到 token 上限被截断。') }}</small>
           </label>
-          <label v-if="selectedCategory.id === 'llm'" class="is-full json-capability-field">
-            <span class="json-capability-copy">
-              <strong>{{ tr('结构化 JSON 输出') }}</strong>
-              <small>{{ tr('仅标记模型的 JSON 能力，不改变或拦截客户端传入的参数。') }}</small>
-            </span>
-            <input v-model="form.supports_json_output" type="checkbox" role="switch" :aria-label="tr('结构化 JSON 输出')" />
-          </label>
+
         </div>
 
-        <div v-if="selectedCategory.id === 'llm'" class="model-form-grid reasoning-controls">
-          <label v-if="selectedCategory.id === 'llm'">
-            <span>{{ tr('文本接口') }}</span>
-            <AppSelect v-model="form.text_api" :ariaLabel="tr('文本接口')" :menu-z-index="2000"
-              :options="[{ value: 'chat_completions', label: 'Chat Completions' }, { value: 'responses', label: 'Responses' }]" />
-          </label>
-          <p class="reasoning-note">{{ tr('模型默认值仅在客户端未传入时使用。') }}</p>
+        <div v-if="selectedCategory.id === 'llm' && !editingSyncedPricing" class="model-form-grid reasoning-controls">
+
           <label :for="`${reasoningControlId}-thinking`">
             <span :id="`${reasoningControlId}-thinking-label`">{{ tr('思考模式（thinking）') }}</span>
             <input :id="`${reasoningControlId}-thinking`" v-model.trim="form.thinking" name="model-thinking" :aria-labelledby="`${reasoningControlId}-thinking-label`" :aria-describedby="`${reasoningControlId}-thinking-help`"
@@ -709,16 +777,26 @@ onMounted(()=>{void load()})
             </datalist>
             <small :id="`${reasoningControlId}-effort-help`">{{ tr('可选常用档位，也可输入上游支持的其他值。不同模型的支持范围不同。') }}</small>
           </label>
+          <p class="reasoning-note">{{ tr('模型默认值仅在客户端未传入时使用。') }}</p>
         </div>
 
-        <label v-if="selectedCategoryId === 'llm'" class="model-toggle">
-          <input v-model="form.supports_strict_output" type="checkbox" role="switch" />
-          <span>{{ tr('支持严格结构化输出（模型目录标记）') }}</span>
-        </label>
-        <label v-if="selectedCategoryId === 'llm' && !editingSyncedPricing" class="model-toggle">
-          <input v-model="form.supports_tool_calls" type="checkbox" role="switch" :aria-label="tr('多轮工具调用')" />
-          <span>{{ tr('支持工具调用（模型目录标记）') }}</span>
-        </label>
+        <fieldset v-if="selectedCategoryId === 'llm' && !editingSyncedPricing" class="capability-group">
+          <legend>{{ tr('模型目录能力标记') }}</legend>
+          <div class="capability-options">
+            <label class="capability-option">
+              <span>{{ tr('结构化 JSON 输出') }}</span>
+              <input v-model="form.supports_json_output" type="checkbox" role="switch" />
+            </label>
+            <label class="capability-option">
+              <span>{{ tr('严格结构化输出') }}</span>
+              <input v-model="form.supports_strict_output" type="checkbox" role="switch" />
+            </label>
+            <label class="capability-option">
+              <span>{{ tr('多轮工具调用') }}</span>
+              <input v-model="form.supports_tool_calls" type="checkbox" role="switch" />
+            </label>
+          </div>
+        </fieldset>
         <section v-if="selectedCategoryId === 'enhancement'" class="pricing-editor">
           <span class="pricing-title">{{ tr('增强费用（元 / 输出分钟）') }}</span>
           <div class="enhancement-resolution-options">
@@ -736,7 +814,7 @@ onMounted(()=>{void load()})
         <section v-else-if="selectedCategoryId === 'llm'" class="pricing-editor">
           <span class="pricing-title">{{ tr('费用设置（元 / 百万 token）') }}</span>
           <AppButton v-if="selectedTextPricingPreset" variant="secondary" size="sm" type="button" @click="applyTextPricingPreset">{{ tr('填入官方基准价') }}</AppButton>
-          <div class="pricing-grid">
+          <div class="pricing-grid token-prices">
             <label><span>{{ tr('输入单价') }}</span><input v-model.number="textPricing.input_price_per_1m" type="number" min="0" step="any" required /></label>
             <label><span>{{ tr('缓存命中输入单价（可选）') }}</span><input v-model.number="textPricing.cache_input_price_per_1m" type="number" min="0" step="any" aria-describedby="cache-price-hint" /></label>
             <label><span>{{ tr('输出单价') }}</span><input v-model.number="textPricing.output_price_per_1m" type="number" min="0" step="any" required /></label>
@@ -769,7 +847,7 @@ onMounted(()=>{void load()})
               <input v-model.number="tierPrices[tier]" type="number" min="0" step="0.01" />
             </label>
           </div>
-          <div class="pricing-sub">
+          <div v-if="!['openai_video','autodl'].includes(form.api_protocol)" class="pricing-sub">
             <span class="pricing-title">{{ isSecondBillingVideo ? tr('输入参考视频（元 / 秒，按输入时长）') : tr('有视频参考（元 / 百万 token）') }}</span>
             <div class="pricing-grid">
               <label v-for="tier in pricingTierOptions" :key="tier">
@@ -789,21 +867,23 @@ onMounted(()=>{void load()})
         </section>
 
         <section class="pricing-editor">
-          <span class="pricing-title">{{ tr('收费倍率（1=原价，0.9=9折，大于 1=加价倍数）') }}</span>
+          <span class="pricing-title">{{ tr('收费倍率') }}</span>
           <div class="pricing-grid">
-            <label><span>{{ tr('收费倍率') }}</span><input v-model.number="discountPricing.discount" type="number" min="0.01" step="0.01" required /></label>
+            <label><span>{{ tr('收费倍率') }}</span><input v-model.number="discountPricing.discount" type="number" min="0.01" step="0.01" required /><small>{{ tr('1 为原价，0.9 为九折，大于 1 为加价。') }}</small></label>
             <label><span>{{ tr('折扣描述（可选）') }}</span><input v-model="discountPricing.description" type="text" :placeholder="tr('例如：限时9折')" /></label>
           </div>
         </section>
 
-        <footer><span class="model-modal-hint">{{ tr('关闭（Esc）') }}</span><AppButton variant="secondary" size="sm" type="button" @click="configDialog?.requestClose()">{{ tr('取消') }}</AppButton><AppButton variant="primary" size="sm" type="submit" :loading="creating">{{ creating ? tr('保存中…') : (isEditing ? tr('保存修改') : tr('创建配置')) }}</AppButton></footer>
       </form>
+      <template #footer>
+        <AppButton variant="secondary" size="sm" type="button" @click="configDialog?.requestClose()">{{ tr('取消') }}</AppButton>
+        <AppButton variant="primary" size="sm" type="submit" :form="reasoningControlId + '-form'" :loading="creating">{{ creating ? tr('保存中…') : (isEditing ? tr('保存修改') : tr('创建配置')) }}</AppButton>
+      </template>
     </AppDialog>
   </ConsolePage>
 </template>
 
 <style scoped>
-.reasoning-controls { margin-block: 14px; }
 .reasoning-note { grid-column: 1 / -1; margin: 0; color: var(--app-text-secondary); font-size: 12px; }
 .reasoning-controls input:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
 .model-settings-page { display:flex; flex-direction:column; height:100%; min-height:100%; color:var(--app-text); }
@@ -842,66 +922,154 @@ onMounted(()=>{void load()})
 .model-empty-state h3,.model-empty-state p { margin:0; }
 .model-empty-state h3 { color:var(--app-text); }
 .model-empty-state p { max-width:360px; text-align:center; font-size:12px; }
-.model-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgb(8 9 12 / 64%); backdrop-filter: blur(8px); }
-.model-modal { display:grid; gap:24px; margin:0; padding:0; color:var(--app-text); background:transparent; }
-.model-modal > header, .model-modal > footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.model-modal > header > div { display: flex; align-items: center; gap: 11px; }
-.model-modal header small { color: var(--app-accent); font-size: 12px; font-weight: 750; letter-spacing: .14em; }
-.model-modal h2 { margin: 3px 0 0; font-size: 17px; }
-.model-modal header > button { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 8px; cursor: pointer; }
-.model-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 16px; }
-.model-form-grid label { display: grid; gap: 7px; color: var(--app-text-secondary); font-size: 12px; }
-.model-form-grid label.is-full { grid-column: 1 / -1; }
+.model-modal {
+  --field-height: 36px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  color: var(--app-text);
+}
+.model-form-grid, .pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  align-items: start;
+}
+.model-form-grid > .is-full { grid-column: 1 / -1; }
+.model-picker { display: grid; min-width: 0; gap: 4px; }
+.model-picker > :first-child { font-size: 13px; line-height: 1.45; font-weight: 600; color: var(--app-text-secondary); }
+.model-picker-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.model-picker-controls input { flex: 1 1 100px; min-width: 0; }
+.model-picker-controls > .app-button { min-height: var(--field-height); }
+.model-picker-controls > .model-picker-list { min-width: 0; flex: 1 1 120px; order: -1; }
+.model-picker-controls:has(input) > .model-picker-list { order: 1; flex-basis: 100%; }
+.model-form-grid label, .pricing-grid label {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 4px;
+  color: var(--app-text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
 .model-form-grid label > span:first-child { font-weight: 600; }
 .model-form-grid label > small { color: var(--app-text-muted); font-size: 12px; }
-.model-form-grid input { width: 100%; min-height: 39px; padding: 0 11px; border: 1px solid var(--app-border); border-radius: 9px; outline: 0; color: var(--app-text); background: var(--app-surface-muted); caret-color: var(--app-text); font-size: 12px; transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease; }
+.model-form-grid input { width: 100%; min-height: var(--field-height); padding: 0 11px; border: 1px solid var(--app-border); border-radius: 6px; outline: 0; color: var(--app-text); background: var(--app-surface-muted); caret-color: var(--app-text); font-size: 12px; transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease; }
 .model-form-grid :deep(.app-select) { width: 100%; }
-.model-form-grid :deep(.app-select__trigger) { min-height: 39px; padding: 0 11px; background: var(--app-surface-muted); font-size: 12px; }
+.model-form-grid :deep(.app-select__trigger), .model-form-grid :deep(.app-multi-select__trigger) { min-height: var(--field-height); padding: 0 11px; background: var(--app-surface-muted); font-size: 12px; }
 .model-form-grid :deep(.app-select__trigger:hover) { background: var(--app-surface-hover); }
 .model-form-grid :deep(.app-select.is-open .app-select__trigger) { background: var(--app-surface-hover); }
-.model-readonly-value { display: flex; width: 100%; min-height: 39px; align-items: center; padding: 0 11px; border-radius: 9px; color: var(--app-text); background: var(--app-surface-muted); box-shadow: inset 0 0 0 1px var(--app-border); font-size: 12px; }
+.model-readonly-value { display: flex; width: 100%; min-height: var(--field-height); align-items: center; padding: 0 11px; border-radius: 6px; color: var(--app-text); background: var(--app-surface-muted); box-shadow: inset 0 0 0 1px var(--app-border); font-size: 12px; }
 .model-form-grid input::placeholder { color: var(--app-text-muted); opacity: 1; }
 .model-form-grid input:hover { border-color: var(--app-border-strong); }
 .model-form-grid input:focus { border-color: var(--app-accent); color: var(--app-text); background: var(--app-surface-hover); box-shadow: 0 0 0 3px color-mix(in srgb,var(--app-accent) 10%,transparent); }
 .model-form-grid input:-webkit-autofill,
 .model-form-grid input:-webkit-autofill:hover,
 .model-form-grid input:-webkit-autofill:focus { border-color: var(--app-border-strong); -webkit-text-fill-color: var(--app-text); caret-color: var(--app-text); box-shadow: 0 0 0 1000px var(--app-surface-muted) inset; }
-.json-capability-field { display: flex !important; min-height: 64px; flex-direction: row; align-items: center; justify-content: space-between; gap: 16px !important; padding: 12px 14px; border: 1px solid var(--app-border); border-radius: 12px; background: var(--app-surface-muted); }
-.json-capability-copy { display: grid; gap: 4px; }
-.json-capability-copy strong { color: var(--app-text); font-size: 12px; }
-.json-capability-copy small { color: var(--app-text-muted); font-size: 12px; line-height: 1.5; }
-.model-form-grid .json-capability-field > input { position: relative; width: 38px; min-width: 38px; height: 22px; min-height: 22px; margin: 0; padding: 0; border: 0; border-radius: 999px; appearance: none; background: var(--app-border-strong); cursor: pointer; transition: background .16s ease; }
-.model-form-grid .json-capability-field > input::after { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--app-surface); box-shadow: 0 1px 4px rgb(0 0 0 / 24%); content: ''; transition: transform .16s ease; }
-.model-form-grid .json-capability-field > input:checked { background: var(--app-accent); }
-.model-form-grid .json-capability-field > input:checked::after { transform: translateX(16px); }
-.model-form-grid .json-capability-field > input:focus-visible { outline: 3px solid color-mix(in srgb,var(--app-accent) 20%,transparent); outline-offset: 2px; box-shadow: none; }
+/* Keep the native focusable control and the whole label as its hit area. */
+.capability-group { min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+.capability-group legend, .pricing-title {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 20px;
+  color: var(--app-text);
+}
+.capability-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 6px;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-surface);
+}
+.capability-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 12px;
+  color: var(--app-text);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.capability-option + .capability-option { border-inline-start: 1px solid var(--app-border); }
+.capability-option:hover, .capability-option:focus-within { background: var(--app-surface-muted); }
+.capability-option input {
+  appearance: none;
+  flex: none;
+  display: grid;
+  align-items: center;
+  inline-size: 32px;
+  block-size: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--app-border-strong);
+  cursor: pointer;
+}
+.capability-option input::after {
+  content: '';
+  inline-size: 12px;
+  block-size: 12px;
+  border-radius: 50%;
+  background: var(--app-on-primary);
+}
+.capability-option input:checked { background: var(--app-primary); }
+.capability-option input:checked::after { justify-self: end; }
+.capability-option input:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
+@media (forced-colors: active) {
+  .capability-option input { appearance: auto; inline-size: 18px; }
+  .capability-option input::after { content: none; }
+}
 .input-with-icon { position: relative; display: flex; align-items: center; }
 .input-with-icon > svg { position: absolute; left: 11px; z-index: 1; color: var(--app-text-muted); }
 .input-with-icon > input { padding-left: 34px; }
 .secret-input > input { padding-right: 42px; }
 .secret-input > button { position: absolute; right: 5px; display: grid; width: 32px; height: 30px; place-items: center; border: 0; border-radius: 7px; color: var(--app-text-muted); background: transparent; cursor: pointer; }
 .secret-input > button:hover { color: var(--app-accent); background: var(--app-accent-soft); }
-.model-modal > footer { justify-content: flex-end; padding-top: 3px; }
-.model-modal-hint { margin-right: auto; color: var(--app-text-muted); font-size: 12px; }
-.model-modal > footer .app-button { min-height: 38px; padding: 0 14px; border-radius: 9px; cursor: pointer; font-size: 12px; }
-.model-modal > footer button:disabled { cursor: not-allowed; opacity: .55; }
-.pricing-editor { display: grid; gap: 10px; margin-top: 2px; padding: 14px; border: 1px solid var(--app-border); border-radius: 12px; background: var(--app-surface-muted); }
-.pricing-sub { display: grid; gap: 8px; margin-top: 4px; padding-top: 10px; border-top: 1px dashed var(--app-border); }
-.pricing-title { color: var(--app-text-secondary); font-size: 12px; font-weight: 600; }
-.pricing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.pricing-grid label { display: grid; gap: 6px; color: var(--app-text-muted); font-size: 12px; }
-.pricing-grid input { width: 100%; min-height: 36px; padding: 0 10px; border: 1px solid var(--app-border); border-radius: 8px; outline: 0; color: var(--app-text); background: var(--app-surface); font-size: 12px; }
-.pricing-grid input:focus { border-color: var(--app-accent); box-shadow: 0 0 0 3px color-mix(in srgb,var(--app-accent) 10%,transparent); }
-@media(max-width:767px) {
- .model-settings-page { height:auto; }
- .model-config-list { flex:none; max-height:65dvh; }
- .model-category-card { min-height:44px; }
- .model-form-grid { grid-template-columns:1fr; }
- .model-form-grid label,.model-form-grid label.is-full { grid-column:1; }
+.pricing-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-block-start: 14px;
+  border-block-start: 1px solid var(--app-border);
 }
-.enhancement-resolution-options{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}.enhancement-resolution-options label{display:flex;gap:6px;align-items:center}.enhancement-resolution-options input{width:auto;min-height:auto}
-
-.model-form-grid.reasoning-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.model-form-grid.reasoning-controls > label { grid-column: auto; }
-@media (max-width: 600px) { .model-form-grid.reasoning-controls { grid-template-columns: minmax(0, 1fr); } }
+.pricing-editor > .app-button { justify-self: start; }
+.pricing-editor small, .reasoning-note, .model-form-grid label > small {
+  color: var(--app-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.pricing-sub { display: grid; gap: 6px; margin-block-start: 4px; }
+.token-prices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pricing-grid input {
+  width: 100%; min-width: 0; min-height: var(--field-height); padding: 0 10px;
+  border: 1px solid var(--app-border); border-radius: 6px;
+  background: var(--app-surface-muted); color: var(--app-text); font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.pricing-grid input:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 1px; }
+.enhancement-resolution-options { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.enhancement-resolution-options label { display: inline-flex; gap: 8px; align-items: center; min-height: 32px; font-size: 13px; cursor: pointer; }
+.enhancement-resolution-options input { width: 16px; height: 16px; margin: 0; }
+@media (max-width: 767px) {
+  .model-settings-page { height: auto; }
+  .model-config-list { flex: none; max-height: 65dvh; }
+  .model-category-card { min-height: 44px; }
+  .model-modal { --field-height: 44px; }
+  .model-form-grid, .pricing-grid, .capability-options { grid-template-columns: minmax(0, 1fr); }
+  .capability-option { min-height: 44px; }
+  .capability-option + .capability-option { border-inline-start: 0; border-block-start: 1px solid var(--app-border); }
+  .model-form-grid input, .pricing-grid input { font-size: 16px; }
+}
+@media (pointer: coarse) {
+  .capability-option, .enhancement-resolution-options label { min-height: 44px; }
+}
 </style>

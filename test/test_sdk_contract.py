@@ -200,7 +200,11 @@ async def test_image_binary_streams_are_rejected_before_upstream(sdk_api):
     assert not await PlatformCallReceipt.all().exists()
 
 
-async def test_sdk_video_create_retrieve_download(sdk_api):
+async def test_sdk_video_create_retrieve_download(sdk_api, monkeypatch):
+    async def test_destination(url):
+        assert url == "https://cdn.example/video.mp4"
+        return url, {}, {}
+    monkeypatch.setattr("services.platform.video_downloads.public_destination", test_destination)
     sdk, state, _ = sdk_api
     created = await sdk.videos.create(model="official-video", prompt="slow pan", seconds="4", size="1280x720")
     assert created.object == "video" and created.created_at > 0
@@ -328,12 +332,12 @@ async def test_discount_video_submission_preserves_provider_message(sdk_api):
     assert "Reference image format is invalid" in reply.json()["error"]["message"]
 
 
-async def test_video_uses_uploaded_url_and_rejects_multipart(sdk_api):
+async def test_video_uses_uploaded_url_and_rejects_invalid_file(sdk_api):
     sdk, state, _ = sdk_api
     with pytest.raises(APIStatusError) as rejected:
         await sdk.videos.create(model="official-video", prompt="pan", seconds="4", size="1280x720",
             input_reference=("reference.png", b"image pixels", "image/png"))
-    assert rejected.value.status_code == 400 and not state.seen
+    assert rejected.value.status_code == 422 and not state.seen
     created = await sdk.videos.create(model="official-video", prompt="pan", seconds="4", size="1280x720",
         extra_body={"input_reference":"https://cdn.example/input.png"})
     assert created.object == "video"
@@ -342,7 +346,7 @@ async def test_video_uses_uploaded_url_and_rejects_multipart(sdk_api):
     app = FastAPI()
     app.include_router(developer_router, prefix="/v1")
     body = app.openapi()["paths"]["/v1/videos"]["post"]["requestBody"]["content"]
-    assert list(body) == ["application/json"]
+    assert set(body) == {"application/json", "multipart/form-data"}
     assert body["application/json"]["schema"]["properties"]["seconds"]["anyOf"][0]["type"] == "string"
 
 

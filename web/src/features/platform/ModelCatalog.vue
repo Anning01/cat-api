@@ -5,6 +5,7 @@ export interface CatalogModel {
   id: string
   name: string
   alias?: string | null
+  input_modalities?: string[]
   kinds: string[]
   image_model_type?: string
   video_model_type?: string
@@ -51,15 +52,21 @@ const selectedSeries = ref<string[]>([])
 const selectedResolutions = ref<string[]>([])
 const selectedFeatures = ref<string[]>([])
 
-const categoryOrder = ['image', 'video', 'text', 'media_processing', 'asr', 'voice_design']
+const categoryOrder = ['text','vision','image','video','audio']
+function matchesCategory(model: CatalogModel, category: string) {
+  if (category === 'audio') return model.kinds.some(v => v === 'asr' || v === 'voice_design')
+  if (category === 'video' && model.kinds.includes('media_processing')) return true
+  if (category === 'vision') return model.kinds.includes('text') && !!model.input_modalities?.some(v => v === 'image' || v === 'video')
+  return model.kinds.includes(category)
+}
 const labels = computed<Record<string, string>>(() => ({
-  all: tr('全部'), text: tr('文本'), image: tr('图片'), video: tr('视频'),
+  vision: tr('视觉理解'), audio: tr('音频'), all: tr('全部'), text: tr('文本'), image: tr('图片'), video: tr('视频'),
   media_processing: tr('画质增强'), asr: tr('语音识别'),
   voice_design: tr('音色设计'),
 }))
-const categories = computed(() => ['all', ...categoryOrder, ...new Set(props.models.flatMap(model => model.kinds))]
+const categories = computed(() => ['all', ...categoryOrder]
   .filter((value, index, values) => values.indexOf(value) === index)
-  .filter(value => value === 'all' || props.models.some(model => model.kinds.includes(value))))
+  .filter(value => value === 'all' || props.models.some(model => matchesCategory(model, value))))
 
 const sortOptions = computed(() => [
   { value: 'default', label: tr('按模型排序') },
@@ -179,7 +186,7 @@ function resetAllFilters() {
 const filtered = computed(() => {
   const search = query.value.trim().toLocaleLowerCase()
   return props.models.filter(model => {
-    if (kind.value !== 'all' && !model.kinds.includes(kind.value)) return false
+    if (kind.value !== 'all' && !matchesCategory(model, kind.value)) return false
     if (search) {
       const matchSearch = [model.name, model.id, model.alias, model.image_model_type, model.video_model_type]
         .some(value => value?.toLocaleLowerCase().includes(search))
@@ -233,7 +240,7 @@ const groups = computed(() => {
 })
 
 function count(value: string) {
-  return value === 'all' ? props.models.length : props.models.filter(model => model.kinds.includes(value)).length
+  return value === 'all' ? props.models.length : props.models.filter(model => matchesCategory(model, value)).length
 }
 
 function icon(value: string) {

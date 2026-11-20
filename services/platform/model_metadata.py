@@ -27,11 +27,15 @@ def modality_metadata(row, kinds):
         }[kind]
         if kind == 'text' and row.get('model_id') == 'doubao-seed-evolving':
             incoming = ['text', 'image', 'video']
+        if kind == "text" and row.get("text_input_modalities"):
+            incoming = row["text_input_modalities"]
         inputs.extend(incoming);outputs.extend(outgoing)
         if kind == 'text':
             endpoints.append('/v1/responses' if row['text_api']=='responses' else '/v1/chat/completions')
         elif kind == 'image':
-            endpoints.extend(['/v1/images/generations', '/v1/images/edits'])
+            endpoints.append('/v1/images/generations')
+            if row.get('reference_image_urls'):
+                endpoints.append('/v1/images/edits')
         elif kind == 'voice_design':
             endpoints.append('/v1/chat/completions')
         elif kind == 'video':

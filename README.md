@@ -48,11 +48,17 @@ npm run dev
 
 历史作品迁移为可选兼容入口。仅迁移旧猫影站点时设置 `LEGACY_WORKS_ENABLED=true`，并将 `/api/legacy-works/` 转发到旧项目的独立只读归档服务。全新部署默认不显示此入口。归档服务保留原作品权限，不提供生成、修改或删除操作；作品包可导入本地猫影。
 
+## 通用视频接入
+
+普通客户端使用 Cat 的 `/v1` Base URL 和平台 Key，从 `GET /v1/models` 选择视频模型。调用 `POST /v1/videos` 后，用返回的 `id` 查询任务，同一 Key 可以 GET 或 HEAD `/v1/videos/{id}/content`。请求可使用 JSON 或带单张 `input_reference` 文件的表单。视频状态与最终账单可分别查询。
+
+管理员可在模型配置里选择「OpenAI Videos 兼容渠道」，给同一上游导入多个模型，设置可用尺寸、时长、参考输入和每秒单价。接入指定版本 New API 的渠道映射、下载验证及第三方重试限制见[本地验收记录](docs/model-api-compatibility-plan.md)。
+
 ## 模型协议转发
 
 原生接入使用供应商官方路径和 JSON 参数，保留任务 ID、结果、错误正文、状态码及安全的响应头；通道模型使用目录中的 `nv-ID` 或 `X-Cat-Model` 指定。完整路径见 `/v1/agent-guide.md` 和目录的 `native_api`。根路径与 `/v1` 下的同名原生路径均可使用。
 
-临时上传规则保持：`/v1/media/uploads` 申请直传，文件直传 OSS 后使用 HTTPS URL 调用；不开放 Base64、data URL、内联媒体、multipart 或携带内联图片的流式输出。OpenAI／OpenRouter 图片上游必须支持 URL 结果；返回内联媒体的通道会明确拒绝，不自动上传或转码。
+临时上传规则保持：`/v1/media/uploads` 申请直传，文件直传 OSS 后使用 HTTPS URL 调用；图片编辑可用受限文件表单，通用视频创建也可上传单张参考图。普通 JSON 请求禁止 data URL 或内联媒体。OpenAI／OpenRouter 图片上游必须支持 URL 结果；返回内联媒体的通道会明确拒绝，不自动上传或转码。
 
 生成成功不依赖即时计费成功；异常在 `/v1/requests/{X-Cat-Request-Id}` 查询，已取得用量的结算会重试，缺少可确认用量的进入 review。文本流式调用建议显式 `stream_options.include_usage=true`，平台不替客户端改写此选项。
 
@@ -76,4 +82,4 @@ OpenAPI 默认 server 为 `/v1`。通过文件导入 Apifox 时请设置对应�
 
 模型目录增加持久化 `alias`（如 `seedream-5.5`），页面复制和新接入示例优先使用别名。`model` 与原生任务的 `X-Cat-Model` 均接受别名；Key 权限仍按原配置验证。改名、改价、停启不会自动更换已有别名。
 
-为兼容既有工作台，`GET /v1/models` 默认仍返回旧 nv-ID；新客户端使用 `/v1/models?identifier=alias`，id 为可读名，legacy_id 为旧 ID。账务与授权关联保持 legacy_id，回执另提供 model_alias、model_name，不改写历史账单。
+普通 `GET /v1/models` 默认返回可读 ID，legacy_id 为旧 ID。已有工作台携带能力头时默认收到旧 ID，客户端也可以显式选择 `identifier=legacy` 或 `identifier=alias`。账务与授权关联保持 legacy_id，回执另提供 model_alias、model_name，不改写历史账单。

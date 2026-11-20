@@ -67,15 +67,21 @@ def _prompt(prepared: PreparedVideoContent, reference_images: list[str], referen
 class UnifiedVideoGenerator(BaseVideoGenerator):
     """Translate shared video inputs without exposing service-specific details."""
 
-    async def _request(self, method: str, task_id: str | None = None, payload: dict | None = None, *, refresh=False, billing_video_id=None) -> dict:
+    async def _request(self, method: str, task_id: str | None = None, payload: dict | None = None, *, refresh=False, billing_video_id=None, file=None, idempotency_key=None) -> dict:
         submitting = method == "POST"
         headers = {"Authorization": f"Bearer {self.config.api_key}", "Content-Type": "application/json"}
+        options = {"json": payload} if payload is not None else {}
+        if file:
+            headers.pop("Content-Type")
+            options = {"data": payload, "files": {"input_reference": file}}
+        if idempotency_key:
+            headers["Idempotency-Key"] = str(idempotency_key)
         async with httpx.AsyncClient(timeout=600) as client:
             try:
                 response = await client.request(method, _endpoint(self.config.base_url, task_id),
                     headers=headers,
                     **({"params":{"refresh":"true"}} if refresh else {}),
-                    **({"json": payload} if payload is not None else {}))
+                    **options)
             except httpx.HTTPError as exc:
                 not_sent = isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))
                 logger.warning("video_api_network_error operation=%s error_type=%s", method, type(exc).__name__)
@@ -167,3 +173,43 @@ class UnifiedVideoGenerator(BaseVideoGenerator):
             return self._build_result(TaskStatusEnum.failed, error=message)
         status = TaskStatusEnum.queued if task.status == "queued" else TaskStatusEnum.running
         return self._build_result(status, progress=task.progress)
+
+
+class OpenAIVideoGenerator(UnifiedVideoGenerator):
+    """An administrator-provided model served by an OpenAI Videos gateway."""
+
+    async def submit(self, prompt, duration=4, **kwargs):
+        body = {"model": self.config.model, "prompt": prompt,
+                "seconds": str(duration), "size": kwargs["size"]}
+        images = kwargs.get("reference_images") or []
+        if images:
+            body["input_reference"] = images[0]
+        result = await self._request("POST", payload=body, file=kwargs.get("reference_file"),
+                                     idempotency_key=kwargs.get("platform_request_key"))
+        if result.get("error"):
+            raise VideoProviderError(result["error"])
+        task_id = result.get("id")
+        if not isinstance(task_id, str) or not task_id.strip():
+            raise VideoProviderError("视频提交结果待核对", submission_uncertain=True)
+        return task_id
+
+    async def query(self, external_task_id, *, refresh=False):
+        data = await self._request("GET", task_id=external_task_id)
+        status = data.get("status")
+        if status == "completed":
+            metadata = data.get("metadata") or {}
+            url = metadata.get("url") if isinstance(metadata, dict) else None
+            content = httpx.URL(_endpoint(self.config.base_url, external_task_id) + "/content")
+            if isinstance(url, str) and content.join(url) == content:
+                url = None
+            seconds = data.get("seconds", metadata.get("duration") if isinstance(metadata, dict) else None)
+            if isinstance(seconds, str) and seconds.isascii() and seconds.isdecimal() and len(seconds) <= 8:
+                seconds = int(seconds)
+            return self._build_result(TaskStatusEnum.completed, progress=100, url=url,
+                                      duration=seconds, protected_content=not url)
+        if status in {"failed", "cancelled"}:
+            return self._build_result(TaskStatusEnum.failed, error=data.get("error") or "视频生成失败")
+        if status in {"queued", "pending", "processing", "in_progress"}:
+            state = TaskStatusEnum.queued if status in {"queued", "pending"} else TaskStatusEnum.running
+            return self._build_result(state, progress=data.get("progress") or 0)
+        raise VideoProviderError("视频任务状态待核对")

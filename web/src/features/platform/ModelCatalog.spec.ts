@@ -25,7 +25,7 @@ it('pairs each billed unit with its original price, including reference material
   wrapper.unmount()
 })
 
-it.each([['zh', '音色设计'], ['en', 'Voice design']] as const)('labels and filters voice design in %s', async (locale, label) => {
+it.each([['zh', '音频'], ['en', 'Audio']] as const)('labels and filters voice design in %s', async (locale, label) => {
   setLocale(locale)
   const models: CatalogModel[] = [
     { id: 'nv-1', name: 'GPT-image', kinds: ['image'], pricing: { type: 'image', currency: 'CNY', prices: { '1K': 0.04 } } },
@@ -37,7 +37,7 @@ it.each([['zh', '音色设计'], ['en', 'Voice design']] as const)('labels and f
   await filter.trigger('click')
   expect(filter.attributes('aria-pressed')).toBe('true')
   expect(wrapper.findAll('.model-card')).toHaveLength(1)
-  expect(wrapper.get('.model-kind-pill').text()).toBe(label)
+  expect(wrapper.get('.model-kind-pill').text()).toBe(locale === 'zh' ? '音色设计' : 'Voice design')
   expect(wrapper.get('.model-title').text()).toBe('MiMo VoiceDesign')
   wrapper.unmount()
 })

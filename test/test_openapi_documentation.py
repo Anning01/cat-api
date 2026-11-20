@@ -46,7 +46,7 @@ def test_openapi_has_complete_public_contract_and_apifox_folders():
             assert operation['responses']['401']['content']['application/json']['schema']
             if method=='post':
                 assert operation['requestBody']['content']['application/json']['examples']
-            if '200' in operation['responses']:
+            if '200' in operation['responses'] and not path.endswith('/content'):
                 media=operation['responses']['200']['content']['application/json']
                 assert media['schema'] and 'example' in media
     assert len(ids)==len(set(ids))

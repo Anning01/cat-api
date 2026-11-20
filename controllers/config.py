@@ -68,17 +68,18 @@ def _validate_input_image_pricing(pricing: dict, label: str) -> None:
             raise HTTPException(status_code=400, detail=localized_message('输入图超出单价 price_per_image 必须为非负数字'))
 
 
-def _validate_video_pricing(pricing: dict, model_type) -> None:
+def _validate_video_pricing(pricing: dict, model_type, options=None) -> None:
     if pricing.get("type") != "video":
         raise HTTPException(status_code=400, detail=localized_message('视频模型的费用配置 type 必须为 video'))
     prices = pricing.get("prices")
     if not isinstance(prices, dict):
         raise HTTPException(status_code=400, detail=localized_message('视频费用需要 prices 档位对象'))
-    allowed = set(video_capabilities_for(model_type).resolutions)
+    from services.video.compatible import compatible_options
+    allowed = set(compatible_options(options).resolutions if model_type == "openai_video" else video_capabilities_for(model_type).resolutions)
     for tier, value in prices.items():
         if tier not in allowed:
             raise HTTPException(status_code=400, detail=localized_message('视频费用包含不支持的分辨率档位：{p1}', p1=f'{tier}'))
-        if not isinstance(value, (int, float)) or value < 0:
+        if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
             raise HTTPException(status_code=400, detail=localized_message('分辨率档位 {p1} 的费用必须为非负数字', p1=f'{tier}'))
     ref_prices = pricing.get("video_reference_prices")
     if ref_prices is not None:
@@ -87,7 +88,7 @@ def _validate_video_pricing(pricing: dict, model_type) -> None:
         for tier, value in ref_prices.items():
             if tier not in allowed:
                 raise HTTPException(status_code=400, detail=localized_message('视频参考价格包含不支持的分辨率档位：{p1}', p1=f'{tier}'))
-            if not isinstance(value, (int, float)) or value < 0:
+            if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
                 raise HTTPException(status_code=400, detail=localized_message('视频参考分辨率档位 {p1} 的费用必须为非负数字', p1=f'{tier}'))
     model_key = str(model_type)
     expected_unit = VIDEO_PRICING.get(model_key, {}).get("billing_unit", "token")
@@ -164,6 +165,15 @@ class AiModelConfigController(CRUDBase[AiModelConfig, AiModelConfigCreate, AiMod
         video_capabilities_for(model_type)
         validate_video_protocol(model_type, str(protocol))
         video_generator_factory.validate_model_type(model_type)
+        options = data.get("processing_options", instance.processing_options if instance else None)
+        if protocol == "openai_video":
+            from services.video.compatible import compatible_options
+            compatible_options(options)
+        if protocol == "openai_video" and data.get("is_active", instance.is_active if instance else False):
+            rates = data.get("pricing", instance.pricing if instance else None) or {}
+            _validate_video_pricing(rates, model_type, options)
+            if not any(value > 0 for value in rates["prices"].values()):
+                raise HTTPException(422, "请为通用视频渠道配置有效的每秒单价")
 
     @staticmethod
     def _validate_pricing(data: dict, instance: AiModelConfig | None = None) -> None:
@@ -188,7 +198,7 @@ class AiModelConfigController(CRUDBase[AiModelConfig, AiModelConfigCreate, AiMod
             model_type = data.get("video_model_type") or (
                 instance.video_model_type if instance else None
             )
-            _validate_video_pricing(pricing, model_type)
+            _validate_video_pricing(pricing, model_type, data.get("processing_options", instance.processing_options if instance else None))
             return
         if AiTaskTypeEnum.audio_recognition.value in task_types:
             _validate_asr_pricing(pricing)
@@ -274,7 +284,7 @@ class AiModelConfigController(CRUDBase[AiModelConfig, AiModelConfigCreate, AiMod
     async def activate(self, config_id: int) -> AiModelConfig:
         """独立启用当前渠道配置，同类型的其他渠道可同时运行。"""
         instance = await self.get(config_id)
-        self._validate_generation_payload({'is_active': True} if instance.task_type == 8 else {}, instance)
+        self._validate_generation_payload({'is_active': True} if instance.task_type == 8 or instance.api_protocol == 'openai_video' else {}, instance)
         instance.is_active = True
         await instance.save(update_fields=["is_active", "updated_at"])
         return instance

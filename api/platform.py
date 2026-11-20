@@ -2,7 +2,6 @@
 from typing import Annotated, Literal
 from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
-from fastapi.responses import RedirectResponse
 from pydantic import AwareDatetime, BaseModel, Field
 
 from auth.deps import AuthContext, require_user, require_super_admin
@@ -186,29 +185,38 @@ async def temporary_upload(body: UploadSpec, response: Response, ctx: AuthContex
     return await issue_upload(ctx.user.id, body)
 
 
-@developer_router.post("/videos", summary="提交视频生成", openapi_extra=sdk_request_schema(VideoRequest))
+@developer_router.post("/videos", summary="提交视频生成", openapi_extra=sdk_request_schema(VideoRequest, video_file=True))
 async def create_video(request: Request, response: Response, ctx: AuthContext = Depends(developer_identity),
     idempotency_key: Annotated[str | None, Header(min_length=1, max_length=200)] = None):
-    body = validated_body(VideoRequest, await request.json())
-    job = await submit_video(ctx, body, idempotency_key)
+    image = None
+    if request.headers.get("content-type", "").partition(";")[0].lower() == "multipart/form-data":
+        from services.platform.video_uploads import parse_video_form
+        body, image = await parse_video_form(request, VideoRequest)
+    else:
+        body = validated_body(VideoRequest, await request.json())
+    job = await submit_video(ctx, body, idempotency_key, image=image)
     response.headers["X-Request-Id"] = job["id"]
     response.headers["Cache-Control"] = "no-store"
     return job
 
 
 @developer_router.get("/videos/{identifier}", summary="查询视频生成状态及结果链接")
-async def read_video(identifier: str, response: Response, refresh: bool = False, ctx: AuthContext = Depends(developer_identity)):
+async def read_video(identifier: str, request: Request, response: Response, refresh: bool = False, ctx: AuthContext = Depends(developer_identity)):
     response.headers["Cache-Control"] = "no-store"
     try:
         by_key = identifier.startswith("req-")
         value = UUID(identifier[4:] if by_key else identifier)
     except ValueError:
         raise HTTPException(404, "视频请求不存在") from None
-    return await video_status(ctx, key=value,refresh=refresh) if by_key else await video_status(ctx, public_id=value,refresh=refresh)
+    job = await video_status(ctx, key=value, refresh=refresh) if by_key else await video_status(ctx, public_id=value, refresh=refresh)
+    if (job.get("metadata") or {}).get("url") == f"/v1/videos/{job['id']}/content":
+        job["metadata"]["url"] = str(request.url.replace(path=request.url.path.rsplit("/", 1)[0] + f"/{job['id']}/content", query=""))
+    return job
 
 
+@developer_router.head("/videos/{identifier}/content", summary="检查已完成的视频")
 @developer_router.get("/videos/{identifier}/content", summary="下载已完成的视频")
-async def video_content(identifier: str, variant: Literal["video", "thumbnail", "spritesheet"] = "video",
+async def video_content(identifier: str, request: Request, variant: Literal["video", "thumbnail", "spritesheet"] = "video",
     ctx: AuthContext = Depends(developer_identity)):
     if variant != "video":
         raise HTTPException(400, "Selected provider does not expose this video variant")
@@ -216,11 +224,8 @@ async def video_content(identifier: str, variant: Literal["video", "thumbnail", 
         value = UUID(identifier)
     except ValueError:
         raise HTTPException(404, "Video not found") from None
-    job = await video_status(ctx, public_id=value, refresh=True)
-    url = (job.get("metadata") or {}).get("url")
-    if job["status"] != "completed" or not url:
-        raise HTTPException(409, "Video is not ready")
-    return RedirectResponse(url, status_code=307, headers={"Cache-Control":"no-store"})
+    from services.platform.video_downloads import download_video
+    return await download_video(ctx, value, request)
 
 
 from api.native import router as native_router

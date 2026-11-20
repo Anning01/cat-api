@@ -89,6 +89,10 @@ async def admit(ctx, model, body, key, *, validate=chat_options, kind="text"):
     dedup = digest([ctx.user.id, key or str(identifier)])
     signature = digest(body)
     async with in_transaction() as db:
+        if key and db.capabilities.dialect == "postgres":
+            # Two configurations can receive the same account-scoped key concurrently.
+            lock = int.from_bytes(bytes.fromhex(dedup[:16]), "big", signed=True)
+            await db.execute_query("SELECT pg_advisory_xact_lock($1)", [lock])
         eligible = AiModelConfig.filter(scope="official", is_active=True).exclude(api_protocol="novelvids").using_db(db)
         if isinstance(model, int) or re.fullmatch(r"nv-[1-9][0-9]{0,9}", model):
             model_id = model if isinstance(model, int) else int(model[3:])
@@ -119,6 +123,7 @@ async def admit(ctx, model, body, key, *, validate=chat_options, kind="text"):
         config = await selected.get()
         previous = await PlatformCallReceipt.filter(dedup_key__in=await request_keys(ctx.user.id, key or str(identifier))).first().using_db(db)
         if previous:
+            authorize_model(ctx, previous.model_config_id)
             detail = "请求标识已用于不同的请求" if previous.payload_hash != signature else "该请求已受理，请查询原请求状态"
             raise HTTPException(409, detail, headers={"X-Request-Id":str(previous.public_id), "X-Cat-Request-Id":str(previous.public_id)})
         rates = validate(config, body)

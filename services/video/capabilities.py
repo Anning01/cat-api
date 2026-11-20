@@ -339,6 +339,17 @@ CAPABILITIES[VideoGenerationModelTypeEnum.minimax_h3_autodl] = replace(
 )
 
 
+CAPABILITIES[VideoGenerationModelTypeEnum.openai_video] = VideoModelCapabilities(
+    resolutions=("720p", "1024p"), aspect_ratios=("16:9", "9:16", "7:4", "4:7"),
+    aspect_ratios_by_mode={"reference": ("16:9", "9:16", "7:4", "4:7")},
+    output_formats=("mp4",), generation_modes=("reference",), duration_min=1, duration_max=12,
+    supports_auto_duration=False, supports_audio=False, default_generate_audio=False,
+    supports_return_last_frame=False, max_reference_images=1, max_reference_videos=0,
+    max_reference_audios=0, reference_video_duration_max=0, reference_video_total_duration_max=0,
+    reference_audio_duration_max=0, reference_audio_total_duration_max=0, reference_audio_duration_min=0,
+    max_request_size_mb=50, default_aspect_ratio="9:16", api_protocol=ImageApiProtocol.openai_video,
+)
+
 PROTOCOL_CAPABILITIES = {
     ImageApiProtocol.unified_video: {
         model_type: replace(
@@ -359,7 +370,7 @@ PROTOCOL_CAPABILITIES = {
     ImageApiProtocol.novelvids: {
         kind: replace(caps, api_protocol=ImageApiProtocol.novelvids, supports_auto_duration=False,
                       supports_temporary_file_upload=True, supports_audio_data_uri=True, output_formats=("mp4",))
-        for kind, caps in CAPABILITIES.items()
+        for kind, caps in CAPABILITIES.items() if kind != VideoGenerationModelTypeEnum.openai_video
     },
 }
 
@@ -392,6 +403,7 @@ def validate_protocol(model_type: str | VideoGenerationModelTypeEnum, protocol: 
 
 def protocol_options() -> dict[str, list[dict]]:
     labels = {
+        ImageApiProtocol.openai_video: "OpenAI Videos",
         ImageApiProtocol.novelvids: "猫影开放平台",
         ImageApiProtocol.volcengine_ark: "火山方舟",
         ImageApiProtocol.unified_video: "通用视频接口",

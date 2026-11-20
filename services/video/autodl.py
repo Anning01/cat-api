@@ -38,7 +38,7 @@ class AutoDLVideoGenerator(BaseVideoGenerator):
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.request(method, url, headers=headers, json=payload)
         except httpx.HTTPError as exc:
-            raise AutoDLGenerationError("AutoDL 视频接口网络请求失败") from exc
+            raise AutoDLGenerationError("AutoDL 视频接口网络请求失败", submission_uncertain=method == "POST" and not isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))) from exc
         # 仅记录结构与状态，Token、提示词、参考素材和结果签名 URL 均不入日志。
         logger.info("autodl_response endpoint=%s http_status=%s", safe_endpoint(url), response.status_code)
         check_upstream_response(response)
@@ -47,9 +47,9 @@ class AutoDLVideoGenerator(BaseVideoGenerator):
         except ValueError as exc:
             if response.is_error:
                 raise AutoDLGenerationError(f"AutoDL 视频请求失败（HTTP {response.status_code}）") from exc
-            raise AutoDLGenerationError("AutoDL 返回了无法解析的响应") from exc
+            raise AutoDLGenerationError("AutoDL 返回了无法解析的响应", submission_uncertain=method == "POST") from exc
         if not isinstance(body, dict):
-            raise AutoDLGenerationError("AutoDL 视频接口返回错误，请在渠道后台检查任务")
+            raise AutoDLGenerationError("AutoDL 视频接口返回错误，请在渠道后台检查任务", submission_uncertain=method == "POST")
         data = body.get("data")
         secrets = (self.config.api_key,)
         error = structured_video_error(body, secrets=secrets)
@@ -60,7 +60,7 @@ class AutoDLVideoGenerator(BaseVideoGenerator):
                 transport_request_id=request_id(response), secrets=secrets, trusted_details=True)
             raise AutoDLGenerationError(detail)
         if not isinstance(data, dict):
-            raise AutoDLGenerationError("AutoDL 响应缺少任务数据")
+            raise AutoDLGenerationError("AutoDL 响应缺少任务数据", submission_uncertain=method == "POST")
         return data, error
 
     async def submit(
@@ -111,7 +111,7 @@ class AutoDLVideoGenerator(BaseVideoGenerator):
         data, _ = await self._request("POST", url, payload)
         task_id = data.get("task_id")
         if not isinstance(task_id, str) or not task_id.strip():
-            raise AutoDLGenerationError("AutoDL 未返回任务 ID")
+            raise AutoDLGenerationError("AutoDL 未返回任务 ID", submission_uncertain=True)
         return task_id.strip()
 
     async def query(self, external_task_id: str) -> dict[str, Any]:

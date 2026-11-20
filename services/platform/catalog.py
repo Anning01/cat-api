@@ -99,5 +99,52 @@ async def model_catalog():
             **({"processing_options": public_processing_options(row["processing_options"])}
                if AiTaskTypeEnum.video_enhancement in task_types else {}),
         })
-        models[-1].update(modality_metadata(models[-1], kinds))
+        public = models[-1]
+        declared_inputs = (row["processing_options"] or {}).get("input_modalities")
+        if "text" in kinds and isinstance(declared_inputs, list):
+            public["text_input_modalities"] = ["text", *(m for m in ("image","video") if m in declared_inputs)]
+        public.update(modality_metadata(public, kinds))
+        operations = {}
+        if "text" in kinds:
+            path = "/v1/responses" if row["text_api"] == "responses" else "/v1/chat/completions"
+            operations[row["text_api"]] = {"path":path, "inputs":["json"], "stream":True}
+        if "voice_design" in kinds:
+            operations["voice_design"] = {"path":"/v1/chat/completions","inputs":["json"],"stream":False}
+        native = public.get("native_api")
+        for kind in ("media_processing","asr"):
+            if kind in kinds and native:
+                operations[kind] = {"path":"/v1"+native["submit"], "query":"/v1"+native["query"],
+                                    "inputs":["url"], "query_method":"POST" if kind=="asr" else "GET"}
+        if "image" in kinds:
+            operations["images.generate"] = {"path":"/v1/images/generations", "inputs":["json"]}
+            if public["reference_image_urls"]:
+                formats = ["url", "file"] if row["api_protocol"] == "openai_compatible" else ["url"]
+                operations["images.edit"] = {"path":"/v1/images/edits", "inputs":formats}
+        if "video" in kinds and row["video_model_type"]:
+            from services.video.capabilities import CAPABILITIES
+            from services.platform.videos import video_size
+            caps = CAPABILITIES.get(row["video_model_type"])
+            if caps:
+                prices = public["pricing"].get("prices", {})
+                resolutions = [r for r in caps.resolutions if prices.get(r, 0) > 0]
+                sizes = [video_size(r, ratio) for r in resolutions for ratio in caps.aspect_ratios if ratio != "adaptive"]
+                seconds = {"min":caps.duration_min, "max":caps.duration_max}
+                inputs = ["url", "file"]
+                if row["api_protocol"] == "openai_video":
+                    from services.video.compatible import compatible_options
+                    compatible = compatible_options(row["processing_options"])
+                    resolutions = [r for r in compatible.resolutions if prices.get(r, 0) > 0]
+                    sizes = [s for s in compatible.sizes if f"{min(map(int,s.split('x')))}p" in resolutions]
+                    seconds = compatible.seconds
+                    inputs = compatible.reference_inputs
+                    if not inputs and set(kinds) == {"video"}:
+                        public["input_modalities"].remove("image")
+                operations["videos.create"] = {"path":"/v1/videos", "inputs":["json", *(["file"] if "file" in inputs else [])], "reference_inputs":inputs, "seconds":seconds,
+                    "resolutions":resolutions, "sizes":sizes, "max_reference_images":caps.max_reference_images if inputs else 0,
+                    "max_reference_videos":caps.max_reference_videos,"max_reference_audios":caps.max_reference_audios}
+                for modality, count in (("video",caps.max_reference_videos),("audio",caps.max_reference_audios)):
+                    if count and modality not in public["input_modalities"]:
+                        public["input_modalities"].append(modality)
+                public["architecture"]["modality"] = "+".join(public["input_modalities"])+"->"+"+".join(public["output_modalities"])
+        public["operations"] = operations
     return models
