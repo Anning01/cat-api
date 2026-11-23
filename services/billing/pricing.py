@@ -130,6 +130,8 @@ def compute_video_cost(
     output_prices = pricing.get("prices")
     if not isinstance(output_prices, dict) or resolution not in output_prices:
         return Decimal("0")
+    if pricing.get("billing_unit") == "call":
+        return _money(_as_decimal(output_prices[resolution]) * _discount(pricing))
     reference_prices = pricing.get("video_reference_prices") or output_prices
     if not isinstance(reference_prices, dict):
         reference_prices = output_prices

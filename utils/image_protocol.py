@@ -9,6 +9,7 @@ class ImageApiProtocol(StrEnum):
     volcengine_ark = "volcengine_ark"
     novelvids = "novelvids"
     openai_video = "openai_video"
+    guangying_fixed = "guangying_fixed"
     unified_video = "unified_video"
     minimax = "minimax"
     autodl = "autodl"

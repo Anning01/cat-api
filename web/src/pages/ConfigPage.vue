@@ -88,6 +88,8 @@ const VIDEO_MODEL_PRESETS: Record<VideoGenerationModelType, { baseUrl: string; m
   seedance_2_mini: { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seedance-2-0-mini-260615', protocol: 'volcengine_ark' },
   seedance_2_5: { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seedance-2-5-260817', protocol: 'volcengine_ark' },
   seedance_2_5_flash: { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seedance-2-5-flash-261115', protocol: 'volcengine_ark' },
+  seedance_2_5_guangying_97: { baseUrl: 'https://api.guangying.store/v1', model: 'gy-model-97', protocol: 'guangying_fixed' },
+  seedance_2_5_guangying_fixed: { baseUrl: 'https://api.guangying.store/v1', model: 'gy-model-100', protocol: 'guangying_fixed' },
   minimax_h3_autodl: { baseUrl: 'https://autodl.art/api/v1/comfyui', model: 'minimax_h3_zm_u24', protocol: 'autodl' },
   minimax_h3: { baseUrl: 'https://api.minimaxi.com', model: 'MiniMax-H3', protocol: 'minimax' },
   wan_3: { baseUrl: 'https://YOUR_WORKSPACE_ID.cn-beijing.maas.aliyuncs.com', model: 'wan3.0-video', protocol: 'dashscope' },
@@ -229,6 +231,9 @@ const selectedVideoPricingPreset = computed(() => (
     ? generationCapabilities.value.video_pricing?.[form.value.video_model_type]
     : undefined
 ))
+const isGuangying97 = computed(() => form.value.video_model_type === 'seedance_2_5_guangying_97')
+const isPerCallVideo = computed(() => selectedCategoryId.value === 'video'
+  && (editingSyncedPricing.value ? syncedVideoBillingUnit.value : selectedVideoPricingPreset.value?.billing_unit) === 'call')
 const isSecondBillingVideo = computed(() => (
   selectedCategoryId.value === 'video'
   && (editingSyncedPricing.value ? syncedVideoBillingUnit.value : selectedVideoPricingPreset.value?.billing_unit) === 'second'
@@ -265,6 +270,7 @@ function taskLabel(value: number) {
 }
 
 function protocolLabel(value: ImageApiProtocol) {
+  if (value === 'guangying_fixed') return tr('光影 AI')
   if (value === 'novelvids') return tr('猫影开放平台')
   if (value === 'volcengine_mediakit') return 'AI MediaKit'
   if (value === 'openai_video') return 'OpenAI Videos'
@@ -289,6 +295,9 @@ const videoProtocolOptions = computed(() => {
 })
 const selectedVideoProtocol = computed(() => videoProtocolOptions.value.find(option => option.value === form.value.api_protocol))
 const selectedVideoProtocolHint = computed(() => {
+  if (form.value.api_protocol === 'guangying_fixed') return isGuangying97.value
+    ? tr('480p / 720p 按成片秒数计费，支持 4–30 秒，可参考图片和音频。')
+    : tr('720p 按条计费，支持 5–30 秒。')
   if (form.value.api_protocol === 'novelvids') return tr('使用平台的 /v1 地址、视频模型 ID 和 API Key。')
   if (form.value.api_protocol === 'openai_video') return tr('填写兼容上游的地址、Key 与模型 ID，按成片秒数计费。')
   if (form.value.video_model_type === 'minimax_h3_autodl') {
@@ -529,11 +538,11 @@ async function saveConfig() {
       pricing = {
         type: 'video',
         currency: 'CNY',
-        billing_unit: isSecondBillingVideo.value ? 'second' : 'token',
+        billing_unit: isPerCallVideo.value ? 'call' : isSecondBillingVideo.value ? 'second' : 'token',
         prices: tierPriceEntries(tierPrices.value),
-        video_reference_prices: tierPriceEntries(videoRefPrices.value),
+        ...(!isPerCallVideo.value && !isGuangying97.value && {video_reference_prices: tierPriceEntries(videoRefPrices.value)}),
       }
-      if (isSecondBillingVideo.value) {
+      if (isSecondBillingVideo.value && !isGuangying97.value) {
         pricing.input_image = {
           first_free: Number(inputImagePricing.value.first_free) || 0,
           price_per_image: Number(inputImagePricing.value.price_per_image) || 0,
@@ -840,14 +849,14 @@ onMounted(()=>{void load()})
           </div>
         </section>
         <section v-else-if="selectedCategoryId === 'video' && pricingTierOptions.length" class="pricing-editor">
-          <span class="pricing-title">{{ isSecondBillingVideo ? tr('生成视频（元 / 秒）') : tr('无视频参考（元 / 百万 token）') }}</span>
+          <span class="pricing-title">{{ isPerCallVideo ? tr('生成视频（元 / 条）') : isSecondBillingVideo ? tr('生成视频（元 / 秒）') : tr('无视频参考（元 / 百万 token）') }}</span>
           <div class="pricing-grid">
             <label v-for="tier in pricingTierOptions" :key="tier">
               <span>{{ tr('分辨率') }} {{ tier }}</span>
               <input v-model.number="tierPrices[tier]" type="number" min="0" step="0.01" />
             </label>
           </div>
-          <div v-if="!['openai_video','autodl'].includes(form.api_protocol)" class="pricing-sub">
+          <div v-if="!isPerCallVideo && !isGuangying97 && !['openai_video','autodl'].includes(form.api_protocol)" class="pricing-sub">
             <span class="pricing-title">{{ isSecondBillingVideo ? tr('输入参考视频（元 / 秒，按输入时长）') : tr('有视频参考（元 / 百万 token）') }}</span>
             <div class="pricing-grid">
               <label v-for="tier in pricingTierOptions" :key="tier">
@@ -856,7 +865,7 @@ onMounted(()=>{void load()})
               </label>
             </div>
           </div>
-          <div v-if="isSecondBillingVideo" class="pricing-sub">
+          <div v-if="isSecondBillingVideo && !isGuangying97" class="pricing-sub">
             <span class="pricing-title">{{ tr('输入参考图片') }}</span>
             <div class="pricing-grid">
               <label><span>{{ tr('免费张数') }}</span><input v-model.number="inputImagePricing.first_free" type="number" min="0" step="1" /></label>

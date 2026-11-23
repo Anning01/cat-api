@@ -6,6 +6,8 @@ def model_identifier(row):
     model = row['model']
     if row.get('video_model_type') == 'minimax_h3_autodl':
         return 'minimax-h3'
+    if row.get('video_model_type') in {'seedance_2_5_guangying_fixed', 'seedance_2_5_guangying_97'}:
+        return 'seedance-2.5'
     if model.startswith('ep-'):
         if row.get('image_model_type') in IMAGE_NAMES:
             return IMAGE_NAMES[row['image_model_type']]

@@ -57,7 +57,7 @@ def public_tariff(raw):
     data["currency"] = "CNY"
     if raw.get("type") in {"text", "image", "video", "asr", "media_processing", "voice_design"}:
         data["type"] = raw["type"]
-    if raw.get("billing_unit") in {"token", "second", "minute", "pixel_tier"}:
+    if raw.get("billing_unit") in {"token", "second", "minute", "pixel_tier", "call"}:
         data["billing_unit"] = raw["billing_unit"]
     for k in ("prices","video_reference_prices"):
         if isinstance(raw.get(k), dict):
@@ -89,7 +89,10 @@ async def model_catalog():
             "model_id":model_identifier(row),
             "task_types": [task for task in task_types if task in PUBLIC_KINDS],
             "created": int(row["created_at"].timestamp()),
-            "image_model_type": row["image_model_type"], "video_model_type": "minimax_h3" if row["video_model_type"] == "minimax_h3_autodl" else row["video_model_type"],
+            "image_model_type": row["image_model_type"],
+            "video_model_type": {"minimax_h3_autodl": "minimax_h3", "seedance_2_5_guangying_fixed": "seedance_2_5",
+                                 "seedance_2_5_guangying_97": "seedance_2_5"}.get(
+                row["video_model_type"], row["video_model_type"]),
             "reference_image_urls": bool(row["image_model_type"] and row["api_protocol"] in {"openai_compatible", "volcengine_ark", "openrouter_compatible"}),
             "pricing": public_tariff(row["pricing"]), "tool_calls": row["supports_tool_calls"],
             "json_output": row["supports_json_output"], "strict_output": row["supports_strict_output"], "text_api": row["text_api"],

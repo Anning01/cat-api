@@ -93,6 +93,10 @@ def _validate_video_pricing(pricing: dict, model_type, options=None) -> None:
     model_key = str(model_type)
     expected_unit = VIDEO_PRICING.get(model_key, {}).get("billing_unit", "token")
     billing_unit = pricing.get("billing_unit", "token")
+    if expected_unit == "call":
+        if billing_unit != "call" or ref_prices or pricing.get("input_image"):
+            raise HTTPException(400, "该渠道按条计费，仅配置成片价格")
+        return
     if billing_unit not in {"token", "second"}:
         raise HTTPException(status_code=400, detail=localized_message('视频计费单位 billing_unit 仅支持 token 或 second'))
     if billing_unit != expected_unit:

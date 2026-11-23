@@ -72,7 +72,7 @@ class VideoRequest(BaseModel):
             width, height = (int(value) for value in self.size.split("x"))
             divisor = gcd(width, height)
             ratio, resolution = f"{width // divisor}:{height // divisor}", f"{min(width, height)}p"
-            for candidate in ("16:9", "9:16"):
+            for candidate in ("16:9", "9:16", "21:9"):
                 if self.size == video_size(resolution, candidate):
                     ratio = candidate
                     break
@@ -123,6 +123,17 @@ async def submit_video(ctx, request, key, *, image=None):
     if image:
         body["file_sha256"] = hashlib.sha256(image[1]).hexdigest()
     def validate(config, _):
+        if config.api_protocol == "guangying_fixed":
+            per_second = config.video_model_type == "seedance_2_5_guangying_97"
+            if not request._specified.intersection({"duration", "seconds"}):
+                request.duration = 4 if per_second else 5
+            if not request._specified.intersection({"aspect_ratio", "size"}):
+                request.aspect_ratio = "9:16"
+            if (config.pricing or {}).get("billing_unit") != ("second" if per_second else "call"):
+                raise HTTPException(422, "光影模型与配置的计费单位不一致")
+            prompt_limit = 10000 if per_second else 20000
+            if len(request.prompt) > prompt_limit:
+                raise HTTPException(422, f"光影提示词最多支持 {prompt_limit} 个字符")
         if config.api_protocol == "autodl" and not request._specified.intersection({"size", "resolution"}):
             request.resolution = "768p"
             request.size = None
@@ -224,7 +235,7 @@ async def submit_video(ctx, request, key, *, image=None):
         from services.platform.video_uploads import store_video_reference
         for ref in refs:
             ref.url = await resolve_reference(ctx.user.id, ref.url)
-            if ref.url.startswith("data:") and config.api_protocol in {"openai_video", "autodl"}:
+            if ref.url.startswith("data:") and config.api_protocol in {"openai_video", "autodl", "guangying_fixed"}:
                 mime, content = decode_media(ref.url, ref.type)
                 if config.api_protocol == "openai_video" and len(refs) == 1 and ref.type == "image" and ref.role == "reference":
                     image = ("reference." + mime.split("/")[1], content, mime)
@@ -235,9 +246,17 @@ async def submit_video(ctx, request, key, *, image=None):
                        and not (image and r.url.startswith("data:"))] for kind in ("image","video","audio")}
         if image and config.api_protocol != "openai_video":
             types["image"] = [await store_video_reference(ctx.user.id, image)]
+        provider_options = {}
+        if config.api_protocol == "guangying_fixed":
+            ordered_refs = [(ref.type, ref.url) for ref in refs]
+            if image:
+                ordered_refs.extend(("image", url) for url in types["image"])
+            provider_options["ordered_references"] = ordered_refs
+        if config.api_protocol in {"openai_video", "guangying_fixed"}:
+            prompt = request.prompt
         with public_upstream(str(receipt.public_id), config.api_key):
             async with asyncio.timeout(CALL_TIMEOUT):
-                upstream_id = await get_generator(config).submit(prompt=request.prompt if config.api_protocol == "openai_video" else prompt,
+                upstream_id = await get_generator(config).submit(prompt=prompt, **provider_options,
                     size=job.inputs["size"], reference_file=image, platform_request_key=receipt.public_id, duration=request.duration,
                     resolution=resolution, aspect_ratio=request.aspect_ratio, output_format="mp4", generate_audio=request.generate_audio,
                     return_last_frame=request.return_last_frame, generation_mode="keyframes" if frames else "reference",
@@ -311,6 +330,8 @@ def measured(inputs, metadata, rates):
     if not nonnegative(seconds) or seconds <= 0:
         return None
     usage = {**{k:v for k,v in inputs.items() if k not in {"stream_content", "poll_errors"}}, "seconds":seconds, "duration_source":"provider" if metadata.get("duration") is not None else "order"}
+    if rates.get("billing_unit") == "call":
+        return {**usage, "calls": 1, "input_video_seconds": 0}
     tokens = raw.get("completion_tokens") if isinstance(raw,dict) else None
     if rates.get("billing_unit") != "second" and type(tokens) is int and tokens > 0:
         return {**usage,"video_tokens":tokens}
@@ -325,7 +346,7 @@ def video_cost(usage,rates):
     rates = {**rates, **{name:{video_price_resolution(k):v for k,v in rates[name].items()}
                          for name in ("prices","video_reference_prices") if rates.get(name)}}
     require_video_price(rates, resolution, has_video_reference=usage["has_video_reference"])
-    if "video_tokens" in usage:
+    if "video_tokens" in usage and rates.get("billing_unit") != "call":
         prices = (rates.get("video_reference_prices") or rates["prices"]) if usage["has_video_reference"] else rates["prices"]
         charge = Decimal(usage["video_tokens"]) * Decimal(str(prices[resolution])) / Decimal(1000000)
         charge *= Decimal(str(rates.get("discount") or 1))
@@ -413,7 +434,7 @@ async def refresh_job(job, receipt, *, renew=False):
                     await PlatformCallReceipt.filter(id=receipt.id,state="processing").update(state="rejected")
         else:
             await ours.update(status="queued" if status==TaskStatusEnum.queued else "in_progress",
-                              inputs={**job.inputs, "poll_errors":0}, progress=result.get("progress") or 0,poll_after=now+5,poll_token=None)
+                              inputs={**job.inputs, "poll_errors":0}, progress=result.get("progress") or 0,poll_after=now+(60 if config.api_protocol=="guangying_fixed" else 5),poll_token=None)
     except Exception as exc:
         errors = job.inputs.get("poll_errors", 0) + 1
         if errors >= 8 and not renew:

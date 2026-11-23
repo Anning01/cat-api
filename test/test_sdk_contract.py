@@ -762,3 +762,91 @@ async def test_job_and_receipt_reject_encoded_payloads_at_write_boundary(sdk_api
         with pytest.raises(ValidationError):
             await rows.update(**{field:bad})
         assert "base64," not in str(await rows.values(field))
+
+
+@pytest.mark.parametrize("seconds,with_assets", [(None, False), ("30", True)])
+async def test_guangying_fixed_routes_assets_and_settles_once(sdk_api, seconds, with_assets):
+    from decimal import Decimal
+    from auth.models import BalanceTransaction
+    from services.billing.catalog import VIDEO_PRICING
+
+    sdk, state, (_, _, config) = sdk_api
+    config.api_protocol = "guangying_fixed"
+    config.video_model_type = "seedance_2_5_guangying_fixed"
+    config.model = "gy-model-100"
+    config.pricing = VIDEO_PRICING[config.video_model_type]
+    await config.save()
+
+    with pytest.raises(APIStatusError) as rejected:
+        await sdk.videos.create(model=config.model, prompt="pan", size="1080x1920")
+    assert rejected.value.status_code == 400 and not state.seen
+
+    refs = [{"type": kind, "url": f"https://cdn.example/{name}?signed=fixture"}
+            for kind, name in [("video", "ref.mp4"), ("image", "ref.png"), ("audio", "ref.wav")]] if with_assets else []
+    state.failure = 200, b'{"data":{"id":"gy-task"}}', {"content-type": "application/json"}
+    options = {"seconds": seconds} if seconds else {}
+    order = dict(model=config.model, prompt="pan @image1" if refs else "pan", extra_body={"references": refs},
+                 extra_headers={"Idempotency-Key": "test-fixed", "Content-Type": "application/json"}, **options)
+    task = await sdk.videos.create(**order)
+    assert (await sdk.videos.create(**order)).id == task.id
+    post, = state.seen
+    assert post.method == "POST" and post.url.path == "/v1/video/generations"
+    assert post.headers["Idempotency-Key"] == task.id
+    assert json.loads(post.content) == {"model": config.model, "prompt": order["prompt"],
+        "duration": int(seconds or 5), "ratio": "9:16", "resolution": "720p", "nativeFace": False,
+        "assets": [{**ref, "name": ref["type"] + "1"} for ref in refs]}
+
+    state.failure = 200, b'{"data":{"status":"succeeded","results":[{"type":"video","url":"https://cdn.example/result.mp4"}]}}', {}
+    assert (await sdk.videos.retrieve(task.id)).status == "completed"
+    assert state.seen[-1].url.path == "/v1/tasks/gy-task"
+    assert (await sdk.videos.retrieve(task.id)).status == "completed"
+    assert await BalanceTransaction.all().values_list("change_amount", flat=True) == [Decimal("-5")]
+
+
+@pytest.mark.parametrize("size,seconds,expected_rate", [("1120x480", "10", "0.40"), ("720x1280", "4", "0.50")])
+async def test_guangying_97_charges_output_seconds(sdk_api, size, seconds, expected_rate):
+    from decimal import Decimal
+    from auth.models import BalanceTransaction
+    from services.billing.catalog import VIDEO_PRICING
+
+    sdk, state, (_, _, config) = sdk_api
+    config.api_protocol = "guangying_fixed"
+    config.video_model_type = "seedance_2_5_guangying_97"
+    config.model = "gy-model-97"
+    config.pricing = VIDEO_PRICING[config.video_model_type]
+    await config.save()
+    from services.platform.model_aliases import ensure_model_alias
+    alias = await ensure_model_alias(config)
+    assert alias == "seedance-2.5-97"
+    model = (await sdk.models.list()).data
+    entry = next(item for item in model if item.id == alias)
+    operation = entry.operations["videos.create"]
+    assert operation["resolutions"] == ["480p", "720p"]
+    assert operation["seconds"] == {"min": 4, "max": 30}
+    assert operation["max_reference_videos"] == 0
+    assert entry.pricing["billing_unit"] == "second"
+    assert entry.pricing["prices"] == {"480p": 0.4, "720p": 0.5}
+
+    headers = {"Content-Type": "application/json"}
+    with pytest.raises(APIStatusError) as rejected:
+        await sdk.videos.create(model=config.model, prompt="pan", extra_headers=headers,
+            extra_body={"references": [{"type": "video", "url": "https://cdn.example/ref.mp4"}]})
+    assert rejected.value.status_code == 422 and not state.seen
+
+    refs = [{"type": "image", "url": "https://cdn.example/ref.png"},
+            {"type": "audio", "url": "https://cdn.example/ref.wav"}]
+    state.failure = 200, b'{"data":{"id":"gy-97-task"}}', {}
+    options = dict(model=alias, prompt="pan", size=size, seconds=seconds,
+                   extra_headers={**headers, "Idempotency-Key": "gy-97-test"}, extra_body={"references": refs})
+    task = await sdk.videos.create(**options)
+    assert (await sdk.videos.create(**options)).id == task.id
+    post, = state.seen
+    body = json.loads(post.content)
+    assert body["model"] == "gy-model-97" and body["duration"] == int(seconds)
+    assert body["resolution"] == f"{min(map(int, size.split('x')))}p"
+    assert body["ratio"] == ("21:9" if size == "1120x480" else "9:16")
+    assert body["assets"] == [{**r, "name": r["type"] + "1"} for r in refs]
+    state.failure = 200, b'{"data":{"status":"succeeded","downloadUrl":"https://cdn.example/result.mp4"}}', {}
+    assert (await sdk.videos.retrieve(task.id)).status == "completed"
+    assert (await sdk.videos.retrieve(task.id)).status == "completed"
+    assert await BalanceTransaction.all().values_list("change_amount", flat=True) == [-Decimal(seconds) * Decimal(expected_rate)]

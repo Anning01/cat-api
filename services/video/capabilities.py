@@ -350,6 +350,24 @@ CAPABILITIES[VideoGenerationModelTypeEnum.openai_video] = VideoModelCapabilities
     max_request_size_mb=50, default_aspect_ratio="9:16", api_protocol=ImageApiProtocol.openai_video,
 )
 
+GUANGYING_RATIOS = ("16:9", "9:16", "4:3", "3:4", "1:1")
+CAPABILITIES[VideoGenerationModelTypeEnum.seedance_2_5_guangying_fixed] = replace(
+    CAPABILITIES[VideoGenerationModelTypeEnum.seedance_2_5], resolutions=("720p",),
+    default_aspect_ratio="9:16", aspect_ratios=GUANGYING_RATIOS,
+    generation_modes=("reference",), aspect_ratios_by_mode={"reference": GUANGYING_RATIOS},
+    duration_min=5, duration_max=30, output_formats=("mp4",), supports_auto_duration=False,
+    supports_audio=False, default_generate_audio=False, supports_return_last_frame=False,
+    api_protocol=ImageApiProtocol.guangying_fixed,
+)
+
+GUANGYING_97_RATIOS = (*GUANGYING_RATIOS, "21:9")
+CAPABILITIES[VideoGenerationModelTypeEnum.seedance_2_5_guangying_97] = replace(
+    CAPABILITIES[VideoGenerationModelTypeEnum.seedance_2_5_guangying_fixed],
+    resolutions=("480p", "720p"), duration_min=4, max_reference_videos=0,
+    reference_video_duration_max=0, reference_video_total_duration_max=0, reference_image_max_size_mb=15,
+    aspect_ratios=GUANGYING_97_RATIOS, aspect_ratios_by_mode={"reference": GUANGYING_97_RATIOS},
+)
+
 PROTOCOL_CAPABILITIES = {
     ImageApiProtocol.unified_video: {
         model_type: replace(
@@ -403,6 +421,7 @@ def validate_protocol(model_type: str | VideoGenerationModelTypeEnum, protocol: 
 
 def protocol_options() -> dict[str, list[dict]]:
     labels = {
+        ImageApiProtocol.guangying_fixed: "光影 AI",
         ImageApiProtocol.openai_video: "OpenAI Videos",
         ImageApiProtocol.novelvids: "猫影开放平台",
         ImageApiProtocol.volcengine_ark: "火山方舟",

@@ -83,7 +83,7 @@ def public_openapi(app):
     number = {"type":"number", "minimum":0}
     integer = {"type":"integer", "minimum":0}
     usage = obj({"prompt_tokens":integer,"completion_tokens":integer,"total_tokens":integer}, description="供应商实际报告用量及扩展字段；字段不强制裁剪")
-    pricing = obj({"type":string(),"currency":string(enum=["CNY"]),"billing_unit":string(enum=["token","second","minute","pixel_tier"]),
+    pricing = obj({"type":string(),"currency":string(enum=["CNY"]),"billing_unit":string(enum=["token","second","minute","pixel_tier","call"]),
         "discount":number,"prices":{"type":"object","additionalProperties":number},
         "input_image":obj({"first_free":integer,"price_per_image":number}),"tiers":array(obj({"short_side_max":integer,"fps_max":number,"price":number})),
         "input_price_per_1m":number,"output_price_per_1m":number,"cache_input_price_per_1m":number,"price_per_minute":number,"price_per_second":number})

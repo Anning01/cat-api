@@ -11,6 +11,7 @@ from fastapi import HTTPException
 
 from models.config import AiModelConfig
 from services.video.autodl import AutoDLVideoGenerator
+from services.video.guangying import GuangyingGenerator
 from services.video.base import BaseVideoGenerator
 from services.video.capabilities import capabilities_for
 from services.video.minimax import MiniMaxH3Generator
@@ -92,6 +93,12 @@ video_generator_factory = VideoGeneratorFactory({
     ),
     VideoGenerationModelTypeEnum.minimax_h3: VideoGeneratorAdapterSpec(
         MiniMaxH3Generator, VideoModelTypeEnum.minimax
+    ),
+    VideoGenerationModelTypeEnum.seedance_2_5_guangying_fixed: VideoGeneratorAdapterSpec(
+        GuangyingGenerator, VideoModelTypeEnum.seedance
+    ),
+    VideoGenerationModelTypeEnum.seedance_2_5_guangying_97: VideoGeneratorAdapterSpec(
+        GuangyingGenerator, VideoModelTypeEnum.seedance
     ),
     VideoGenerationModelTypeEnum.minimax_h3_autodl: VideoGeneratorAdapterSpec(
         AutoDLVideoGenerator, VideoModelTypeEnum.minimax

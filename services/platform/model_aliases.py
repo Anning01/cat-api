@@ -17,6 +17,8 @@ VIDEO_NAMES = {
     'seedance_2':'seedance-2.0', 'seedance_2_fast':'seedance-2.0-fast',
     'seedance_2_mini':'seedance-2.0-mini', 'seedance_2_5':'seedance-2.5',
     'seedance_2_5_flash':'seedance-2.5-flash',
+    'seedance_2_5_guangying_97':'seedance-2.5-97',
+    'seedance_2_5_guangying_fixed':'seedance-2.5-fixed',
     'minimax_h3':'minimax-h3', 'minimax_h3_autodl':'minimax-h3', 'wan_3':'wan3',
 }
 

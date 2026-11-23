@@ -25031,7 +25031,8 @@
                         "token",
                         "second",
                         "minute",
-                        "pixel_tier"
+                        "pixel_tier",
+                        "call"
                       ]
                     },
                     "discount": {

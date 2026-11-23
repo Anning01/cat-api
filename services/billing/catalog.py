@@ -23,6 +23,8 @@ IMAGE_PRICING = {
 }
 
 VIDEO_PRICING: dict[str, dict] = {
+    "seedance_2_5_guangying_97": {"type": "video", "currency": "CNY", "billing_unit": "second", "prices": {"480p": 0.40, "720p": 0.50}},
+    "seedance_2_5_guangying_fixed": {"type": "video", "currency": "CNY", "billing_unit": "call", "prices": {"720p": 5}},
     "openai_video": {"type": "video", "currency": "CNY", "billing_unit": "second", "prices": {}},
     "seedance_2": {
         "type": "video",

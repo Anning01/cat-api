@@ -33,7 +33,7 @@ export function pricingRows(model: PricedModel): ModelPriceRow[] {
   const pricing = model.pricing
   const rows: ModelPriceRow[] = []
   const unit = model.kinds.includes('image') ? tr('张') : pricing.billing_unit === 'second' ? tr('秒')
-    : pricing.billing_unit === 'minute' ? tr('分钟') : tr('百万 token')
+    : pricing.billing_unit === 'call' ? tr('条') : pricing.billing_unit === 'minute' ? tr('分钟') : tr('百万 token')
   for (const [field, label] of [
     ['input_price_per_1m', tr('输入单价')], ['output_price_per_1m', tr('输出单价')], ['cache_input_price_per_1m', tr('缓存输入')],
   ] as const) {
@@ -62,6 +62,10 @@ export function catalogVideoPrices(pricing: ModelPricing) {
 
   for (const [tier, price] of Object.entries(pricing.prices ?? {}).sort(([a], [b]) => compareTiers(a, b))) {
     if (!Number.isFinite(price) || price <= 0) continue  // Zero output prices disable the tier.
+    if (pricing.billing_unit === 'call') {
+      output.push({ label: tier, value: price, unit: tr('条') })
+      continue
+    }
     const factor = bySecond ? 1 : videoTokenRatePerSecond(1, tier)
     if (factor === undefined) continue
     output.push({ label: `${tier} · ${tr('无参考素材')}`, value: price * factor, unit, approximate: !bySecond })
