@@ -110,3 +110,14 @@ def test_proposed_wire_types_reject_private_fields_and_invalid_timestamps():
     for start, end in ((2,1), (-1,1), (0,float("nan"))):
         with pytest.raises(ValidationError):
             TranscriptSegment(start=start, end=end, text="fixture")
+
+
+def test_public_video_tariff_declares_legacy_token_unit_and_preserves_channel_units():
+    from services.platform.catalog import public_tariff
+
+    base = {"type": "video", "prices": {"720p": 5}}
+    assert public_tariff(base)["billing_unit"] == "token"
+    for unit in ("token", "call", "second"):
+        assert public_tariff({**base, "billing_unit": unit}) == {
+            **base, "currency": "CNY", "billing_unit": unit,
+        }

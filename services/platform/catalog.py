@@ -59,6 +59,8 @@ def public_tariff(raw):
         data["type"] = raw["type"]
     if raw.get("billing_unit") in {"token", "second", "minute", "pixel_tier", "call"}:
         data["billing_unit"] = raw["billing_unit"]
+    elif raw.get("type") == "video" and "billing_unit" not in raw:
+        data["billing_unit"] = "token"
     for k in ("prices","video_reference_prices"):
         if isinstance(raw.get(k), dict):
             data[k] = {str(tier):v for tier,v in raw[k].items() if number(v)}

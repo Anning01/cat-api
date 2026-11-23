@@ -29,6 +29,20 @@ for model in client.models.list().data:
 
 尺寸、时长、参考图数量与工具能力以所选模型配置为准。Seedance、MiniMax、Wan 原生 SDK 的路径和协议不同，接入本文公共接口时使用以下 JSON 协议。
 
+## 同步视频价格
+
+工作台按渠道的稳定 ID 合并 `GET /models` 返回的记录。即使两个渠道属于同一个 `video_model_type`，也要分别读取各自的 `pricing`。首次导入和刷新已有渠道使用同一规则。
+
+| `pricing.billing_unit` | `pricing.prices[分辨率]` 的单位 |
+|---|---|
+| `call` | 元 / 条成功成片，与时长无关 |
+| `second` | 元 / 秒成片 |
+| `token` | 元 / 百万视频 token |
+
+例如 `{"type":"video","currency":"CNY","billing_unit":"call","prices":{"720p":5}}` 仅展示 720p，每条 5 元。价格编辑器从 `prices` 读取档位，从 `video_reference_prices` 和 `input_image` 读取可选参考素材费用。生成参数以同一渠道的 `operations["videos.create"]` 为准。
+
+同步时整体更新基础费率、单位和档位，保留工作台自己的收费倍率和启停设置。历史目录中省略单位的视频费率沿用 token 计费。遇到显式声明但尚不支持的单位时，将该渠道标记为不兼容。已受理任务继续使用原价格快照。
+
 ## 临时素材：POST /media/uploads
 
 用户已有的 HTTPS 地址和带 MIME 的 Base64 data URL 可随生成请求提交。只有供应商需要拉取本地媒体时才申请临时上传。票据按账户限额管理，客户端按返回地址直传至配置的存储。
