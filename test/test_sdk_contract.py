@@ -395,6 +395,8 @@ async def test_http_200_business_errors_keep_original_body(sdk_api, endpoint):
 async def test_external_api_key_gets_scoped_upload_metadata_without_file_proxy(sdk_api, monkeypatch):
     import hashlib
     from auth.models import StudioMediaLease
+    from config import settings
+    monkeypatch.setattr(settings, "OSS_PROVIDER", "aliyun")
     from services.oss.temporary import TemporaryBucket
     sdk, _, _ = sdk_api
     monkeypatch.setattr("services.platform.temporary_media.bucket_config",
@@ -405,7 +407,7 @@ async def test_external_api_key_gets_scoped_upload_metadata_without_file_proxy(s
         headers={"authorization":"Bearer " + sdk.api_key})
     assert reply.status_code == 200
     ticket = reply.json()
-    assert "x-oss-expires=172800" in ticket["read_url"] and "x-oss-expires=600" in ticket["upload_url"]
+    assert ticket["media_ref"].startswith("https://cat-media.invalid/") and "read_url" not in ticket and "x-oss-expires=600" in ticket["upload_url"]
     assert "fixture-secret" not in reply.text and ticket["headers"]["content-length"] == "123"
     lease = await StudioMediaLease.get()
     assert "/" + str(lease.account_user_id) + "/" in lease.object_key
@@ -442,6 +444,8 @@ async def test_upstream_inline_image_is_never_forwarded(sdk_api):
 
 async def test_direct_upload_then_url_generation_with_an_external_key(sdk_api, monkeypatch):
     import hashlib
+    from config import settings
+    monkeypatch.setattr(settings, "OSS_PROVIDER", "aliyun")
     from services.oss.temporary import TemporaryBucket
     sdk, state, models = sdk_api
     image = models[1]
@@ -466,10 +470,11 @@ async def test_direct_upload_then_url_generation_with_an_external_key(sdk_api, m
         # This client is deliberately separate from the platform request transport.
         response = await storage.put(ticket["upload_url"], headers=ticket["headers"], content=pixels)
     assert response.status_code == 200 and stored == [pixels]
-    result = await sdk.images.generate(model=image.model,prompt="reference",extra_body={"image":[ticket["read_url"]]})
+    result = await sdk.images.generate(model=image.model,prompt="reference",extra_body={"image":[ticket["media_ref"]]})
     assert result.data[0].url == "https://cdn.example/result.png"
     sent = json.loads(state.seen[-1].content)
-    assert sent["image"] == [ticket["read_url"]] and sent["response_format"] == "url"
+    assert sent["image"][0].startswith("https://example-bucket.oss-cn-hangzhou.aliyuncs.com/")
+    assert "x-oss-expires=3600" in sent["image"][0] and sent["response_format"] == "url"
     assert pixels not in state.seen[-1].content
 
 
@@ -719,3 +724,41 @@ async def test_image_watermark_defaults_only_for_ark(sdk_api, protocol, explicit
     reference_field = {"volcengine_ark": "image", "openai_compatible": "images",
                        "openrouter_compatible": "input_references"}[protocol]
     assert bool(sent.get(reference_field)) is with_reference
+
+
+async def test_inline_media_reaches_model_without_lease_or_database_payload(sdk_api):
+    from auth.models import StudioMediaLease
+    sdk, state, models = sdk_api
+    image = models[1]
+    await AiModelConfig.filter(id=image.id).update(api_protocol="volcengine_ark", image_model_type="seedream_5_pro",
+        pricing={"type":"image", "prices":{"1.5K":0.2}})
+    source = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"a"*4096).decode()
+    await sdk.images.generate(model=image.model, prompt="reference", extra_body={"image":[source]})
+    assert json.loads(state.seen[-1].content)["image"] == [source]
+    assert not await StudioMediaLease.exists()
+    rows = await PlatformCallReceipt.all().values()
+    assert rows and source[40:240] not in str(rows)
+
+
+async def test_inline_vision_chat_persists_only_receipt_metadata(sdk_api):
+    from auth.models import StudioMediaLease
+    sdk, state, (model, _, _) = sdk_api
+    raw = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"test"*300).decode()
+    await sdk.chat.completions.create(model=model.model, messages=[{"role":"user","content":[
+        {"type":"image_url","image_url":{"url":raw}}]}])
+    assert json.loads(state.seen[-1].content)["messages"][0]["content"][0]["image_url"]["url"] == raw
+    assert not await StudioMediaLease.exists()
+    assert raw[40:160] not in str(await PlatformCallReceipt.all().values())
+
+
+async def test_job_and_receipt_reject_encoded_payloads_at_write_boundary(sdk_api):
+    from tortoise.exceptions import ValidationError
+    from auth.models import PlatformVideoJob
+    sdk, _, _ = sdk_api
+    await sdk.videos.create(model="official-video", prompt="test", seconds="4", size="1280x720")
+    bad = {"error":{"debug":"data:image/png;base64," + "A"*10000}}
+    for rows, field in [(PlatformVideoJob.all(),"inputs"), (PlatformVideoJob.all(),"output"),
+                        (PlatformCallReceipt.all(),"usage")]:
+        with pytest.raises(ValidationError):
+            await rows.update(**{field:bad})
+        assert "base64," not in str(await rows.values(field))

@@ -136,8 +136,11 @@ def response_usage(usage):
 
 async def complete(ctx, body, key, *, responses=False):
     params = body.model_dump(mode="json", exclude_unset=True)
+    from services.platform.temporary_media import resolve_payload
+    outgoing = await resolve_payload(ctx.user.id, params)
     config, receipt = await admit(ctx, body.model, params, key, kind="text" if responses else ("text", "voice_design"))
     headers = {"X-Request-Id":str(receipt.public_id), "X-Cat-Request-Id":str(receipt.public_id), "Cache-Control":"no-store"}
+    params = outgoing
     client = None
     deadline = asyncio.get_running_loop().time() + CALL_TIMEOUT
     try:

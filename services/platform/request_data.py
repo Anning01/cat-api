@@ -3,6 +3,7 @@ import json
 
 from fastapi import HTTPException, Request
 from pydantic import ValidationError
+from services.platform.inline_media import MAX_INLINE_JSON, decode_media
 
 MAX_REQUEST_BYTES = 1024 * 1024
 
@@ -20,6 +21,36 @@ def reject_inline_media(value):
         raise HTTPException(422, "Inline media is not accepted; use temporary OSS URLs")
 
 
+def validate_media_inputs(value, field=""):
+    """Return the encoded media length so metadata keeps its independent 1 MiB limit."""
+    if isinstance(value, dict):
+        if field == "input_audio" and {"data", "format"} <= value.keys():
+            mime = {"wav":"audio/wav", "mp3":"audio/mpeg"}.get(value["format"]) if isinstance(value["format"], str) else None
+            encoded = value["data"]
+            if not isinstance(encoded, str) or not mime:
+                raise HTTPException(422, "input_audio 需要有效的音频格式和 Base64 数据")
+            try:
+                decode_media("data:" + mime + ";base64," + encoded, "audio")
+            except ValueError as error:
+                raise HTTPException(422, str(error)) from None
+            return len(encoded)
+        if "file_data" in value or "b64_json" in value:
+            raise HTTPException(422, "请在媒体输入字段中使用 Base64 data URL")
+        return sum(validate_media_inputs(child, name) for name, child in value.items())
+    if isinstance(value, list):
+        return sum(validate_media_inputs(child, field) for child in value)
+    if isinstance(value, str) and value.lstrip().lower().startswith("data:"):
+        if (field not in {"url", "image_url", "image", "input_reference", "first_frame_image", "last_frame_image"}
+                and not field.endswith("_url") and not field.startswith(("ref_image_", "ref_audio_"))):
+            raise HTTPException(422, "Base64 仅支持媒体输入字段")
+        try:
+            decode_media(value)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+        return len(value)
+    return 0
+
+
 async def bounded_json_body(request: Request, *, allow_form=False):
     if request.method not in {"POST", "PUT", "PATCH"}:
         return
@@ -29,19 +60,21 @@ async def bounded_json_body(request: Request, *, allow_form=False):
     if content_type != "application/json":
         raise HTTPException(400, "Send JSON with media URLs; request a direct upload at /v1/media/uploads")
     length = request.headers.get("content-length")
-    if length and length.isdigit() and int(length) > MAX_REQUEST_BYTES:
-        raise HTTPException(413, "JSON request exceeds 1 MB; upload media directly to temporary OSS")
+    if length and length.isdigit() and int(length) > MAX_INLINE_JSON:
+        raise HTTPException(413, "JSON 请求超过 16 MiB，请使用临时上传或 HTTPS 地址")
     body = bytearray()
     async for chunk in request.stream():
-        if len(body) + len(chunk) > MAX_REQUEST_BYTES:
-            raise HTTPException(413, "JSON request exceeds 1 MB; upload media directly to temporary OSS")
+        if len(body) + len(chunk) > MAX_INLINE_JSON:
+            raise HTTPException(413, "JSON 请求超过 16 MiB，请使用临时上传或 HTTPS 地址")
         body.extend(chunk)
     request._body = bytes(body)
     try:
         data = json.loads(body)
     except ValueError:
         raise HTTPException(400, "Request body must be valid JSON") from None
-    reject_inline_media(data)
+    encoded_size = validate_media_inputs(data)
+    if len(body) - encoded_size > MAX_REQUEST_BYTES:
+        raise HTTPException(413, "JSON metadata exceeds 1 MB")
 
 
 def validated_body(schema, values):

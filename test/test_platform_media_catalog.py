@@ -83,15 +83,20 @@ async def test_owned_media_rejects_cross_account_expired_and_wrong_kind(monkeypa
 
 
 async def test_upload_returns_recoverable_owned_media_identifier(monkeypatch):
+    from config import settings
+    from services.balance import top_up
+    from decimal import Decimal
+    monkeypatch.setattr(settings, "OSS_PROVIDER", "aliyun")
     user = await User.create(username="media-uploader")
+    await top_up(user.id, Decimal("1"))
     bucket = SimpleNamespace(bucket="test-bucket", region="test-region", sign=lambda *args: "signed-url")
     monkeypatch.setattr("services.platform.temporary_media.bucket_config", lambda: bucket)
     response = await issue_upload(user.id, UploadSpec(content_type="audio/wav", byte_length=100,
         content_md5="AAAAAAAAAAAAAAAAAAAAAA=="))
-    lease = await StudioMediaLease.get(id=response["media_id"])
+    lease = await StudioMediaLease.get(account_user_id=user.id)
     assert lease.account_user_id == user.id
-    assert response["upload_url"] == response["read_url"] == "signed-url"
-    assert await owned_media_url(user.id, response["media_id"], "audio") == "signed-url"
+    assert response["upload_url"] == "signed-url" and "read_url" not in response and "media_id" not in response
+    assert await owned_media_url(user.id, lease.id, "audio") == "signed-url"
     await StudioMediaLease.filter(id=lease.id).update(bucket="other-bucket")
     with pytest.raises(HTTPException) as error:
         await owned_media_url(user.id, lease.id, "audio")

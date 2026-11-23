@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Cat API · 模型开放平台",
-    "description": "Cat API 模型开放平台。供应商原生请求与结果按原格式转发，仅进行鉴权、模型路由、任务归属与计费。\n\n**媒体规则**：先调用 `/media/uploads` 申请临时直传，文件直接 PUT 到 OSS，再把 `read_url` 放入生成请求。普通生成接口不接收 Base64 文件、data URL、内联音频或文件；OpenAI 兼容图片渠道的 `/images/edits` 支持标准 multipart 文件编辑和按请求返回 URL/Base64，视频 /videos 也接收单张参考图文件，其他接口沿用 URL 规则。不开放图片二进制流式输出。MD5 摘要的 Base64 编码不属于文件内容。\n\n**身份与编号**：平台 Key 填入 Bearer；部分原生协议也支持对应鉴权头。使用目录 `nv-ID` 或 `X-Cat-Model` 选择通道。供应商 `X-Request-Id` 和任务 ID 保留，平台账务 UUID 位于 `X-Cat-Request-Id`（兼容 `X-Novelvids-Request-Id`）。\n\n**计费**：成功结果不因计费暂时失败而被替换。使用 `/requests` 查询 pending、settled、review、not_charged。平台金额包含折扣，不能重复打折。Seedream 5.5/5.0 Pro 可按 pixel_tier 与实际输出档位计费，模型与价格以运行环境 `/models` 为准。\n\n**接入**：视频生成使用 `/videos` 或目录声明的供应商原生入口。原生路径在平台根地址和本文件 server `/v1` 下均可使用。示例模型 ID、URL 与任务 ID 仅供导入和阅读，不代表真实可用配置。",
+    "description": "Cat API 模型开放平台。供应商原生请求与结果按原格式转发，仅进行鉴权、模型路由、任务归属与计费。\n\n**媒体输入**可使用自己的 HTTPS 地址或带 MIME 的 Base64 data URL。需要暂存时调用 `/media/uploads` 并 PUT 文件，在生成参数中使用返回的 `media_ref`。该引用限本账户使用，最长保留两天。\n\n**身份与编号**：平台 Key 填入 Bearer；部分原生协议也支持对应鉴权头。使用目录 `nv-ID` 或 `X-Cat-Model` 选择通道。供应商 `X-Request-Id` 和任务 ID 保留，平台账务 UUID 位于 `X-Cat-Request-Id`（兼容 `X-Novelvids-Request-Id`）。\n\n**计费**：成功结果不因计费暂时失败而被替换。使用 `/requests` 查询 pending、settled、review、not_charged。平台金额包含折扣，不能重复打折。Seedream 5.5/5.0 Pro 可按 pixel_tier 与实际输出档位计费，模型与价格以运行环境 `/models` 为准。\n\n**接入**：视频生成使用 `/videos` 或目录声明的供应商原生入口。原生路径在平台根地址和本文件 server `/v1` 下均可使用。示例模型 ID、URL 与任务 ID 仅供导入和阅读，不代表真实可用配置。",
     "version": "1.1.0"
   },
   "paths": {
@@ -878,7 +878,7 @@
           }
         ],
         "x-apifox-folder": "视频/Seedance",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -1779,7 +1779,7 @@
           }
         ],
         "x-apifox-folder": "视频/Seedance",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。"
       }
     },
     "/v2/video_generation": {
@@ -2658,7 +2658,7 @@
           }
         ],
         "x-apifox-folder": "视频/MiniMax",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -3555,7 +3555,7 @@
           }
         ],
         "x-apifox-folder": "视频/MiniMax",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。"
       }
     },
     "/api/v1/services/aigc/video-generation/video-synthesis": {
@@ -4433,7 +4433,7 @@
           }
         ],
         "x-apifox-folder": "视频/Wan3",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -5342,7 +5342,7 @@
           }
         ],
         "x-apifox-folder": "视频/Wan3",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。 此路径也用于 MediaKit 画质增强查询，由任务归属自动选择通道；无需创建重复接口。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。 此路径也用于 MediaKit 画质增强查询，由任务归属自动选择通道；无需创建重复接口。"
       }
     },
     "/api/v1/comfyui/comfyui_workflow/result/{task_id}": {
@@ -6226,7 +6226,7 @@
           }
         ],
         "x-apifox-folder": "视频/AutoDL",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。"
       }
     },
     "/api/v1/comfyui/comfyui_workflow/{workflow_id}": {
@@ -7132,7 +7132,7 @@
           }
         ],
         "x-apifox-folder": "视频/AutoDL",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。"
       }
     },
     "/api/v1/tools/enhance-video-generative": {
@@ -8003,7 +8003,7 @@
           }
         ],
         "x-apifox-folder": "视频/画质增强",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -8903,7 +8903,7 @@
           }
         ],
         "x-apifox-folder": "图片/Seedream",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -9820,7 +9820,7 @@
           }
         ],
         "x-apifox-folder": "图片/OpenAI 兼容",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。 此目录按 OpenAI 兼容形状展示；原通用入口仍可用 model 路由其他图片通道。Seedream 和 OpenRouter 各有独立原生入口。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。 此目录按 OpenAI 兼容形状展示；原通用入口仍可用 model 路由其他图片通道。Seedream 和 OpenRouter 各有独立原生入口。"
       }
     },
     "/images/edits": {
@@ -11154,7 +11154,7 @@
           }
         ],
         "x-apifox-folder": "图片/OpenAI 兼容",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。\nOpenAI 兼容图片渠道支持 multipart 文件表单：1 至 16 张 image/image[]，可选一张 PNG mask；单文件最多 50 MiB，总请求最多 64 MiB。支持 response_format=url 或 b64_json；其他协议仅支持 JSON URL。文件先鉴权后解析，按文件摘要保证幂等，不自动重提。 此目录按 OpenAI 兼容形状展示；原通用入口仍可用 model 路由其他图片通道。Seedream 和 OpenRouter 各有独立原生入口。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。\nOpenAI 兼容图片渠道支持 multipart 文件表单：1 至 16 张 image/image[]，可选一张 PNG mask；单文件最多 50 MiB，总请求最多 64 MiB。支持 response_format=url 或 b64_json；其他协议仅支持 JSON URL。文件先鉴权后解析，按文件摘要保证幂等，不自动重提。 此目录按 OpenAI 兼容形状展示；原通用入口仍可用 model 路由其他图片通道。Seedream 和 OpenRouter 各有独立原生入口。"
       }
     },
     "/images": {
@@ -12057,7 +12057,7 @@
           }
         ],
         "x-apifox-folder": "图片/OpenRouter",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。"
       }
     },
     "/chat/completions": {
@@ -13035,7 +13035,7 @@
           }
         ],
         "x-apifox-folder": "LLM/对话与流式输出",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。\n客户端显式参数及扩展字段原样透传，支持的 thinking／reasoning_effort 格式与档位由上游模型决定；模型能力标签不拦截请求。仅在客户端省略参数时使用管理员配置的默认思考参数。\n音色设计须选择 task_types=[12] 的渠道，提供 user 描述、assistant 试听台词、audio.format=wav、stream=false。返回原始 Base64 WAV；按完整 WAV 实际输出秒数和受理时 price_per_second 结算，回执 usage.seconds 由 X-Cat-Request-Id 关联。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。\n客户端显式参数及扩展字段原样透传，支持的 thinking／reasoning_effort 格式与档位由上游模型决定；模型能力标签不拦截请求。仅在客户端省略参数时使用管理员配置的默认思考参数。\n音色设计须选择 task_types=[12] 的渠道，提供 user 描述、assistant 试听台词、audio.format=wav、stream=false。返回原始 Base64 WAV；按完整 WAV 实际输出秒数和受理时 price_per_second 结算，回执 usage.seconds 由 X-Cat-Request-Id 关联。"
       }
     },
     "/responses": {
@@ -13954,7 +13954,7 @@
           }
         ],
         "x-apifox-folder": "LLM/对话与流式输出",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。\n原生 Responses 透传；text.format 支持范围由上游决定，包含 json_schema；终态为 response.completed / response.incomplete / response.failed，不添加 [DONE]。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。\n原生 Responses 透传；text.format 支持范围由上游决定，包含 json_schema；终态为 response.completed / response.incomplete / response.failed，不添加 [DONE]。"
       }
     },
     "/api/v3/auc/bigmodel/submit": {
@@ -14849,7 +14849,7 @@
           }
         ],
         "x-apifox-folder": "音频/SeedASR",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -15797,7 +15797,7 @@
           }
         ],
         "x-apifox-folder": "音频/SeedASR",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -16748,7 +16748,7 @@
           }
         ],
         "x-apifox-folder": "公共能力/模型与账户",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。 普通客户端默认返回公开调用别名（如 gpt-image-2.6-sunburst-discount），name 与 ID 相同，不使用后台显示昵称。平台把该别名映射到唯一渠道和供应商原模型名；保留折扣渠道和独立价格，不合并或切换渠道。architecture 提供 OpenRouter 形式的输入/输出模态，endpoints 为平台实际可调用路径。identifier=legacy 返回历史 nv-ID；X-NovelVids-Capabilities 请求头保留旧工作台视图。identifier=alias 可显式请求公开别名视图。所有视图按同一 Key 权限过滤。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。 普通客户端默认返回公开调用别名（如 gpt-image-2.6-sunburst-discount），name 与 ID 相同，不使用后台显示昵称。平台把该别名映射到唯一渠道和供应商原模型名；保留折扣渠道和独立价格，不合并或切换渠道。architecture 提供 OpenRouter 形式的输入/输出模态，endpoints 为平台实际可调用路径。identifier=legacy 返回历史 nv-ID；X-NovelVids-Capabilities 请求头保留旧工作台视图。identifier=alias 可显式请求公开别名视图。所有视图按同一 Key 权限过滤。"
       }
     },
     "/account": {
@@ -17599,13 +17599,13 @@
           }
         ],
         "x-apifox-folder": "公共能力/模型与账户",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。",
         "parameters": []
       }
     },
     "/media/uploads": {
       "post": {
-        "summary": "申请 OSS 临时直传票据",
+        "summary": "申请临时模型素材上传票据",
         "operationId": "createTemporaryUpload",
         "requestBody": {
           "content": {
@@ -17661,14 +17661,13 @@
                   "$ref": "#/components/schemas/UploadTicket"
                 },
                 "example": {
-                  "media_id": 1,
                   "upload_url": "https://upload.example/reference.png",
                   "headers": {
                     "content-type": "image/png",
                     "content-length": "12345",
                     "content-md5": "1B2M2Y8AsgTpgAmY7PhCfg=="
                   },
-                  "read_url": "https://cdn.example/reference.png",
+                  "media_ref": "https://cat-media.invalid/studio-temporary/v1/1/0123456789abcdef0123456789abcdef.png",
                   "expires_at": 1700172800
                 }
               }
@@ -18476,18 +18475,8 @@
           }
         ],
         "x-apifox-folder": "公共能力/临时上传",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "description": "每次逻辑调用的唯一标识；不确定是否受理时先查回执，不换键盲目重试。",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        "description": "1. 使用 Cat API Key 提交文件的 MIME 类型、实际字节数和内容 MD5 的 Base64 摘要，账户余额须大于零。\n2. 使用返回的 headers 向 upload_url 发送 PUT，正文为原始文件字节。OSS 模式下客户端直传 OSS；本地模式下客户端上传到 Cat API 服务器。\n3. 上传成功后，将 media_ref 原样填入生成请求，例如图片请求的 image 数组。平台为模型解析读取地址，临时素材最多保留 48 小时。\n已有公网 HTTPS 地址可直接用于生成。旧客户端需将读取票据的字段从 read_url 改为 media_ref。",
+        "parameters": []
       }
     },
     "/requests/{request_id}": {
@@ -19375,7 +19364,7 @@
           }
         ],
         "x-apifox-folder": "公共能力/调用与结算",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。"
       }
     },
     "/requests": {
@@ -20264,7 +20253,7 @@
           }
         ],
         "x-apifox-folder": "公共能力/调用与结算",
-        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
+        "description": "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。"
       }
     },
     "/videos": {
@@ -22356,7 +22345,7 @@
                 "description": "成片 URL",
                 "schema": {
                   "type": "string",
-                  "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                  "description": "可通过 HTTPS 访问的资源地址",
                   "format": "uri",
                   "pattern": "^https://"
                 }
@@ -23231,7 +23220,7 @@
                 "description": "成片 URL",
                 "schema": {
                   "type": "string",
-                  "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                  "description": "可通过 HTTPS 访问的资源地址",
                   "format": "uri",
                   "pattern": "^https://"
                 }
@@ -25352,7 +25341,7 @@
               "properties": {
                 "url": {
                   "type": "string",
-                  "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                  "description": "可通过 HTTPS 访问的资源地址",
                   "format": "uri",
                   "pattern": "^https://"
                 },
@@ -25381,7 +25370,7 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                  "description": "可通过 HTTPS 访问的资源地址",
                   "format": "uri",
                   "pattern": "^https://"
                 },
@@ -25390,7 +25379,7 @@
                   "properties": {
                     "url": {
                       "type": "string",
-                      "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                      "description": "可通过 HTTPS 访问的资源地址",
                       "format": "uri",
                       "pattern": "^https://"
                     }
@@ -25412,13 +25401,9 @@
       "UploadTicket": {
         "type": "object",
         "properties": {
-          "media_id": {
-            "type": "integer",
-            "minimum": 0
-          },
           "upload_url": {
             "type": "string",
-            "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+            "description": "10 分钟有效。按 headers 向此地址 PUT 文件原文。",
             "format": "uri",
             "pattern": "^https://"
           },
@@ -25426,25 +25411,25 @@
             "type": "object",
             "additionalProperties": {
               "type": "string"
-            }
+            },
+            "description": "PUT 上传所需的请求头。上传时只发送这些头，平台 API Key 仅用于调用 Cat API。"
           },
-          "read_url": {
+          "media_ref": {
             "type": "string",
-            "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
-            "format": "uri",
-            "pattern": "^https://"
+            "description": "上传成功后原样填入生成接口的媒体字段，仅当前账户可用。该引用不提供公开下载。",
+            "format": "uri"
           },
           "expires_at": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "素材引用的到期时间，Unix 时间戳（秒）。"
           }
         },
         "additionalProperties": true,
         "required": [
-          "media_id",
           "upload_url",
           "headers",
-          "read_url",
+          "media_ref",
           "expires_at"
         ]
       },
@@ -25507,13 +25492,13 @@
             "properties": {
               "url": {
                 "type": "string",
-                "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                "description": "可通过 HTTPS 访问的资源地址",
                 "format": "uri",
                 "pattern": "^https://"
               },
               "last_frame_url": {
                 "type": "string",
-                "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                "description": "可通过 HTTPS 访问的资源地址",
                 "format": "uri",
                 "pattern": "^https://"
               },
@@ -25554,13 +25539,13 @@
             "properties": {
               "video_url": {
                 "type": "string",
-                "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                "description": "可通过 HTTPS 访问的资源地址",
                 "format": "uri",
                 "pattern": "^https://"
               },
               "last_frame_url": {
                 "type": "string",
-                "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                "description": "可通过 HTTPS 访问的资源地址",
                 "format": "uri",
                 "pattern": "^https://"
               }
@@ -25626,7 +25611,7 @@
           },
           "video_url": {
             "type": "string",
-            "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+            "description": "可通过 HTTPS 访问的资源地址",
             "format": "uri",
             "pattern": "^https://"
           },
@@ -25660,7 +25645,7 @@
               },
               "video_url": {
                 "type": "string",
-                "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                "description": "可通过 HTTPS 访问的资源地址",
                 "format": "uri",
                 "pattern": "^https://"
               },
@@ -25724,7 +25709,7 @@
                     },
                     "url": {
                       "type": "string",
-                      "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                      "description": "可通过 HTTPS 访问的资源地址",
                       "format": "uri",
                       "pattern": "^https://"
                     }
@@ -25762,7 +25747,7 @@
             "properties": {
               "video_url": {
                 "type": "string",
-                "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                "description": "可通过 HTTPS 访问的资源地址",
                 "format": "uri",
                 "pattern": "^https://"
               },
@@ -25880,7 +25865,7 @@
                   "properties": {
                     "url": {
                       "type": "string",
-                      "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                      "description": "可通过 HTTPS 访问的资源地址",
                       "format": "uri",
                       "pattern": "^https://"
                     }
@@ -25892,7 +25877,7 @@
                   "properties": {
                     "url": {
                       "type": "string",
-                      "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                      "description": "可通过 HTTPS 访问的资源地址",
                       "format": "uri",
                       "pattern": "^https://"
                     }
@@ -25904,7 +25889,7 @@
                   "properties": {
                     "url": {
                       "type": "string",
-                      "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                      "description": "可通过 HTTPS 访问的资源地址",
                       "format": "uri",
                       "pattern": "^https://"
                     }
@@ -25981,7 +25966,7 @@
                   "properties": {
                     "url": {
                       "type": "string",
-                      "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                      "description": "可通过 HTTPS 访问的资源地址",
                       "format": "uri",
                       "pattern": "^https://"
                     }
@@ -25993,7 +25978,7 @@
                   "properties": {
                     "url": {
                       "type": "string",
-                      "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                      "description": "可通过 HTTPS 访问的资源地址",
                       "format": "uri",
                       "pattern": "^https://"
                     }
@@ -26005,7 +25990,7 @@
                   "properties": {
                     "url": {
                       "type": "string",
-                      "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                      "description": "可通过 HTTPS 访问的资源地址",
                       "format": "uri",
                       "pattern": "^https://"
                     }
@@ -26090,7 +26075,7 @@
                       "properties": {
                         "url": {
                           "type": "string",
-                          "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                          "description": "可通过 HTTPS 访问的资源地址",
                           "format": "uri",
                           "pattern": "^https://"
                         }
@@ -26102,7 +26087,7 @@
                       "properties": {
                         "url": {
                           "type": "string",
-                          "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                          "description": "可通过 HTTPS 访问的资源地址",
                           "format": "uri",
                           "pattern": "^https://"
                         }
@@ -26114,7 +26099,7 @@
                       "properties": {
                         "url": {
                           "type": "string",
-                          "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                          "description": "可通过 HTTPS 访问的资源地址",
                           "format": "uri",
                           "pattern": "^https://"
                         }
@@ -26182,13 +26167,13 @@
           },
           "ref_image_0": {
             "type": "string",
-            "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+            "description": "可通过 HTTPS 访问的资源地址",
             "format": "uri",
             "pattern": "^https://"
           },
           "ref_audio_0": {
             "type": "string",
-            "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+            "description": "可通过 HTTPS 访问的资源地址",
             "format": "uri",
             "pattern": "^https://"
           }
@@ -26201,7 +26186,7 @@
         "properties": {
           "video_url": {
             "type": "string",
-            "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+            "description": "可通过 HTTPS 访问的资源地址",
             "format": "uri",
             "pattern": "^https://"
           },
@@ -26241,7 +26226,7 @@
             "properties": {
               "url": {
                 "type": "string",
-                "description": "临时上传后可访问的 HTTPS URL；不接受 data URL",
+                "description": "可通过 HTTPS 访问的资源地址",
                 "format": "uri",
                 "pattern": "^https://"
               },

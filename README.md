@@ -20,7 +20,7 @@ uv run uvicorn main:app --host 127.0.0.1 --port 9000
 - `/health` 检查服务及数据库。
 - `/console-docs` 提供用户、模型配置和个人余额管理接口。登录后将返回的会话令牌作为 Bearer 凭据。余额、充值、API Key 与消费记录均归具体用户，管理员可管理用户状态、增额与退款。
 - `/v1/docs` 和 `/v1/agent-guide.md` 提供模型调用说明。模型请求使用平台签发的 API Key。
-- 平台支持文本、图片、异步视频和结算回执。临时素材上传需要配置独立的对象存储。
+- 平台支持文本、图片、异步视频和结算回执。临时素材后端由 `.env` 的 `OSS_PROVIDER=local|aliyun` 选择，修改配置并重启后生效。
 - Seedream 5.5 的方舟模型 ID 为 `doubao-seedream-5-5-261028`。新增 5.5 和 5.0 Pro 配置时可调整官方像素档位基准价；已有 Pro 配置可在模型配置中点击「填入官方像素分档价」并保存后切换。平台按上游返回的每张成功输出图的 `size` 分档，图层拆分传 `layer_decomposition: true`，输入参考图费用按请求计算一次，再按配置折扣结算。
 - 平台数据库独立配置。部署时将 `/api/`、`/v1/` 转发到本服务。已有平台数据请先在数据库副本上验证升级。
 
@@ -31,6 +31,18 @@ uv run uvicorn main:app --host 127.0.0.1 --port 9000
 手机验证码登录和自助绑定支持阿里云短信，默认关闭。配置、频控与从器灵迁移的步骤见 [手机号登录迁移](docs/phone-login-migration.md)。绑定保留原账号资产，绑定后旧浏览器会话失效，器灵不再能够登录该账号。
 
 自有认证服务号的微信直登也默认关闭，支持首次扫码验证手机号后关联、后续直接扫码登录。公众号准备完成后的凭据、域名和验收步骤见 [服务号微信直登](docs/wechat-direct-login.md)。
+
+## 临时模型素材
+
+用户自有 HTTPS 地址可直接交给供应商，Base64 data URL 可随请求发送。只在渠道需要可读取地址时暂存参考素材。上传接口返回账户私有的 `media_ref`，工作台和 SDK 应将它传给生成接口。头像独立保存；小说和作品文件由工作台保存在本地。
+
+- 本地模式配置 `PUBLIC_API_BASE_URL=https://你的域名/v1`、两个实例共享的私有 `STUDIO_TEMP_PATH`、稳定的 `STUDIO_TEMP_SIGNING_KEY`（可复用已配置的 `API_KEY_ENCRYPTION_KEY`）。`STUDIO_TEMP_FREE_BYTES` 默认保留 1 GiB 磁盘空间。头像使用公开的 `MEDIA_PATH`。
+- OSS 模式配置 `OSS_PROVIDER=aliyun`、bucket、地域/endpoint 和访问密钥（见 .env.example）。桶需允许签名写入、读取和删除对象，并给 `studio-temporary/v1/` 配置两天生命周期。切换后保留旧存储的位置和访问配置至在途租约清理完成。
+- 服务运行时每分钟回收过期对象和中断上传的残留文件，预留两分钟清理时间。服务停机或存储不可用会延迟物理删除，恢复后继续清理。本地临时目录应排除在备份之外。生产环境还应以服务用户配置独立的每分钟清理，让 API 停机时也能释放磁盘。每个临时文件名包含固定到期时间，中断上传或修改时间不会延长期限。cron 示例见下方，替换为实际稳定的工作目录。历史作品与既有 bucket 数据迁移需单独处理。
+
+```cron
+* * * * * cd /path/to/cat-api && .venv/bin/python -m services.platform.local_media
+```
 
 ## 控制台
 

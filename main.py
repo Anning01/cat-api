@@ -23,6 +23,7 @@ from services.security.headers import SecurityHeadersMiddleware
 from services.platform.calls import recover_measured
 from services.platform.chat import settle_periodically, stop_streams
 from services.platform.http_contract import DEVELOPER_EXCEPTION_HANDLERS
+from services.platform.local_media import router as local_media_router, sweep_periodically
 from services.platform.temporary_media import expire_periodically
 from services.platform.videos import reconcile_videos
 
@@ -41,7 +42,7 @@ async def lifespan(_app):
         await check_database_schema()
         await recover_measured()
         workers = [asyncio.create_task(worker()) for worker in
-                   (settle_periodically, expire_periodically, reconcile_videos)]
+                   (settle_periodically, expire_periodically, sweep_periodically, reconcile_videos)]
         try:
             yield
         finally:
@@ -78,6 +79,7 @@ app.include_router(user_router, prefix="/api/users")
 
 developer_api = FastAPI(title="Cat API", version="1", docs_url="/docs", redoc_url=None,
                         exception_handlers=DEVELOPER_EXCEPTION_HANDLERS)
+developer_api.include_router(local_media_router)
 developer_api.include_router(developer_router)
 from services.platform.openapi import public_openapi
 def developer_openapi():

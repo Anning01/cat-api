@@ -68,6 +68,7 @@ def structured_video_error(payload: Any, *, secrets: tuple[str, ...] = ()) -> di
     for secret in secrets:
         if secret:
             message = message.replace(secret, "[已隐去]")
+    message = re.sub(r"[A-Za-z0-9+/=_-]{128,}", "[内容已隐去]", message)
     message = message.strip().split("\n", 1)[0]
     message = re.sub(r"https?://[^\s<>\"']+|data:[^\s<>\"']+", "[地址已隐去]", message, flags=re.I)
     message = re.sub(r"\b(?:Bearer\s+|(?:sk|ark|secret)[-_])[\w.-]+", "[已隐去]", message, flags=re.I)

@@ -1,6 +1,9 @@
 """鉴权与账户相关数据模型（仅在 AUTH_ENABLED=true 时注册到 Tortoise）。"""
 
+import re
+
 from tortoise import fields
+from tortoise.exceptions import ValidationError
 
 from models._base import AbstractBaseModel
 from utils.enums import UserStatusEnum
@@ -215,6 +218,25 @@ class PlatformApiKey(AbstractBaseModel):
         table = "account_api_keys"
 
 
+def media_free_metadata(value):
+    """Receipts and job snapshots may hold counters and URLs, never inline file contents."""
+    def check(item):
+        if isinstance(item, dict):
+            for key, child in item.items():
+                if key in {"b64_json", "file_data", "base64"}:
+                    raise ValidationError("Inline media cannot be saved in a job or receipt")
+                check(child)
+        elif isinstance(item, list):
+            for child in item:
+                check(child)
+        elif isinstance(item, str) and (";base64," in item.lower()
+                or len(item) > 512 and re.fullmatch(r"[a-zA-Z0-9+/=_-]+", item)):
+            raise ValidationError("Inline media cannot be saved in a job or receipt")
+    if value is not None and not isinstance(value, dict):
+        raise ValidationError("Job and receipt metadata must be an object")
+    check(value)
+
+
 class PlatformCallReceipt(AbstractBaseModel):
     legacy_scope_id = fields.IntField(null=True)
     public_id = fields.UUIDField(unique=True)
@@ -229,7 +251,7 @@ class PlatformCallReceipt(AbstractBaseModel):
     pricing = fields.JSONField()
     state = fields.CharField(max_length=16, db_index=True, default="submitted")
     provider_id = fields.CharField(max_length=255, null=True)
-    usage = fields.JSONField(null=True)
+    usage = fields.JSONField(null=True, validators=[media_free_metadata])
     usage_record_id = fields.IntField(null=True)
 
 
@@ -262,10 +284,10 @@ class StudioMediaLease(AbstractBaseModel):
 class PlatformVideoJob(AbstractBaseModel):
     receipt = fields.OneToOneField("models.PlatformCallReceipt", on_delete=fields.CASCADE)
     route_hash = fields.CharField(max_length=64)
-    inputs = fields.JSONField()
+    inputs = fields.JSONField(validators=[media_free_metadata])
     status = fields.CharField(max_length=20, default="queued", db_index=True)
     progress = fields.IntField(default=0)
-    output = fields.JSONField(null=True)
+    output = fields.JSONField(null=True, validators=[media_free_metadata])
     poll_after = fields.BigIntField(default=0, db_index=True)
     poll_token = fields.UUIDField(null=True)
 

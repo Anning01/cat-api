@@ -160,7 +160,9 @@ class Settings:
     SESSION_TTL_HOURS: int = int(os.getenv("SESSION_TTL_HOURS", "168"))
 
     # ---- 对象存储（默认 local：本地磁盘，行为不变） ----
-    OSS_PROVIDER: str = os.getenv("OSS_PROVIDER", "local")  # local | aliyun
+    OSS_PROVIDER: str = os.getenv("OSS_PROVIDER", "local").strip().lower()
+    if OSS_PROVIDER not in {"local", "aliyun"}:
+        raise ValueError("OSS_PROVIDER must be local or aliyun")
     OSS_BUCKET: str = os.getenv("OSS_BUCKET", "")
     # 公网 endpoint（前端直传与公网访问域名拼接），如 oss-cn-beijing.aliyuncs.com
     OSS_ENDPOINT: str = os.getenv("OSS_ENDPOINT", "")
@@ -172,6 +174,11 @@ class Settings:
     OSS_ACCESS_KEY_SECRET: str = os.getenv("OSS_ACCESS_KEY_SECRET", "")
 
     # Private temporary-object bucket on the platform; the local studio needs only its scoped API key.
+    STUDIO_TEMP_PATH = os.getenv("STUDIO_TEMP_PATH", "./data/temporary-media")
+    STUDIO_TEMP_SIGNING_KEY = os.getenv("STUDIO_TEMP_SIGNING_KEY", "").strip()
+    STUDIO_TEMP_FREE_BYTES = int(os.getenv("STUDIO_TEMP_FREE_BYTES", str(1024**3)))
+    if STUDIO_TEMP_FREE_BYTES < 0:
+        raise ValueError("STUDIO_TEMP_FREE_BYTES must be non-negative")
     STUDIO_TEMP_BUCKET = os.getenv("STUDIO_TEMP_BUCKET", "")
     STUDIO_TEMP_REGION = os.getenv("STUDIO_TEMP_REGION", "")
     STUDIO_TEMP_ACCOUNT_BYTES = int(os.getenv("STUDIO_TEMP_ACCOUNT_BYTES", str(20 * 1024**3)))

@@ -1,19 +1,15 @@
 """A single bounded image for the Videos multipart contract."""
-import base64
-import hashlib
 import io
 
 from PIL import Image
 from starlette.concurrency import run_in_threadpool
 
-import httpx
 from fastapi import HTTPException
 from starlette.datastructures import UploadFile
 
 from services.platform.image_uploads import MAX_FILE_BYTES, image_mime, read_bounded_form
 from services.platform.request_data import validated_body
-from services.oss.temporary import suppress_signed_queries
-from services.platform.temporary_media import UploadSpec, issue_upload
+from services.platform.temporary_media import store_input
 
 
 def verify_reference(data):
@@ -52,14 +48,4 @@ async def parse_video_form(request, schema):
 
 async def store_video_reference(user_id, image):
     _, data, mime = image
-    spec = UploadSpec(content_type=mime, byte_length=len(data),
-                      content_md5=base64.b64encode(hashlib.md5(data).digest()).decode())
-    try:
-        ticket = await issue_upload(user_id, spec)
-        suppress_signed_queries()
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.put(ticket["upload_url"], headers=ticket["headers"], content=data)
-            response.raise_for_status()
-    except httpx.HTTPError as exc:
-        raise HTTPException(503, "参考图暂存失败") from exc
-    return ticket["read_url"]
+    return await store_input(user_id, data, mime)

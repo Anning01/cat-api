@@ -17,9 +17,9 @@
 
 ## 已实现素材准备
 
-沿用 `POST /v1/media/uploads`，入参仍为 `content_type/byte_length/content_md5`；响应新增 `media_id`，原 `upload_url/headers/read_url/expires_at` 保持兼容。客户端先按 headers PUT 内容，成功后才能提交任务。音频/视频不通过 JSON Base64 上传。
+当前 `POST /v1/media/uploads` 接收 `content_type/byte_length/content_md5`，返回 `upload_url/headers/media_ref/expires_at`。客户端 PUT 完成后把 `media_ref` 作为本账户生成请求的媒体引用。具体供应商的签名读取地址只在服务端解析。存储可通过 `OSS_PROVIDER` 选择本地磁盘或 OSS，临时输入最多保留两天。
 
-服务端 `owned_media_url(user_id, media_id, kind)` 只解析当前账户、未过期、匹配存储桶和媒体扩展名的 lease，重新签发 GET；禁止从另一个账户取得输入地址。该校验只证明租约归属和类型声明，不证明文件已上传、真实格式或可解码。接通执行器前还必须 HEAD/探测真实内容、验证大小、音视频流、时长和尺寸；不能信任客户端用量或扩展名，也不能把音轨所在 mp4 的视频租约直接当作音频。
+下面的增强和识别路由仍是早期提案，示例中的数字 media_id 属于旧草案。后续接入应改为验证现有 media_ref 的归属、类型、实际大小、音视频流和时长。
 
 ## 待实现任务路由
 

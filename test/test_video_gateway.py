@@ -149,6 +149,8 @@ async def test_custom_channel_spec_is_shared_by_price_config_catalog_and_request
 
 async def test_native_file_upload_uses_owned_lease_and_sends_exact_bytes(monkeypatch):
     from services.platform import video_uploads
+    from config import settings
+    monkeypatch.setattr(settings, "OSS_PROVIDER", "aliyun")
     from services.oss.temporary import TemporaryBucket
     from auth.models import StudioMediaLease
     user = await User.create(username="file-upload")

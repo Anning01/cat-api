@@ -31,7 +31,7 @@ for model in client.models.list().data:
 
 ## 临时素材：POST /media/uploads
 
-所有图片、视频和音频先由客户端直传 OSS。此接口只提交 MIME 类型、字节数和 MD5 摘要，不提交文件内容。普通 API Key 即可申请；临时空间按团队限额管理，私有对象使用独立前缀，48 小时后由清理任务删除。
+用户已有的 HTTPS 地址和带 MIME 的 Base64 data URL 可随生成请求提交。只有供应商需要拉取本地媒体时才申请临时上传。票据按账户限额管理，客户端按返回地址直传至配置的存储。
 
 ```python
 import base64
@@ -56,14 +56,12 @@ def upload_reference(path: str, content_type: str) -> str:
     with source.open("rb") as file:
         uploaded = requests.put(ticket["upload_url"], headers=ticket["headers"], data=file, timeout=600)
         uploaded.raise_for_status()
-    return ticket["read_url"]
+    return ticket["media_ref"]
 
 reference_url = upload_reference("reference.png", "image/png")
 ```
 
-upload_url 的 PUT 授权有效期为 10 分钟，read_url 有效期为 48 小时。PUT 只使用票据内的 headers，不向 OSS 发送猫影 API Key。保留 read_url 供同一任务重试；过期后重新申请并上传。上传完成后再调用生成接口。
-
-普通生成接口只接收 JSON，单次最多 1 MB；data URL、内联音频或文件数据在供应商调用前被拒绝。OpenAI 兼容图片渠道的 `/images/edits` 例外支持标准 multipart 文件表单，见下文；/videos 也接受单张参考图文件。
+upload_url 的 PUT 授权有效期为 10 分钟。上传时只发送票据内的 headers。将 media_ref 原样填入生成请求的媒体字段，它只能由同一账户使用。临时文件最长保留 48 小时，过期后重新上传。普通 JSON 上限 1 MiB，带 Base64 的媒体请求总上限 16 MiB。`/images/edits` 和 `/videos` 还支持文件表单。
 
 ## 对话：POST /chat/completions
 
@@ -127,7 +125,7 @@ OpenAI 兼容 GPT Image 请求可直接使用原生像素尺寸，例如 `1536x8
 
 OpenAI 兼容图片渠道的 `/images/edits` 同时接收官方 SDK 的 multipart 文件表单：`image` / `image[]` 可传 1 至 16 张 PNG/JPEG/WebP，`mask` 可选且须为 PNG；单文件不超过 50 MiB，请求合计不超过 64 MiB。先鉴权，再解析受限文件；文件只在请求期间转发，不进入账务记录，幂等签名包含文件内容摘要。公开别名映射到供应商 model，文件请求转发到同协议的上游 `/images/edits`；不把文件请求发送给只接收 URL 的 Ark/OpenRouter 渠道。
 
-文件编辑的 `response_format` 支持 `url`（默认）或 `b64_json`，原样保留供应商结果；Base64 模式响应上限 64 MiB。仍禁止内联输入和图片二进制 SSE；其他生成接口的 URL 约束不变。沿用实际图片张数、参考图数、规格费率快照和一次性结算；缺少可靠计费规格时保留结果，账单待核对，不自动重提生成。
+文件编辑的 `response_format` 支持 `url`（默认）或 `b64_json`，原样保留供应商结果；Base64 模式响应上限 64 MiB。图片文件表单与 JSON 内联输入分别提交。沿用实际图片张数、参考图数、规格费率快照和一次性结算；缺少可靠计费规格时保留结果，账单待核对，不自动重提生成。
 
 ## 通用视频生成与查询
 

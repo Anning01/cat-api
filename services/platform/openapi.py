@@ -34,7 +34,7 @@ def parameter(name, description, *, required=False, location="header", schema=No
 
 DESCRIPTION = """Cat API 模型开放平台。供应商原生请求与结果按原格式转发，仅进行鉴权、模型路由、任务归属与计费。
 
-**媒体规则**：先调用 `/media/uploads` 申请临时直传，文件直接 PUT 到 OSS，再把 `read_url` 放入生成请求。普通生成接口不接收 Base64 文件、data URL、内联音频或文件；OpenAI 兼容图片渠道的 `/images/edits` 支持标准 multipart 文件编辑和按请求返回 URL/Base64，视频 /videos 也接收单张参考图文件，其他接口沿用 URL 规则。不开放图片二进制流式输出。MD5 摘要的 Base64 编码不属于文件内容。
+**媒体输入**可使用自己的 HTTPS 地址或带 MIME 的 Base64 data URL。需要暂存时调用 `/media/uploads` 并 PUT 文件，在生成参数中使用返回的 `media_ref`。该引用限本账户使用，最长保留两天。
 
 **身份与编号**：平台 Key 填入 Bearer；部分原生协议也支持对应鉴权头。使用目录 `nv-ID` 或 `X-Cat-Model` 选择通道。供应商 `X-Request-Id` 和任务 ID 保留，平台账务 UUID 位于 `X-Cat-Request-Id`（兼容 `X-Novelvids-Request-Id`）。
 
@@ -52,7 +52,7 @@ OPERATIONS = {
     ("/images/edits","post"):("editImages","图片生成","使用临时上传 URL 编辑图片","ImageResult"),
     ("/api/v3/images/generations","post"):("generateSeedreamImages","图片/Seedream","Seedream 5.5／5.0 Pro URL 图片生成","ImageResult"),
     ("/images","post"):("generateOpenRouterImages","图片生成","OpenRouter 原生 URL 图片接口","ImageResult"),
-    ("/media/uploads","post"):("createTemporaryUpload","临时素材","申请 OSS 临时直传票据","UploadTicket"),
+    ("/media/uploads","post"):("createTemporaryUpload","临时素材","申请临时模型素材上传票据","UploadTicket"),
     ("/requests","get"):("getReceiptByKey","调用与结算","按原幂等键查询回执","PlatformReceiptOut"),
     ("/requests/{request_id}","get"):("getReceipt","调用与结算","按平台 UUID 查询回执","PlatformReceiptOut"),
     ("/videos","post"):("createLegacyVideo","视频兼容","提交视频任务","LegacyVideo"),
@@ -79,7 +79,7 @@ def public_openapi(app):
     document["servers"] = [{"url":settings.PUBLIC_API_BASE_URL or "/v1", "description":"Cat API 服务地址；导入 Apifox 后可配置测试／生产环境"}]
     components = document.setdefault("components", {})
     schemas = components.setdefault("schemas", {})
-    url = string("临时上传后可访问的 HTTPS URL；不接受 data URL", format="uri", pattern="^https://")
+    url = string("可通过 HTTPS 访问的资源地址", format="uri", pattern="^https://")
     number = {"type":"number", "minimum":0}
     integer = {"type":"integer", "minimum":0}
     usage = obj({"prompt_tokens":integer,"completion_tokens":integer,"total_tokens":integer}, description="供应商实际报告用量及扩展字段；字段不强制裁剪")
@@ -109,8 +109,13 @@ def public_openapi(app):
                 "finish_reason":{"type":["string","null"]}})),"usage":usage}),
         "ImageResult":obj({"created":integer,"data":array(obj({"url":url,"size":string(),"revised_prompt":string(),"b64_json":string("仅文件编辑且请求 b64_json 时返回"),"error":obj()})),
             "images":array({"anyOf":[url,obj({"url":url})]}),"usage":obj()},description="供应商 URL 图片结果及原生扩展字段。平台不新增 data 包装；b64_json 只支持文件编辑请求。"),
-        "UploadTicket":obj({"media_id":integer,"upload_url":url,"headers":{"type":"object","additionalProperties":{"type":"string"}},
-            "read_url":url,"expires_at":integer},required=["media_id","upload_url","headers","read_url","expires_at"]),
+        "UploadTicket":obj({
+            "upload_url":string("10 分钟有效。按 headers 向此地址 PUT 文件原文。", format="uri", pattern="^https://"),
+            "headers":{"type":"object","additionalProperties":{"type":"string"},
+                       "description":"PUT 上传所需的请求头。上传时只发送这些头，平台 API Key 仅用于调用 Cat API。"},
+            "media_ref":string("上传成功后原样填入生成接口的媒体字段，仅当前账户可用。该引用不提供公开下载。", format="uri"),
+            "expires_at":{**integer,"description":"素材引用的到期时间，Unix 时间戳（秒）。"}
+        },required=["upload_url","headers","media_ref","expires_at"]),
         "LegacyVideo":obj({"id":string(format="uuid"),"object":string(enum=["video"]),"model":string(),"status":string(enum=["queued","in_progress","completed","failed"]),
             "progress":integer,"created_at":integer,"completed_at":{"type":["integer","null"]},"seconds":string(),"size":string(),"error":{"type":["object","null"]},
             "metadata":{"type":["object","null"],"properties":{"url":url,"last_frame_url":url,"duration":number}},"billing_status":string()}),
@@ -167,11 +172,18 @@ def public_openapi(app):
         folder = "图片/OpenRouter" if path == "/images" else folders.get(tag, tag)
         operation.update(operationId=identifier,tags=[folder],summary=title,security=[{"PlatformKey":[]}])
         operation["x-apifox-folder"] = folder
-        operation["description"] = "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，平台生成接口只接收不超过 1 MB 的 JSON 与媒体 HTTPS URL，不接收 Base64 或 multipart。"
+        operation["description"] = "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。"
+        if path == "/media/uploads":
+            operation["description"] = (
+                "1. 使用 Cat API Key 提交文件的 MIME 类型、实际字节数和内容 MD5 的 Base64 摘要，账户余额须大于零。\n"
+                "2. 使用返回的 headers 向 upload_url 发送 PUT，正文为原始文件字节。OSS 模式下客户端直传 OSS；本地模式下客户端上传到 Cat API 服务器。\n"
+                "3. 上传成功后，将 media_ref 原样填入生成请求，例如图片请求的 image 数组。平台为模型解析读取地址，临时素材最多保留 48 小时。\n"
+                "已有公网 HTTPS 地址可直接用于生成。旧客户端需将读取票据的字段从 read_url 改为 media_ref。"
+            )
         if tag == "视频兼容":
             operation["description"] = "通用视频接口，支持 JSON 和单图文件表单，使用平台 UUID 查询和下载。"
         parameters = operation.setdefault("parameters", [])
-        if method == "post":
+        if method == "post" and path != "/media/uploads":
             if not any(p.get("name", "").lower()=="idempotency-key" for p in parameters):
                 parameters.append(parameter("Idempotency-Key","每次逻辑调用的唯一标识；不确定是否受理时先查回执，不换键盲目重试。"))
         if path in request_bodies:
@@ -244,7 +256,7 @@ def public_openapi(app):
         "PlatformAccountOut":{"balance":"100.000000","currency":"CNY","recharge_url":"https://api.example.com/#/profile?recharge=1"},
         "ChatCompletion":{"id":"chatcmpl-example","object":"chat.completion","created":1700000000,"model":"vendor-model","choices":[{"index":0,"message":{"role":"assistant","content":"你好"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}},
         "ImageResult":{"created":1700000000,"data":[{"url":"https://cdn.example/result.png","size":"2048x1152"}]},
-        "UploadTicket":{"media_id":1,"upload_url":"https://upload.example/reference.png","headers":{"content-type":"image/png","content-length":"12345","content-md5":"1B2M2Y8AsgTpgAmY7PhCfg=="},"read_url":"https://cdn.example/reference.png","expires_at":1700172800},
+        "UploadTicket":{"upload_url":"https://upload.example/reference.png","headers":{"content-type":"image/png","content-length":"12345","content-md5":"1B2M2Y8AsgTpgAmY7PhCfg=="},"media_ref":"https://cat-media.invalid/studio-temporary/v1/1/0123456789abcdef0123456789abcdef.png","expires_at":1700172800},
         "PlatformReceiptOut":{"id":"11111111-1111-4111-8111-111111111111","model":"nv-42","status":"completed","usage":{"image_count":1,"input_image_count":2,"output_tier_counts":{"low":1}},"settlement":{"status":"settled","amount":"0.230000","currency":"CNY"},"pricing":{"type":"image","billing_unit":"pixel_tier","currency":"CNY","prices":{"low":0.13,"high_capped":0.23},"input_image":{"first_free":0,"price_per_image":0.05}}},
         "LegacyVideo":{"id":"11111111-1111-4111-8111-111111111111","object":"video","model":"nv-42","status":"queued","progress":0,"created_at":1700000000,"completed_at":None,"seconds":"4","size":"1280x720","error":None},
         "ArkTask":{"id":"cgt-example","model":"vendor-model","status":"succeeded","content":{"video_url":"https://cdn.example/video.mp4"},"duration":4,"resolution":"720p","usage":{"completion_tokens":100}},

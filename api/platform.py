@@ -179,7 +179,7 @@ async def openrouter_images(request: Request, body: ImageRequest, ctx: AuthConte
     return await generate_platform_image(ctx, body, idempotency_key, protocol="openrouter_compatible", legacy_studio=await legacy_studio_images(request, ctx))
 
 
-@developer_router.post("/media/uploads", summary="申请临时 OSS 直传地址")
+@developer_router.post("/media/uploads", summary="申请临时模型素材上传地址")
 async def temporary_upload(body: UploadSpec, response: Response, ctx: AuthContext = Depends(developer_identity)):
     response.headers["Cache-Control"] = "no-store"
     return await issue_upload(ctx.user.id, body)

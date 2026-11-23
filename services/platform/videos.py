@@ -36,8 +36,11 @@ class Reference(BaseModel):
     type: Literal["image", "video", "audio"]
     role: Literal["reference", "first_frame", "last_frame"] = "reference"
     url: str
-    _url = field_validator("url")(media_url)
-
+    @model_validator(mode="after")
+    def validate_input(self):
+        from services.platform.inline_media import media_input
+        self.url = media_input(self.url, self.type)
+        return self
 
 class VideoRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -216,8 +219,21 @@ async def submit_video(ctx, request, key, *, image=None):
             from services.platform.temporary_media import known_upload_bytes
             if await known_upload_bytes(ctx.user.id, [ref.url for ref in refs]) > 50 * 1024**2:
                 raise VideoProviderError(f"{REFERENCE_MEDIA_SIZE_MESSAGE}（{REFERENCE_MEDIA_SIZE_ERROR}）")
+        from services.platform.temporary_media import resolve_reference
+        from services.platform.inline_media import decode_media
+        from services.platform.video_uploads import store_video_reference
+        for ref in refs:
+            ref.url = await resolve_reference(ctx.user.id, ref.url)
+            if ref.url.startswith("data:") and config.api_protocol in {"openai_video", "autodl"}:
+                mime, content = decode_media(ref.url, ref.type)
+                if config.api_protocol == "openai_video" and len(refs) == 1 and ref.type == "image" and ref.role == "reference":
+                    image = ("reference." + mime.split("/")[1], content, mime)
+                    continue
+                ref.url = await store_video_reference(ctx.user.id, ("reference", content, mime))
+        frames = {r.role:r.url for r in refs if r.role!="reference"}
+        types = {kind:[r.url for r in refs if r.type==kind and r.role=="reference"
+                       and not (image and r.url.startswith("data:"))] for kind in ("image","video","audio")}
         if image and config.api_protocol != "openai_video":
-            from services.platform.video_uploads import store_video_reference
             types["image"] = [await store_video_reference(ctx.user.id, image)]
         with public_upstream(str(receipt.public_id), config.api_key):
             async with asyncio.timeout(CALL_TIMEOUT):
@@ -389,6 +405,10 @@ async def refresh_job(job, receipt, *, renew=False):
                 error = metadata.get("error") or {"code":"video_generation_failed", "message":result.get("error") or "Video generation failed"}
                 if not isinstance(error, dict):
                     error = {"code":"video_generation_failed", "message":str(error)}
+                param = error.get("param")
+                error = structured_video_error({"error":error}, secrets=(config.api_key,)) or {"code":"video_generation_failed"}
+                if isinstance(param, str) and re.fullmatch(r"[a-z][a-z0-9_.]{0,63}", param):
+                    error["param"] = param
                 if await ours.update(status="failed",output={"error":error},poll_token=None):
                     await PlatformCallReceipt.filter(id=receipt.id,state="processing").update(state="rejected")
         else:

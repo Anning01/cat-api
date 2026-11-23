@@ -37,6 +37,10 @@ def media_url(value):
     return str(url)
 
 
+from services.platform.inline_media import media_input
+from services.platform.temporary_media import resolve_payload
+
+
 class ImageRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
     model: str = Field(min_length=1, max_length=200)
@@ -66,8 +70,8 @@ class ImageRequest(BaseModel):
     @classmethod
     def public_references(cls, values):
         if isinstance(values, str):
-            return media_url(values)
-        return [media_url(v) for v in values]
+            return media_input(values, "image")
+        return [media_input(v, "image") for v in values]
 
     @model_validator(mode="after")
     def url_references(self):
@@ -76,15 +80,15 @@ class ImageRequest(BaseModel):
         for item in self.images or []:
             if set(item) != {"image_url"}:
                 raise ValueError("images must contain image_url objects from temporary uploads")
-            media_url(item["image_url"])
+            media_input(item["image_url"], "image")
         for item in self.input_references or []:
             if item.get("type") != "image_url" or not isinstance(item.get("image_url"), dict):
                 raise ValueError("input_references must contain image_url references")
-            media_url(item["image_url"].get("url"))
+            media_input(item["image_url"].get("url"), "image")
         if self.mask:
             if set(self.mask) != {"image_url"}:
                 raise ValueError("mask must contain an image_url from temporary uploads")
-            media_url(self.mask["image_url"])
+            media_input(self.mask["image_url"], "image")
         return self
 
     def reference_urls(self):
@@ -184,7 +188,11 @@ async def generate(ctx, request, key, *, edit=False, protocol=None, legacy_studi
         if protocol and config.api_protocol != protocol:
             raise HTTPException(422, "所选模型与接口协议不匹配")
         return image_options(config, values)
+    original = request.model_dump(exclude_unset=True, exclude_none=True)
+    resolved_request = await resolve_payload(ctx.user.id, original)
     config, receipt = await admit(ctx, request.model, body, key, validate=validate, kind="image")
+    if resolved_request != original:
+        request = ImageRequest.model_validate(resolved_request)
     headers = {"X-Request-Id":str(receipt.public_id), "Cache-Control":"no-store"}
     selected = selection(config, body)
     references = request.reference_urls()

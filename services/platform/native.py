@@ -13,7 +13,8 @@ from models.config import AiModelConfig
 from services.platform.access import authorize_model
 from services.platform.calls import CALL_TIMEOUT, admit, digest, preserve_result, settle, require_video_price, video_price_resolution
 from services.platform.http_contract import redact_secret, response_headers
-from services.platform.images import media_url
+from services.platform.inline_media import media_input
+from services.platform.temporary_media import resolve_payload
 from services.platform.request_data import reject_inline_media
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ def validate_urls(value):
         for key, child in value.items():
             if (key == "url" or key.endswith("_url") or key.startswith(("ref_image_", "ref_audio_"))) and isinstance(child, str):
                 # Provider-side file IDs and oss:// references are not temporary-upload URLs.
-                media_url(child)
+                media_input(child)
             else:
                 validate_urls(child)
     elif isinstance(value, list):
@@ -209,8 +210,9 @@ def accounting_inputs(body, protocol):
     images = sum(item.get("type") in {"image", "image_url"} for item in content if isinstance(item, dict))
     videos = any(item.get("type") in {"video", "video_url"} for item in content if isinstance(item, dict))
     images += sum(key.startswith("ref_image_") for key in body)
-    return {"native_protocol":protocol, "duration":body.get("duration", parameters.get("duration")),
-            "resolution":video_price_resolution(body.get("resolution", parameters.get("resolution"))) if body.get("resolution", parameters.get("resolution")) is not None else None, "fps":body.get("fps"),
+    duration = body.get("duration", parameters.get("duration"))
+    return {"native_protocol":protocol, "duration":duration if numeric(duration) else None,
+            "resolution":video_price_resolution(body.get("resolution", parameters.get("resolution"))) if body.get("resolution", parameters.get("resolution")) is not None else None, "fps":body.get("fps") if numeric(body.get("fps")) else None,
             "input_image_count":images, "has_video_reference":videos}
 
 
@@ -229,11 +231,24 @@ async def submit(ctx, protocol, body, *, model=None, key=None, incoming=None):
             if not isinstance(reference_id, str):
                 raise HTTPException(422, "draft_task 缺少任务 ID")
             await find_task(ctx, reference_id, [protocol])
+    payload = await resolve_payload(ctx.user.id, body)
     config, receipt = await admit(ctx, selector, {"protocol":protocol, "body":body, "native_task_id":identifier}, key or identifier,
         validate=lambda c, _:validate_native(c, body, protocol), kind=PROTOCOLS[protocol][0])
-    payload = dict(body)
     if protocol in {"volcengine_ark", "minimax", "dashscope"}:
         payload["model"] = config.model
+    try:
+        # These provider endpoints fetch HTTPS media. Stage inline bytes only after admission.
+        if protocol in {"volcengine_mediakit", "volcengine_openspeech", "autodl"}:
+            from services.platform.inline_media import decode_media
+            from services.platform.temporary_media import store_input
+            fields = payload.get("audio", {}) if protocol == "volcengine_openspeech" else payload
+            for name, value in list(fields.items()):
+                if (name in {"url", "video_url"} or name.startswith(("ref_image_", "ref_audio_"))) and isinstance(value, str) and value.startswith("data:"):
+                    mime, content = decode_media(value)
+                    fields[name] = await store_input(ctx.user.id, content, mime)
+    except (HTTPException, ValueError, OSError):
+        await PlatformCallReceipt.filter(id=receipt.id, state="submitted").update(state="rejected")
+        raise
     try:
         response = await send(config, protocol, body=payload, incoming=incoming)
         data = json_object(response)
