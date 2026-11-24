@@ -14,6 +14,8 @@ IMAGE_NAMES = {
     'gpt_image_2_6_sunburst':'gpt-image-2.6-sunburst', 'gpt_image_2_6_flare':'gpt-image-2.6-flare',
 }
 VIDEO_NAMES = {
+    "muse_video": "muse-video",
+    "grok_imagine_video_1_5": "grok-imagine-video-1.5",
     'seedance_2':'seedance-2.0', 'seedance_2_fast':'seedance-2.0-fast',
     'seedance_2_mini':'seedance-2.0-mini', 'seedance_2_5':'seedance-2.5',
     'seedance_2_5_flash':'seedance-2.5-flash',

@@ -133,7 +133,7 @@ async def model_catalog():
                 prices = public["pricing"].get("prices", {})
                 resolutions = [r for r in caps.resolutions if prices.get(r, 0) > 0]
                 sizes = [video_size(r, ratio) for r in resolutions for ratio in caps.aspect_ratios if ratio != "adaptive"]
-                seconds = {"min":caps.duration_min, "max":caps.duration_max}
+                seconds = list(caps.duration_choices) or {"min":caps.duration_min, "max":caps.duration_max}
                 inputs = ["url", "file"]
                 if row["api_protocol"] == "openai_video":
                     from services.video.compatible import compatible_options

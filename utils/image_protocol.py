@@ -8,6 +8,7 @@ class ImageApiProtocol(StrEnum):
     openrouter_compatible = "openrouter_compatible"
     volcengine_ark = "volcengine_ark"
     novelvids = "novelvids"
+    router_team = "router_team"
     openai_video = "openai_video"
     guangying_fixed = "guangying_fixed"
     unified_video = "unified_video"

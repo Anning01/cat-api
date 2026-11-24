@@ -82,6 +82,8 @@ categories.push({
 })
 categories.push({ id: 'voice_design', get label() { return tr('音色设计') }, eyebrow: 'VOICE', get description() { return tr('根据描述生成试听音色，按生成音频实际秒数计费。') }, taskTypes: [12], icon: Mic })
 const VIDEO_MODEL_PRESETS: Record<VideoGenerationModelType, { baseUrl: string; model: string; protocol: ImageApiProtocol }> = {
+  muse_video: { baseUrl: 'https://api.router.team/v1', model: 'muse-video', protocol: 'router_team' },
+  grok_imagine_video_1_5: { baseUrl: 'https://api.router.team/v1', model: 'grok-imagine-video-1.5', protocol: 'router_team' },
   openai_video: { baseUrl: '', model: '', protocol: 'openai_video' },
   seedance_2: { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seedance-2-0-260128', protocol: 'volcengine_ark' },
   seedance_2_fast: { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seedance-2-0-fast-260128', protocol: 'volcengine_ark' },
@@ -234,6 +236,7 @@ const selectedVideoPricingPreset = computed(() => (
 const isGuangying97 = computed(() => form.value.video_model_type === 'seedance_2_5_guangying_97')
 const isPerCallVideo = computed(() => selectedCategoryId.value === 'video'
   && (editingSyncedPricing.value ? syncedVideoBillingUnit.value : selectedVideoPricingPreset.value?.billing_unit) === 'call')
+const outputOnlyVideo = computed(() => isGuangying97.value || form.value.api_protocol === 'router_team')
 const isSecondBillingVideo = computed(() => (
   selectedCategoryId.value === 'video'
   && (editingSyncedPricing.value ? syncedVideoBillingUnit.value : selectedVideoPricingPreset.value?.billing_unit) === 'second'
@@ -270,6 +273,7 @@ function taskLabel(value: number) {
 }
 
 function protocolLabel(value: ImageApiProtocol) {
+  if (value === 'router_team') return 'RouterTeam'
   if (value === 'guangying_fixed') return tr('光影 AI')
   if (value === 'novelvids') return tr('猫影开放平台')
   if (value === 'volcengine_mediakit') return 'AI MediaKit'
@@ -295,6 +299,7 @@ const videoProtocolOptions = computed(() => {
 })
 const selectedVideoProtocol = computed(() => videoProtocolOptions.value.find(option => option.value === form.value.api_protocol))
 const selectedVideoProtocolHint = computed(() => {
+  if (form.value.api_protocol === 'router_team') return tr('填写 RouterTeam 创作中心 API Key，各分辨率按人民币每秒配置。')
   if (form.value.api_protocol === 'guangying_fixed') return isGuangying97.value
     ? tr('480p / 720p 按成片秒数计费，支持 4–30 秒，可参考图片和音频。')
     : tr('720p 按条计费，支持 5–30 秒。')
@@ -540,9 +545,9 @@ async function saveConfig() {
         currency: 'CNY',
         billing_unit: isPerCallVideo.value ? 'call' : isSecondBillingVideo.value ? 'second' : 'token',
         prices: tierPriceEntries(tierPrices.value),
-        ...(!isPerCallVideo.value && !isGuangying97.value && {video_reference_prices: tierPriceEntries(videoRefPrices.value)}),
+        ...(!isPerCallVideo.value && !outputOnlyVideo.value && {video_reference_prices: tierPriceEntries(videoRefPrices.value)}),
       }
-      if (isSecondBillingVideo.value && !isGuangying97.value) {
+      if (isSecondBillingVideo.value && !outputOnlyVideo.value) {
         pricing.input_image = {
           first_free: Number(inputImagePricing.value.first_free) || 0,
           price_per_image: Number(inputImagePricing.value.price_per_image) || 0,
@@ -856,7 +861,7 @@ onMounted(()=>{void load()})
               <input v-model.number="tierPrices[tier]" type="number" min="0" step="0.01" />
             </label>
           </div>
-          <div v-if="!isPerCallVideo && !isGuangying97 && !['openai_video','autodl'].includes(form.api_protocol)" class="pricing-sub">
+          <div v-if="!isPerCallVideo && !outputOnlyVideo && !['openai_video','autodl'].includes(form.api_protocol)" class="pricing-sub">
             <span class="pricing-title">{{ isSecondBillingVideo ? tr('输入参考视频（元 / 秒，按输入时长）') : tr('有视频参考（元 / 百万 token）') }}</span>
             <div class="pricing-grid">
               <label v-for="tier in pricingTierOptions" :key="tier">
@@ -865,7 +870,7 @@ onMounted(()=>{void load()})
               </label>
             </div>
           </div>
-          <div v-if="isSecondBillingVideo && !isGuangying97" class="pricing-sub">
+          <div v-if="isSecondBillingVideo && !outputOnlyVideo" class="pricing-sub">
             <span class="pricing-title">{{ tr('输入参考图片') }}</span>
             <div class="pricing-grid">
               <label><span>{{ tr('免费张数') }}</span><input v-model.number="inputImagePricing.first_free" type="number" min="0" step="1" /></label>

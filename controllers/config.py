@@ -173,7 +173,7 @@ class AiModelConfigController(CRUDBase[AiModelConfig, AiModelConfigCreate, AiMod
         if protocol == "openai_video":
             from services.video.compatible import compatible_options
             compatible_options(options)
-        if protocol == "openai_video" and data.get("is_active", instance.is_active if instance else False):
+        if protocol in {"openai_video", "router_team"} and data.get("is_active", instance.is_active if instance else False):
             rates = data.get("pricing", instance.pricing if instance else None) or {}
             _validate_video_pricing(rates, model_type, options)
             if not any(value > 0 for value in rates["prices"].values()):
@@ -288,7 +288,7 @@ class AiModelConfigController(CRUDBase[AiModelConfig, AiModelConfigCreate, AiMod
     async def activate(self, config_id: int) -> AiModelConfig:
         """独立启用当前渠道配置，同类型的其他渠道可同时运行。"""
         instance = await self.get(config_id)
-        self._validate_generation_payload({'is_active': True} if instance.task_type == 8 or instance.api_protocol == 'openai_video' else {}, instance)
+        self._validate_generation_payload({'is_active': True} if instance.task_type == 8 or instance.api_protocol in {'openai_video', 'router_team'} else {}, instance)
         instance.is_active = True
         await instance.save(update_fields=["is_active", "updated_at"])
         return instance

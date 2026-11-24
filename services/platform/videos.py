@@ -123,6 +123,17 @@ async def submit_video(ctx, request, key, *, image=None):
     if image:
         body["file_sha256"] = hashlib.sha256(image[1]).hexdigest()
     def validate(config, _):
+        if config.api_protocol == "router_team":
+            caps = capabilities_for(config.video_model_type, config.api_protocol)
+            if not request._specified.intersection({"aspect_ratio", "size"}):
+                request.aspect_ratio = caps.default_aspect_ratio
+                request.size = None
+            if not request._specified.intersection({"duration", "seconds"}):
+                request.duration = caps.duration_min
+            if (config.pricing or {}).get("billing_unit") != "second":
+                raise HTTPException(422, "Router 视频需要配置每秒单价")
+            if image and request.references:
+                raise HTTPException(422, "Router 视频仅接受一张首帧图片")
         if config.api_protocol == "guangying_fixed":
             per_second = config.video_model_type == "seedance_2_5_guangying_97"
             if not request._specified.intersection({"duration", "seconds"}):
@@ -244,7 +255,7 @@ async def submit_video(ctx, request, key, *, image=None):
         frames = {r.role:r.url for r in refs if r.role!="reference"}
         types = {kind:[r.url for r in refs if r.type==kind and r.role=="reference"
                        and not (image and r.url.startswith("data:"))] for kind in ("image","video","audio")}
-        if image and config.api_protocol != "openai_video":
+        if image and config.api_protocol not in {"openai_video", "router_team"}:
             types["image"] = [await store_video_reference(ctx.user.id, image)]
         provider_options = {}
         if config.api_protocol == "guangying_fixed":
@@ -252,7 +263,7 @@ async def submit_video(ctx, request, key, *, image=None):
             if image:
                 ordered_refs.extend(("image", url) for url in types["image"])
             provider_options["ordered_references"] = ordered_refs
-        if config.api_protocol in {"openai_video", "guangying_fixed"}:
+        if config.api_protocol in {"openai_video", "guangying_fixed", "router_team"}:
             prompt = request.prompt
         with public_upstream(str(receipt.public_id), config.api_key):
             async with asyncio.timeout(CALL_TIMEOUT):

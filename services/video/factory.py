@@ -15,6 +15,7 @@ from services.video.guangying import GuangyingGenerator
 from services.video.base import BaseVideoGenerator
 from services.video.capabilities import capabilities_for
 from services.video.minimax import MiniMaxH3Generator
+from services.video.router_team import RouterTeamGenerator
 from services.video.seedance import SeedanceGenerator
 from services.video.unified import OpenAIVideoGenerator, UnifiedVideoGenerator
 from services.video.wan import Wan3Generator
@@ -75,6 +76,8 @@ class VideoGeneratorFactory:
 
 
 video_generator_factory = VideoGeneratorFactory({
+    VideoGenerationModelTypeEnum.muse_video: VideoGeneratorAdapterSpec(RouterTeamGenerator, VideoModelTypeEnum.muse),
+    VideoGenerationModelTypeEnum.grok_imagine_video_1_5: VideoGeneratorAdapterSpec(RouterTeamGenerator, VideoModelTypeEnum.grok),
     VideoGenerationModelTypeEnum.openai_video: VideoGeneratorAdapterSpec(OpenAIVideoGenerator, VideoModelTypeEnum.sora2),
     VideoGenerationModelTypeEnum.seedance_2: VideoGeneratorAdapterSpec(
         SeedanceGenerator, VideoModelTypeEnum.seedance
