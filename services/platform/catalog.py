@@ -1,4 +1,5 @@
 """Public labels and tariffs come from active platform-owned configurations."""
+from dataclasses import replace
 from math import isfinite
 import re
 from models.config import AiModelConfig
@@ -144,6 +145,16 @@ async def model_catalog():
                     inputs = compatible.reference_inputs
                     if not inputs and set(kinds) == {"video"}:
                         public["input_modalities"].remove("image")
+                # The workbench consumes public URLs and the fixed-duration JSON workflow.
+                # OpenAI-compatible gateways can instead require an authenticated /content download.
+                if row["api_protocol"] != "openai_video" and resolutions:
+                    public["video_capabilities"] = replace(
+                        caps, resolutions=tuple(resolutions),
+                        default_resolution=caps.default_resolution if caps.default_resolution in resolutions else resolutions[0],
+                        output_formats=("mp4",), supports_auto_duration=False,
+                        supports_temporary_file_upload=True, supports_audio_data_uri=True,
+                        system_audio_asset_scheme=None,
+                    ).public_dict()
                 operations["videos.create"] = {"path":"/v1/videos", "inputs":["json", *(["file"] if "file" in inputs else [])], "reference_inputs":inputs, "seconds":seconds,
                     "resolutions":resolutions, "sizes":sizes, "max_reference_images":caps.max_reference_images if inputs else 0,
                     "max_reference_videos":caps.max_reference_videos,"max_reference_audios":caps.max_reference_audios}

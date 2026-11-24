@@ -80,3 +80,34 @@ async def test_final_output_and_failures(monkeypatch):
     assert "fixture" not in failure["metadata"]["error"]["message"]
     with pytest.raises(VideoProviderError):
         await gen.query("job")
+
+
+async def test_catalog_exposes_workbench_capabilities_without_private_fields():
+    from models.config import AiModelConfig
+    from services.platform.catalog import model_catalog
+
+    await AiModelConfig.create(
+        name="Router Grok", model="grok-imagine-video-1.5", video_model_type="grok_imagine_video_1_5",
+        api_protocol="router_team", base_url="https://private.example/v1", api_key="test-only",
+        task_type=4, is_active=True, pricing={"type":"video","billing_unit":"second","prices":{"480p":1,"720p":0}},
+    )
+    entry, = await model_catalog()
+    caps = entry["video_capabilities"]
+    assert caps["resolutions"] == ["480p"] and caps["default_resolution"] == "480p"
+    assert caps["aspect_ratios"] == ["adaptive"] and caps["duration_max"] == 15
+    assert caps["max_reference_images"] == 1 and caps["max_reference_videos"] == 0
+    assert caps["output_formats"] == ["mp4"] and not caps["supports_auto_duration"]
+    assert not {"api_protocol", "api_key", "base_url"}.intersection(caps)
+
+
+async def test_router_missing_duration_never_charges_requested_seconds(monkeypatch):
+    from services.platform.videos import measured
+
+    gen = adapter()
+    async def query(*args, **kwargs):
+        return {"status": "completed", "url": "https://cdn.example/result.mp4"}
+    monkeypatch.setattr(gen, "_request", query)
+    result = await gen.query("finished")
+    assert result["url"] and result["status"] == TaskStatusEnum.completed
+    inputs = {"duration": 5, "has_video_reference": False}
+    assert measured(inputs, result["metadata"], {"billing_unit": "second"}) is None

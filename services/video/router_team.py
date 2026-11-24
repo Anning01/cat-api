@@ -62,4 +62,4 @@ class RouterTeamGenerator(UnifiedVideoGenerator):
             except ValueError:
                 raise VideoProviderError("Router 返回的成片时长无效") from None
         return self._build_result(TaskStatusEnum.completed, progress=100, url=public_media_url(url),
-                                  duration=duration)
+                                  duration=duration, requires_output_duration=True)

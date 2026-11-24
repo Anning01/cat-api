@@ -337,6 +337,8 @@ def measured(inputs, metadata, rates):
     raw = metadata.get("usage") or {}
     seconds = metadata.get("duration")
     if seconds is None:
+        if metadata.get("requires_output_duration"):
+            return None
         seconds = inputs["duration"]  # Fixed-duration order; auto duration is not accepted here.
     if not nonnegative(seconds) or seconds <= 0:
         return None

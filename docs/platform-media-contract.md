@@ -13,6 +13,8 @@
 - 每项 `concurrency` 为当前模型配置的正整数并发上限。现有 admission 按该模型所有账户的活跃请求合计限流；此值是单工作台可采用的客户端上限，不是预留额度，不保证多个账户同时各获该额度；共享繁忙仍返回 429。供应商 `account_concurrency` 不公开。如需每账户预留额度，需另行配置与限流实现，不能复用供应商总并发。
 - 增强 `processing_options` 仅公开：`input_short_side_min/input_short_side_max/input_long_side_max/input_fps_min/input_fps_max/max_duration_seconds/max_file_bytes/poll_seconds/local_upload_max_bytes/output_resolutions`。缺省来自现有 EnhancementOptions。队列、供应商地址和凭据不返回。
 
+工作台可通过 `GET /v1/models` 读取可选的 `video_capabilities`。它描述该渠道通过统一视频任务接口实际开放的分辨率、画幅、生成方式、时长和素材限制。非空的 `duration_choices` 指定可选秒数，空数组表示使用 `duration_min` 到 `duration_max` 的整数范围。工作台按模型 ID 保存并刷新这份能力，已认识的旧模型在旧版目录中仍可使用本地定义。需要凭证下载成片的 OpenAI Videos 兼容渠道继续通过 `operations["videos.create"]` 提供 SDK 规格。
+
 工作台成功同步后，应删除此前同步但本次已缺失/停用的配置；同步失败不得清理。首次同步和后续更新均按 `id` 合并，更新价格、能力、并发。
 
 ## 已实现素材准备
