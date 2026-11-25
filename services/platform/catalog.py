@@ -124,8 +124,7 @@ async def model_catalog():
         if "image" in kinds:
             operations["images.generate"] = {"path":"/v1/images/generations", "inputs":["json"]}
             if public["reference_image_urls"]:
-                formats = ["url", "file"] if row["api_protocol"] == "openai_compatible" else ["url"]
-                operations["images.edit"] = {"path":"/v1/images/edits", "inputs":formats}
+                operations["images.edit"] = {"path":"/v1/images/edits", "inputs":["url"]}
         if "video" in kinds and row["video_model_type"]:
             from services.video.capabilities import CAPABILITIES
             from services.platform.videos import video_size
@@ -135,14 +134,14 @@ async def model_catalog():
                 resolutions = [r for r in caps.resolutions if prices.get(r, 0) > 0]
                 sizes = [video_size(r, ratio) for r in resolutions for ratio in caps.aspect_ratios if ratio != "adaptive"]
                 seconds = list(caps.duration_choices) or {"min":caps.duration_min, "max":caps.duration_max}
-                inputs = ["url", "file"]
+                inputs = ["url"]
                 if row["api_protocol"] == "openai_video":
                     from services.video.compatible import compatible_options
                     compatible = compatible_options(row["processing_options"])
                     resolutions = [r for r in compatible.resolutions if prices.get(r, 0) > 0]
                     sizes = [s for s in compatible.sizes if f"{min(map(int,s.split('x')))}p" in resolutions]
                     seconds = compatible.seconds
-                    inputs = compatible.reference_inputs
+                    inputs = [value for value in compatible.reference_inputs if value == "url"]
                     if not inputs and set(kinds) == {"video"}:
                         public["input_modalities"].remove("image")
                 # The workbench consumes public URLs and the fixed-duration JSON workflow.
@@ -152,10 +151,10 @@ async def model_catalog():
                         caps, resolutions=tuple(resolutions),
                         default_resolution=caps.default_resolution if caps.default_resolution in resolutions else resolutions[0],
                         output_formats=("mp4",), supports_auto_duration=False,
-                        supports_temporary_file_upload=True, supports_audio_data_uri=True,
+                        supports_temporary_file_upload=True, supports_audio_data_uri=False,
                         system_audio_asset_scheme=None,
                     ).public_dict()
-                operations["videos.create"] = {"path":"/v1/videos", "inputs":["json", *(["file"] if "file" in inputs else [])], "reference_inputs":inputs, "seconds":seconds,
+                operations["videos.create"] = {"path":"/v1/videos", "inputs":["json"], "reference_inputs":inputs, "seconds":seconds,
                     "resolutions":resolutions, "sizes":sizes, "max_reference_images":caps.max_reference_images if inputs else 0,
                     "max_reference_videos":caps.max_reference_videos,"max_reference_audios":caps.max_reference_audios}
                 for modality, count in (("video",caps.max_reference_videos),("audio",caps.max_reference_audios)):

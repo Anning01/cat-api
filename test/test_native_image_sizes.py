@@ -5,7 +5,6 @@ import pytest
 from fastapi import HTTPException
 from services.platform.images import selection
 from test.test_sdk_contract import sdk_api
-from test.test_image_edit_files import PNG
 
 
 @pytest.mark.parametrize('size,ratio,tier',[
@@ -30,9 +29,11 @@ def test_invalid_native_sizes_fail_with_specific_size_error(size):
 async def test_sdk_edit_keeps_native_size_and_existing_price_band(sdk_api):
     sdk,state,(_,model,_)=sdk_api
     state.failure=200,json.dumps({'created':1,'data':[{'url':'https://cdn.example/result.png'}]}).encode(),{'content-type':'application/json'}
-    result=await sdk.images.edit(model=f'nv-{model.id}',prompt='test',image=('reference.png',PNG,'image/png'),
-        size='1536x864',extra_body={'aspect_ratio':'16:9'})
-    assert result.data[0].url=='https://cdn.example/result.png'
+    result = await sdk._client.post("https://platform.example/v1/images/edits",
+        headers={"Authorization": "Bearer " + sdk.api_key},
+        json={"model": f"nv-{model.id}", "prompt": "test", "image": ["https://cdn.example/reference.png"],
+              "size": "1536x864", "aspect_ratio": "16:9"})
+    assert result.json()["data"][0]["url"] == "https://cdn.example/result.png"
     assert b'1536x864' in state.seen[0].content
     assert b'aspect_ratio' not in state.seen[0].content
     from auth.models import PlatformCallReceipt

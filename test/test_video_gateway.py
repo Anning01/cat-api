@@ -34,6 +34,11 @@ async def test_import_two_models_once_then_submit_poll_and_download(monkeypatch)
     app.dependency_overrides[require_super_admin] = lambda: ctx
     transport = httpx.ASGITransport(app)
     posts = []
+    from config import settings
+    from services.oss.temporary import TemporaryBucket
+    monkeypatch.setattr(settings, "OSS_PROVIDER", "aliyun")
+    monkeypatch.setattr("services.platform.temporary_media.bucket_config",
+        lambda: TemporaryBucket("example", "cn-hangzhou", "test-access", "test-key"))
     image = png("red")
 
     async def route(req):
@@ -46,7 +51,9 @@ async def test_import_two_models_once_then_submit_poll_and_download(monkeypatch)
             assert req.url.path == "/v1/videos"
             body = await req.aread()
             if posts:
-                assert image in body and b'demo-beta' in body and b'name="input_reference"' in body
+                submitted = json.loads(body)
+                assert submitted["model"] == "demo-beta"
+                assert httpx.URL(submitted["input_reference"]).host == "example.oss-cn-hangzhou.aliyuncs.com"
             else:
                 assert json.loads(body) == {"model":"demo-alpha","size":"720x1280","prompt":"pan","seconds":"4"}
             posts.append(req.headers["idempotency-key"])
@@ -75,8 +82,13 @@ async def test_import_two_models_once_then_submit_poll_and_download(monkeypatch)
         assert (await client.post("/admin/channel/import",json=payload)).json()["data"] == imported.json()["data"]
         sdk = AsyncOpenAI(base_url="https://cat.test/v1",api_key=key,http_client=client,max_retries=0)
         assert [item.id for item in (await sdk.models.list()).data] == ids
+        import base64
+        import hashlib
+        ticket = await client.post("/v1/media/uploads", json={"byte_length": len(image), "content_type": "image/png",
+            "content_md5": base64.b64encode(hashlib.md5(image).digest()).decode()})
+        assert ticket.status_code == 200
         for index, model in enumerate(ids):
-            options = {"input_reference":("source.png",image,"image/png")} if index else {}
+            options = {"extra_body": {"input_reference": ticket.json()["media_ref"]}} if index else {}
             create = dict(model=model, prompt="pan", extra_headers={"Idempotency-Key":model}, **options)
             task = await sdk.videos.create(**create)
             replay = await sdk.videos.create(**create)
@@ -88,7 +100,7 @@ async def test_import_two_models_once_then_submit_poll_and_download(monkeypatch)
             receipt = (await client.get("/v1/requests",params={"request_key":model})).json()
             assert receipt["id"] == task.id and receipt["settlement"]["amount"] == "0.800000"
         with pytest.raises(APIStatusError) as conflict:
-            await sdk.videos.create(**{**create, "input_reference":("source.png",png("blue"),"image/png")})
+            await sdk.videos.create(**{**create, "extra_body": {"input_reference": "https://cdn.example/other.png"}})
         assert conflict.value.status_code == 409
         assert len(set(posts)) == 2 and len(posts) == 2
         assert await BalanceTransaction.all().count() == 2

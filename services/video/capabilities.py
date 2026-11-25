@@ -402,7 +402,7 @@ PROTOCOL_CAPABILITIES = {
     },
     ImageApiProtocol.novelvids: {
         kind: replace(caps, api_protocol=ImageApiProtocol.novelvids, supports_auto_duration=False,
-                      supports_temporary_file_upload=True, supports_audio_data_uri=True, output_formats=("mp4",))
+                      supports_temporary_file_upload=True, supports_audio_data_uri=False, output_formats=("mp4",))
         for kind, caps in CAPABILITIES.items() if kind != VideoGenerationModelTypeEnum.openai_video
     },
 }

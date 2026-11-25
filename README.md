@@ -34,7 +34,7 @@ uv run uvicorn main:app --host 127.0.0.1 --port 9000
 
 ## 临时模型素材
 
-用户自有 HTTPS 地址可直接交给供应商，Base64 data URL 可随请求发送。只在渠道需要可读取地址时暂存参考素材。上传接口返回账户私有的 `media_ref`，工作台和 SDK 应将它传给生成接口。头像独立保存；小说和作品文件由工作台保存在本地。
+本地素材通过 `/v1/media/uploads` 申请票据并直传 OSS，工作台和 SDK 将返回的 `media_ref` 填入生成请求。已有公网 HTTPS 地址也可使用。头像独立保存；小说和作品文件由工作台保存在本地。
 
 - 本地模式配置 `PUBLIC_API_BASE_URL=https://你的域名/v1`、两个实例共享的私有 `STUDIO_TEMP_PATH`、稳定的 `STUDIO_TEMP_SIGNING_KEY`（可复用已配置的 `API_KEY_ENCRYPTION_KEY`）。`STUDIO_TEMP_FREE_BYTES` 默认保留 1 GiB 磁盘空间。头像使用公开的 `MEDIA_PATH`。
 - OSS 模式配置 `OSS_PROVIDER=aliyun`、bucket、地域/endpoint 和访问密钥（见 .env.example）。桶需允许签名写入、读取和删除对象，并给 `studio-temporary/v1/` 配置两天生命周期。切换后保留旧存储的位置和访问配置至在途租约清理完成。
@@ -70,7 +70,7 @@ npm run dev
 
 原生接入使用供应商官方路径和 JSON 参数，保留任务 ID、结果、错误正文、状态码及安全的响应头；通道模型使用目录中的 `nv-ID` 或 `X-Cat-Model` 指定。完整路径见 `/v1/agent-guide.md` 和目录的 `native_api`。根路径与 `/v1` 下的同名原生路径均可使用。
 
-临时上传规则保持：`/v1/media/uploads` 申请直传，文件直传 OSS 后使用 HTTPS URL 调用；图片编辑可用受限文件表单，通用视频创建也可上传单张参考图。普通 JSON 请求禁止 data URL 或内联媒体。OpenAI／OpenRouter 图片上游必须支持 URL 结果；返回内联媒体的通道会明确拒绝，不自动上传或转码。
+生成接口只接收不超过 1 MiB 的 JSON。本地文件使用 OSS 上传票据，图片编辑、视频和多模态请求均通过引用传递素材。
 
 生成成功不依赖即时计费成功；异常在 `/v1/requests/{X-Cat-Request-Id}` 查询，已取得用量的结算会重试，缺少可确认用量的进入 review。文本流式调用建议显式 `stream_options.include_usage=true`，平台不替客户端改写此选项。
 

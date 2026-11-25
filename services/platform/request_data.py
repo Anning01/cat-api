@@ -3,78 +3,55 @@ import json
 
 from fastapi import HTTPException, Request
 from pydantic import ValidationError
-from services.platform.inline_media import MAX_INLINE_JSON, decode_media
+
 
 MAX_REQUEST_BYTES = 1024 * 1024
+UPLOAD_HINT = "本地素材请通过 /v1/media/uploads 直传 OSS，然后在生成请求中使用 media_ref。"
 
 
 def reject_inline_media(value):
     if isinstance(value, dict):
+        if any(key in value for key in ("b64_json", "file_data", "inline_data", "inlineData")):
+            raise HTTPException(422, UPLOAD_HINT)
+        if value.get("type") == "base64" and "data" in value:
+            raise HTTPException(422, UPLOAD_HINT)
         for key, child in value.items():
-            if key in {"b64_json", "file_data"} or key == "input_audio" and isinstance(child, dict) and "data" in child:
-                raise HTTPException(422, "Upload media directly to temporary OSS and send its read_url")
+            if key in ("audio", "input_audio") and isinstance(child, dict) and isinstance(child.get("data"), str):
+                raise HTTPException(422, UPLOAD_HINT)
             reject_inline_media(child)
     elif isinstance(value, list):
         for child in value:
             reject_inline_media(child)
-    elif isinstance(value, str) and value.lstrip().lower().startswith("data:"):
-        raise HTTPException(422, "Inline media is not accepted; use temporary OSS URLs")
+    elif isinstance(value, str) and value.lstrip()[:5].lower() == "data:":
+        raise HTTPException(422, UPLOAD_HINT)
 
 
-def validate_media_inputs(value, field=""):
-    """Return the encoded media length so metadata keeps its independent 1 MiB limit."""
-    if isinstance(value, dict):
-        if field == "input_audio" and {"data", "format"} <= value.keys():
-            mime = {"wav":"audio/wav", "mp3":"audio/mpeg"}.get(value["format"]) if isinstance(value["format"], str) else None
-            encoded = value["data"]
-            if not isinstance(encoded, str) or not mime:
-                raise HTTPException(422, "input_audio 需要有效的音频格式和 Base64 数据")
-            try:
-                decode_media("data:" + mime + ";base64," + encoded, "audio")
-            except ValueError as error:
-                raise HTTPException(422, str(error)) from None
-            return len(encoded)
-        if "file_data" in value or "b64_json" in value:
-            raise HTTPException(422, "请在媒体输入字段中使用 Base64 data URL")
-        return sum(validate_media_inputs(child, name) for name, child in value.items())
-    if isinstance(value, list):
-        return sum(validate_media_inputs(child, field) for child in value)
-    if isinstance(value, str) and value.lstrip().lower().startswith("data:"):
-        if (field not in {"url", "image_url", "image", "input_reference", "first_frame_image", "last_frame_image"}
-                and not field.endswith("_url") and not field.startswith(("ref_image_", "ref_audio_"))):
-            raise HTTPException(422, "Base64 仅支持媒体输入字段")
-        try:
-            decode_media(value)
-        except ValueError as error:
-            raise HTTPException(422, str(error)) from None
-        return len(value)
-    return 0
-
-
-async def bounded_json_body(request: Request, *, allow_form=False):
+async def bounded_json_body(request: Request):
     if request.method not in {"POST", "PUT", "PATCH"}:
         return
     content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
-    if allow_form and content_type == "multipart/form-data":
-        return  # Authenticate in the endpoint before reading a bounded file body.
+    if content_type == "multipart/form-data":
+        raise HTTPException(422, UPLOAD_HINT)
     if content_type != "application/json":
-        raise HTTPException(400, "Send JSON with media URLs; request a direct upload at /v1/media/uploads")
+        raise HTTPException(400, "生成接口需要 JSON。" + UPLOAD_HINT)
     length = request.headers.get("content-length")
-    if length and length.isdigit() and int(length) > MAX_INLINE_JSON:
-        raise HTTPException(413, "JSON 请求超过 16 MiB，请使用临时上传或 HTTPS 地址")
+    if length and length.isdigit() and int(length) > MAX_REQUEST_BYTES:
+        raise HTTPException(413, "JSON 请求上限为 1 MiB。" + UPLOAD_HINT)
     body = bytearray()
     async for chunk in request.stream():
-        if len(body) + len(chunk) > MAX_INLINE_JSON:
-            raise HTTPException(413, "JSON 请求超过 16 MiB，请使用临时上传或 HTTPS 地址")
+        if len(body) + len(chunk) > MAX_REQUEST_BYTES:
+            raise HTTPException(413, "JSON 请求上限为 1 MiB。" + UPLOAD_HINT)
         body.extend(chunk)
     request._body = bytes(body)
     try:
         data = json.loads(body)
-    except ValueError:
+    except (ValueError, RecursionError):
         raise HTTPException(400, "Request body must be valid JSON") from None
-    encoded_size = validate_media_inputs(data)
-    if len(body) - encoded_size > MAX_REQUEST_BYTES:
-        raise HTTPException(413, "JSON metadata exceeds 1 MB")
+    try:
+        reject_inline_media(data)
+    except RecursionError:
+        raise HTTPException(400, "JSON nesting is too deep") from None
+    request._json = data
 
 
 def validated_body(schema, values):
@@ -86,7 +63,7 @@ def validated_body(schema, values):
         raise HTTPException(422, f"{field}: {detail['msg']}") from None
 
 
-def sdk_request_schema(model, *, multipart=False, video_file=False):
+def sdk_request_schema(model):
     schema = model.model_json_schema()
     definitions = schema.pop("$defs", {})
     def inline(value):
@@ -98,20 +75,4 @@ def sdk_request_schema(model, *, multipart=False, video_file=False):
             return [inline(item) for item in value]
         return value
     content = {"application/json":{"schema":inline(schema)}}
-    if video_file:
-        for key in ("duration","resolution","aspect_ratio"):
-            schema["properties"][key].pop("default", None)
-            schema["properties"][key]["description"] = "省略时使用所选视频渠道的默认规格"
-        properties = {k: v for k, v in schema["properties"].items() if k in {"model", "prompt", "seconds", "size"}}
-        properties["input_reference"] = {"type": "string", "format": "binary"}
-        content["multipart/form-data"] = {"schema": {"type": "object", "properties": properties, "required": ["prompt"]}}
-    if multipart:
-        file_schema = inline(schema)
-        file_schema['properties']['image'] = {'type':'array','minItems':1,'maxItems':16,
-            'items':{'type':'string','format':'binary'}}
-        file_schema['properties']['mask'] = {'type':'string','format':'binary','description':'可选 PNG 蒙版'}
-        for key in ('images','input_references'):
-            file_schema['properties'].pop(key,None)
-        file_schema['required'] = list(dict.fromkeys([*file_schema.get('required',[]),'image']))
-        content['multipart/form-data'] = {'schema':file_schema}
     return {"requestBody":{"required":True, "content":content}}

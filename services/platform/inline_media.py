@@ -25,11 +25,3 @@ def decode_media(value, kind=None):
     if mime in signatures and not data.startswith(signatures[mime]):
         raise ValueError("Base64 媒体内容与声明格式不匹配")
     return mime, data
-
-
-def media_input(value, kind=None):
-    if isinstance(value, str) and value.startswith("data:"):
-        decode_media(value, kind)
-        return value
-    from services.platform.images import media_url
-    return media_url(value)

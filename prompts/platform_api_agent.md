@@ -45,7 +45,7 @@ for model in client.models.list().data:
 
 ## 临时素材：POST /media/uploads
 
-用户已有的 HTTPS 地址和带 MIME 的 Base64 data URL 可随生成请求提交。只有供应商需要拉取本地媒体时才申请临时上传。票据按账户限额管理，客户端按返回地址直传至配置的存储。
+生成请求使用媒体引用或已有公网 HTTPS 地址。本地文件先申请 OSS 临时上传。票据按账户限额管理，客户端按返回地址直传至配置的存储。
 
 ```python
 import base64
@@ -75,7 +75,7 @@ def upload_reference(path: str, content_type: str) -> str:
 reference_url = upload_reference("reference.png", "image/png")
 ```
 
-upload_url 的 PUT 授权有效期为 10 分钟。上传时只发送票据内的 headers。将 media_ref 原样填入生成请求的媒体字段，它只能由同一账户使用。临时文件最长保留 48 小时，过期后重新上传。普通 JSON 上限 1 MiB，带 Base64 的媒体请求总上限 16 MiB。`/images/edits` 和 `/videos` 还支持文件表单。
+upload_url 的 PUT 授权有效期为 10 分钟。上传时只发送票据内的 headers。将 media_ref 原样填入生成请求的媒体字段，它只能由同一账户使用。临时文件最长保留 48 小时，过期后重新上传。生成接口的 JSON 上限为 1 MiB。图片、音频和视频文件均通过 OSS 直传。
 
 ## 对话：POST /chat/completions
 
@@ -135,11 +135,9 @@ image = client.images.generate(
 
 `POST /images/edits` 接收官方 URL JSON：`model`、`prompt`、`images: [{"image_url":"https://..."}]`，可选 `mask: {"image_url":"https://..."}`。旧 `image` URL 数组仍兼容。OpenRouter 原生接口为 `POST /images`，参考图使用 `input_references: [{"type":"image_url","image_url":{"url":"https://..."}}]`。数量 n 原样传递，由上游校验；JSON 模式不接收 file_id 或内联图片。
 
-OpenAI 兼容 GPT Image 请求可直接使用原生像素尺寸，例如 `1536x864`。平台按官方像素限制校验，不再要求尺寸出现在工作台预设白名单；像素 size 优先于额外的 aspect_ratio 提示，原样转发，不擅自改图像尺寸。两边须为 16 的倍数、最大边不超过 3840、长短边比不超过 3、总像素在 655360 至 8294400。1K/2K/4K 费用仍沿用已有短边档位及后台价格，不新增费率。URL JSON 和文件表单使用同一尺寸校验。
+OpenAI 兼容 GPT Image 请求可直接使用原生像素尺寸，例如 `1536x864`。平台按官方像素限制校验，不再要求尺寸出现在工作台预设白名单；像素 size 优先于额外的 aspect_ratio 提示，原样转发，不擅自改图像尺寸。两边须为 16 的倍数、最大边不超过 3840、长短边比不超过 3、总像素在 655360 至 8294400。1K/2K/4K 费用仍沿用已有短边档位及后台价格，不新增费率。
 
-OpenAI 兼容图片渠道的 `/images/edits` 同时接收官方 SDK 的 multipart 文件表单：`image` / `image[]` 可传 1 至 16 张 PNG/JPEG/WebP，`mask` 可选且须为 PNG；单文件不超过 50 MiB，请求合计不超过 64 MiB。先鉴权，再解析受限文件；文件只在请求期间转发，不进入账务记录，幂等签名包含文件内容摘要。公开别名映射到供应商 model，文件请求转发到同协议的上游 `/images/edits`；不把文件请求发送给只接收 URL 的 Ark/OpenRouter 渠道。
-
-文件编辑的 `response_format` 支持 `url`（默认）或 `b64_json`，原样保留供应商结果；Base64 模式响应上限 64 MiB。图片文件表单与 JSON 内联输入分别提交。沿用实际图片张数、参考图数、规格费率快照和一次性结算；缺少可靠计费规格时保留结果，账单待核对，不自动重提生成。
+OpenAI 图片编辑的 `response_format` 支持 `url`（默认）或 `b64_json`，原样保留供应商结果；Base64 模式响应上限 64 MiB。沿用实际图片张数、参考图数、规格费率快照和一次性结算；缺少可靠计费规格时保留结果，账单待核对，不自动重提生成。
 
 ## 通用视频生成与查询
 
@@ -163,7 +161,7 @@ else:
     print(video.error)
 ```
 
-HTTPS 参考图可放在 extra_body.input_reference。文件可直接传给 SDK 的 input_reference，支持 PNG、JPEG 和 WebP。纯文生视频省略参考图。
+参考图先直传 OSS，将返回的 media_ref 或已有公网 HTTPS 地址填入 extra_body.input_reference。纯文生视频省略参考图。
 
 返回标准 Video 对象：id、object="video"、model、created_at、completed_at、seconds、size、status、progress、error。`GET /videos/{id}/content` 可读取视频字节，HEAD 可读取媒体头。历史任务保留跳转下载。当前不提供 thumbnail/spritesheet。
 

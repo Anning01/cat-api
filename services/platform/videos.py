@@ -38,8 +38,8 @@ class Reference(BaseModel):
     url: str
     @model_validator(mode="after")
     def validate_input(self):
-        from services.platform.inline_media import media_input
-        self.url = media_input(self.url, self.type)
+        from services.platform.images import media_url
+        self.url = media_url(self.url)
         return self
 
 class VideoRequest(BaseModel):
@@ -242,19 +242,11 @@ async def submit_video(ctx, request, key, *, image=None):
             if await known_upload_bytes(ctx.user.id, [ref.url for ref in refs]) > 50 * 1024**2:
                 raise VideoProviderError(f"{REFERENCE_MEDIA_SIZE_MESSAGE}（{REFERENCE_MEDIA_SIZE_ERROR}）")
         from services.platform.temporary_media import resolve_reference
-        from services.platform.inline_media import decode_media
         from services.platform.video_uploads import store_video_reference
         for ref in refs:
             ref.url = await resolve_reference(ctx.user.id, ref.url)
-            if ref.url.startswith("data:") and config.api_protocol in {"openai_video", "autodl", "guangying_fixed"}:
-                mime, content = decode_media(ref.url, ref.type)
-                if config.api_protocol == "openai_video" and len(refs) == 1 and ref.type == "image" and ref.role == "reference":
-                    image = ("reference." + mime.split("/")[1], content, mime)
-                    continue
-                ref.url = await store_video_reference(ctx.user.id, ("reference", content, mime))
         frames = {r.role:r.url for r in refs if r.role!="reference"}
-        types = {kind:[r.url for r in refs if r.type==kind and r.role=="reference"
-                       and not (image and r.url.startswith("data:"))] for kind in ("image","video","audio")}
+        types = {kind:[r.url for r in refs if r.type==kind and r.role=="reference"] for kind in ("image","video","audio")}
         if image and config.api_protocol not in {"openai_video", "router_team"}:
             types["image"] = [await store_video_reference(ctx.user.id, image)]
         provider_options = {}

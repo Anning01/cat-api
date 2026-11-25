@@ -159,14 +159,9 @@ async def images(request: Request, body: ImageRequest, ctx: AuthContext = Depend
     return await generate_platform_image(ctx, body, idempotency_key, legacy_studio=await legacy_studio_images(request, ctx))
 
 
-@developer_router.post("/images/edits", summary="使用 URL 或标准文件表单编辑图片", openapi_extra=sdk_request_schema(ImageRequest, multipart=True))
+@developer_router.post("/images/edits", summary="使用 OSS 引用或 HTTPS 地址编辑图片", openapi_extra=sdk_request_schema(ImageRequest))
 async def edit_images(request: Request, ctx: AuthContext = Depends(developer_identity),
     idempotency_key: Annotated[str | None, Header(min_length=1, max_length=200)] = None):
-    if request.headers.get('content-type','').split(';',1)[0].lower() == 'multipart/form-data':
-        from services.platform.image_uploads import parse_image_edit
-        body, files = await parse_image_edit(request)
-        return await generate_platform_image(ctx, body, idempotency_key, edit=True, upload_files=files,
-            legacy_studio=await legacy_studio_images(request, ctx))
     body = validated_body(ImageRequest, await request.json())
     if not body.reference_urls():
         raise HTTPException(400, "image must contain reference URLs uploaded to temporary storage")
@@ -185,16 +180,11 @@ async def temporary_upload(body: UploadSpec, response: Response, ctx: AuthContex
     return await issue_upload(ctx.user.id, body)
 
 
-@developer_router.post("/videos", summary="提交视频生成", openapi_extra=sdk_request_schema(VideoRequest, video_file=True))
+@developer_router.post("/videos", summary="提交视频生成", openapi_extra=sdk_request_schema(VideoRequest))
 async def create_video(request: Request, response: Response, ctx: AuthContext = Depends(developer_identity),
     idempotency_key: Annotated[str | None, Header(min_length=1, max_length=200)] = None):
-    image = None
-    if request.headers.get("content-type", "").partition(";")[0].lower() == "multipart/form-data":
-        from services.platform.video_uploads import parse_video_form
-        body, image = await parse_video_form(request, VideoRequest)
-    else:
-        body = validated_body(VideoRequest, await request.json())
-    job = await submit_video(ctx, body, idempotency_key, image=image)
+    body = validated_body(VideoRequest, await request.json())
+    job = await submit_video(ctx, body, idempotency_key)
     response.headers["X-Request-Id"] = job["id"]
     response.headers["Cache-Control"] = "no-store"
     return job

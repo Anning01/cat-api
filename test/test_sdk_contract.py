@@ -346,7 +346,7 @@ async def test_video_uses_uploaded_url_and_rejects_invalid_file(sdk_api):
     app = FastAPI()
     app.include_router(developer_router, prefix="/v1")
     body = app.openapi()["paths"]["/v1/videos"]["post"]["requestBody"]["content"]
-    assert set(body) == {"application/json", "multipart/form-data"}
+    assert set(body) == {"application/json"}
     assert body["application/json"]["schema"]["properties"]["seconds"]["anyOf"][0]["type"] == "string"
 
 
@@ -726,29 +726,21 @@ async def test_image_watermark_defaults_only_for_ark(sdk_api, protocol, explicit
     assert bool(sent.get(reference_field)) is with_reference
 
 
-async def test_inline_media_reaches_model_without_lease_or_database_payload(sdk_api):
+@pytest.mark.parametrize("endpoint,body", [
+    ("images/generations", {"image": ["data:image/png;base64,iVBORw0KGgo="]}),
+    ("chat/completions", {"messages": [{"role": "user", "content": [
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}}]}]}),
+    ("responses", {"input": [{"type": "input_file", "file_data": "YWJj"}]}),
+    ("api/v3/contents/generations/tasks", {"content": [{"inlineData": {"data": "YWJj"}}]}),
+    ("api/v3/auc/bigmodel/submit", {"audio": {"data": "YWJj"}}),
+])
+async def test_inline_media_rejected_before_billing_or_forwarding(sdk_api, endpoint, body):
     from auth.models import StudioMediaLease
-    sdk, state, models = sdk_api
-    image = models[1]
-    await AiModelConfig.filter(id=image.id).update(api_protocol="volcengine_ark", image_model_type="seedream_5_pro",
-        pricing={"type":"image", "prices":{"1.5K":0.2}})
-    source = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"a"*4096).decode()
-    await sdk.images.generate(model=image.model, prompt="reference", extra_body={"image":[source]})
-    assert json.loads(state.seen[-1].content)["image"] == [source]
-    assert not await StudioMediaLease.exists()
-    rows = await PlatformCallReceipt.all().values()
-    assert rows and source[40:240] not in str(rows)
-
-
-async def test_inline_vision_chat_persists_only_receipt_metadata(sdk_api):
-    from auth.models import StudioMediaLease
-    sdk, state, (model, _, _) = sdk_api
-    raw = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"test"*300).decode()
-    await sdk.chat.completions.create(model=model.model, messages=[{"role":"user","content":[
-        {"type":"image_url","image_url":{"url":raw}}]}])
-    assert json.loads(state.seen[-1].content)["messages"][0]["content"][0]["image_url"]["url"] == raw
-    assert not await StudioMediaLease.exists()
-    assert raw[40:160] not in str(await PlatformCallReceipt.all().values())
+    sdk, state, _ = sdk_api
+    response = await sdk._client.post("https://platform.example/v1/" + endpoint, json=body,
+        headers={"Authorization": "Bearer " + sdk.api_key})
+    assert response.status_code == 422 and "/v1/media/uploads" in response.text
+    assert not state.seen and not await StudioMediaLease.exists() and not await PlatformCallReceipt.exists()
 
 
 async def test_job_and_receipt_reject_encoded_payloads_at_write_boundary(sdk_api):

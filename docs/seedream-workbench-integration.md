@@ -8,7 +8,7 @@
 
 | 项目 | 软件端动作 | 兼容说明 |
 | --- | --- | --- |
-| 临时素材上传 | 保持现有流程 | `/v1/media/uploads` 申请票据，文件直传 OSS，随后传 `read_url`。不接收 multipart、Base64 文件、data URL 或内联媒体 |
+| 临时素材上传 | 保持现有流程 | `/v1/media/uploads` 申请票据，文件直传 OSS，随后传 `media_ref`。不接收 multipart、Base64 文件、data URL 或内联媒体 |
 | 原有文本和图片调用 | 保留接口，核对返回和回执解析 | `/v1/chat/completions`、`/v1/images/generations` 继续提供；成功正文和扩展字段不再人为重组 |
 | 平台账务回执 ID | 优先读取 `X-Cat-Request-Id` | 仍保留 `X-Novelvids-Request-Id`。不能只拿供应商的 `X-Request-Id` 当平台 UUID |
 | 文本流式用量 | 确认请求明确带 `stream_options.include_usage=true` | 平台不再替客户端强制添加。缺少可确认用量时，生成内容仍返回，账单进入核对 |

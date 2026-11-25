@@ -34,7 +34,7 @@ def parameter(name, description, *, required=False, location="header", schema=No
 
 DESCRIPTION = """Cat API 模型开放平台。供应商原生请求与结果按原格式转发，仅进行鉴权、模型路由、任务归属与计费。
 
-**媒体输入**可使用自己的 HTTPS 地址或带 MIME 的 Base64 data URL。需要暂存时调用 `/media/uploads` 并 PUT 文件，在生成参数中使用返回的 `media_ref`。该引用限本账户使用，最长保留两天。
+**媒体输入**支持 OSS 素材引用及已有的公网 HTTPS 链接。本地文件先调用 `/media/uploads` 并 PUT 文件，在生成参数中使用返回的 `media_ref`。该引用限本账户使用，最长保留两天。
 
 **身份与编号**：平台 Key 填入 Bearer；部分原生协议也支持对应鉴权头。使用目录 `nv-ID` 或 `X-Cat-Model` 选择通道。供应商 `X-Request-Id` 和任务 ID 保留，平台账务 UUID 位于 `X-Cat-Request-Id`（兼容 `X-Novelvids-Request-Id`）。
 
@@ -172,7 +172,7 @@ def public_openapi(app):
         folder = "图片/OpenRouter" if path == "/images" else folders.get(tag, tag)
         operation.update(operationId=identifier,tags=[folder],summary=title,security=[{"PlatformKey":[]}])
         operation["x-apifox-folder"] = folder
-        operation["description"] = "原生扩展字段保留。除图片编辑与通用视频创建的文件表单外，生成接口支持媒体 HTTPS URL、media_ref 和媒体字段的 Base64 data URL。普通 JSON 上限 1 MiB，内联媒体 JSON 总上限 16 MiB。"
+        operation["description"] = "生成请求使用 JSON，上限 1 MiB。请先将本地素材直传 OSS，再提交 media_ref 或已有公网 HTTPS 地址。"
         if path == "/media/uploads":
             operation["description"] = (
                 "1. 使用 Cat API Key 提交文件的 MIME 类型、实际字节数和内容 MD5 的 Base64 摘要，账户余额须大于零。\n"
@@ -181,7 +181,7 @@ def public_openapi(app):
                 "已有公网 HTTPS 地址可直接用于生成。旧客户端需将读取票据的字段从 read_url 改为 media_ref。"
             )
         if tag == "视频兼容":
-            operation["description"] = "通用视频接口，支持 JSON 和单图文件表单，使用平台 UUID 查询和下载。"
+            operation["description"] = "通用视频接口，使用不超过 1 MiB 的 JSON 提交 OSS 素材引用或公网 HTTPS 地址，使用平台 UUID 查询和下载。"
         parameters = operation.setdefault("parameters", [])
         if method == "post" and path != "/media/uploads":
             if not any(p.get("name", "").lower()=="idempotency-key" for p in parameters):
@@ -210,7 +210,7 @@ def public_openapi(app):
             responses["307"] = {"description":"跳转至供应商视频下载地址，不通过平台转发视频文件。",
                 "headers":{"Location":{"description":"成片 URL","schema":url},**deepcopy(headers)}}
         if path == "/images/edits":
-            operation['description'] += '\nOpenAI 兼容图片渠道支持 multipart 文件表单：1 至 16 张 image/image[]，可选一张 PNG mask；单文件最多 50 MiB，总请求最多 64 MiB。支持 response_format=url 或 b64_json；其他协议仅支持 JSON URL。文件先鉴权后解析，按文件摘要保证幂等，不自动重提。'
+            operation['description'] += '\nOpenAI 兼容图片编辑支持将 response_format 设为 url 或 b64_json。'
         if path == "/responses":
             operation["description"] += "\n原生 Responses 透传；text.format 支持范围由上游决定，包含 json_schema；终态为 response.completed / response.incomplete / response.failed，不添加 [DONE]。"
             responses["200"]["content"]["text/event-stream"] = {"schema":string("供应商原始 Responses SSE 事件")}

@@ -80,7 +80,7 @@ class DeveloperRoute(APIRoute):
         async def handle(request: Request) -> Response:
             try:
                 from services.platform.request_data import bounded_json_body
-                await bounded_json_body(request, allow_form=self.path.endswith(('/images/edits', '/videos')))
+                await bounded_json_body(request)
                 return await handler(request)
             except UpstreamResponseError as error:
                 logger.warning("Developer API upstream rejected request path=%s status=%d request_id=%s upstream_request_id=%s",
