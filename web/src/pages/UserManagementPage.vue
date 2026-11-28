@@ -22,6 +22,15 @@ import type { SingleResponse } from '@/types'
 const auth = useAuthStore()
 const data = ref<AccountTable>(), stats = ref<{user_count: number; balance_total: string; user_total_cost: number}>()
 const page = ref(1), pageSize = ref(20), search = ref(''), status = ref(''), role = ref(''), balanceView = ref(''), orderBy = ref('-id')
+const sortOptions = computed(() => [
+  { value: '-id', label: tr('最新创建优先') },
+  { value: 'id', label: tr('最早创建优先') },
+  { value: '-balance', label: tr('可用余额从高到低') },
+  { value: 'balance', label: tr('可用余额从低到高') },
+  { value: '-total_cost', label: tr('累计消费从高到低') },
+  { value: 'total_cost', label: tr('累计消费从低到高') },
+])
+const displayedOrderBy = ref('')
 const loading = ref(false), error = ref(''), compact = ref(true)
 const columns = ref({ role: true, status: true, created: true })
 const selectedId = ref<number>(), detail = ref<AccountRow>(), detailData = ref<AccountTable>(), detailTab = ref('profile'), detailPage = ref(1), detailBusy = ref(false), detailError = ref('')
@@ -38,7 +47,11 @@ async function load() {
   for (const [key,value] of Object.entries({search:search.value, status:status.value, role:role.value, balance_view:balanceView.value})) if(value) query.set(key,value)
   try {
     const [result, totals] = await Promise.all([request<SingleResponse<AccountTable>>('/users?'+query), request<SingleResponse<NonNullable<typeof stats.value>>>('/users/stats').catch(() => null)])
-    if(current === epoch) { data.value = result.data; stats.value = totals?.data }
+    if (current === epoch) {
+      data.value = result.data
+      displayedOrderBy.value = orderBy.value
+      stats.value = totals?.data
+    }
   } catch(cause) { if(current === epoch) error.value = cause instanceof Error ? cause.message : tr('加载失败') }
   finally { if(current === epoch) loading.value = false }
 }
@@ -98,7 +111,15 @@ const creditDialog=ref<InstanceType<typeof AppDialog>>()
     </form></search>
     <p v-if="error" role="alert" class="console-error">{{ error }} <button @click="load">{{ tr('重试') }}</button></p>
     <section class="console-table-panel" :aria-busy="loading" :class="{'is-compact':compact}">
-      <div class="console-table-toolbar"><h2>{{ tr('用户列表') }} <small>{{ tr('共 {p0} 位用户',{p0:data?.pagination.total??'—'}) }}</small></h2><div class="console-inline"><AppSelect v-model="orderBy" :ariaLabel="tr('排序')" :options="[{value:'-id',label:tr('最新创建优先')},{value:'id',label:tr('最早创建优先')}]" @update:model-value="apply"/><details class="table-column-settings"><summary><SlidersHorizontal :size="15"/>{{ tr('列设置') }}</summary><div><label :for="formId+'-column-'+field.key" v-for="field in [{key:'role' as const,label:'身份'},{key:'status' as const,label:'状态'},{key:'created' as const,label:'创建时间'}]" :key="field.key"><input name="field-4" :id="formId+'-column-'+field.key" v-model="columns[field.key]" type="checkbox"/>{{ tr(field.label) }}</label></div></details><label :for="formId+'-field-5'" class="console-check"><input name="field-5" :id="formId+'-field-5'" v-model="compact" type="checkbox"/>{{ tr('紧凑') }}</label></div></div>
+      <div class="console-table-toolbar"><h2>{{ tr('用户列表') }} <small>{{ tr('共 {p0} 位用户',{p0:data?.pagination.total??'—'}) }}</small></h2><div class="console-inline">
+        <AppSelect v-model="orderBy" :ariaLabel="tr('排序')" :options="sortOptions" menu-width="auto" @update:model-value="apply"/>
+        <span class="visually-hidden" role="status">
+          <template v-if="data">{{ tr('当前排序：{p0}，共 {p1} 位用户', {
+            p0: sortOptions.find(option => option.value === displayedOrderBy)?.label,
+            p1: data.pagination.total,
+          }) }}</template>
+        </span>
+        <details class="table-column-settings"><summary><SlidersHorizontal :size="15"/>{{ tr('列设置') }}</summary><div><label :for="formId+'-column-'+field.key" v-for="field in [{key:'role' as const,label:'身份'},{key:'status' as const,label:'状态'},{key:'created' as const,label:'创建时间'}]" :key="field.key"><input name="field-4" :id="formId+'-column-'+field.key" v-model="columns[field.key]" type="checkbox"/>{{ tr(field.label) }}</label></div></details><label :for="formId+'-field-5'" class="console-check"><input name="field-5" :id="formId+'-field-5'" v-model="compact" type="checkbox"/>{{ tr('紧凑') }}</label></div></div>
       <ConsoleTable :caption="tr('用户列表')"><thead><tr><th scope="col">{{ tr('用户') }}</th><th scope="col" v-if="columns.role">{{ tr('身份') }}</th><th scope="col" v-if="columns.status">{{ tr('状态') }}</th><th scope="col" class="numeric">{{ tr('可用余额') }}</th><th scope="col" class="numeric">{{ tr('累计消费') }}</th><th scope="col" v-if="columns.created">{{ tr('创建时间') }}</th><th scope="col" class="row-actions">{{ tr('操作') }}</th></tr></thead><tbody><tr v-for="row in data?.items" :key="row.id" :class="{'is-selected':selectedId===row.id}"><th scope="row"><button class="user-cell" @click="showUser(row)"><AppAvatar :name="row.nickname||row.username"/><span><strong>{{ row.nickname||row.username }}</strong><small>{{ row.username }} · #{{ row.id }}</small></span></button></th><td v-if="columns.role">{{ tr(row.is_super_admin?'超级管理员':'普通用户') }}</td><td v-if="columns.status"><AppStatusBadge :tone="row.status===1?'success':'neutral'">{{ tr(row.status===1?'正常':'已停用') }}</AppStatusBadge></td><td class="numeric" :class="{'text-danger':Number(row.balance)<0}">¥ {{ money(row.balance) }} <AppStatusBadge v-if="Number(row.balance)>=0&&Number(row.balance)<=10" tone="warning">{{ tr('低余额') }}</AppStatusBadge></td><td class="numeric">¥ {{ money(row.total_cost) }}</td><td v-if="columns.created" class="date-cell">{{ dateTime(row.created_at) }}</td><td class="row-actions"><AppButton size="sm" @click="showUser(row)">{{ tr('详情') }}</AppButton><AppButton size="sm" @click="startCredit(row)">{{ tr('增额') }}</AppButton><AppActionMenu v-if="!row.is_super_admin&&row.id!==auth.user?.id" :items="[{value:'status',label:row.status===1?'停用':'启用',danger:row.status===1}]" @select="toggle(row)"/></td></tr></tbody></ConsoleTable>
       <div v-if="loading&&!data" class="console-skeleton" role="status">{{ tr('正在加载…') }}<i v-for="n in 5" :key="n"/></div><div v-else-if="!data?.items.length&&!error" class="console-empty"><h3>{{ tr(search||status||role||balanceView?'未找到符合条件的用户':'还没有用户') }}</h3><p>{{ tr('可以调整筛选条件，或等待用户完成登录。') }}</p><AppButton variant="secondary" @click="reset">{{ tr('清空筛选') }}</AppButton></div>
       <AppPagination :page="page" :page-size="pageSize" :total="data?.pagination.total??0" @page-change="value=>{page=value;load()}" @size-change="value=>{pageSize=value;apply()}"/>

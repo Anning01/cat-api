@@ -3,15 +3,52 @@
 from utils.messages import localized_message
 
 from decimal import Decimal
+from weakref import WeakSet
 
 from fastapi import HTTPException
-from tortoise.expressions import Q, Subquery
-from tortoise.functions import Sum
+from tortoise.expressions import Q, RawSQL, Subquery
+from tortoise.functions import Coalesce, Sum
 from tortoise.transactions import in_transaction
 
 from auth.security import hash_password
-from auth.models import User, UserWallet, UserAdminEvent, QilingIdentity, PlatformApiKey, UserSession, BalanceTransaction
+from auth.models import User, UserWallet, UserAdminEvent, QilingIdentity, PlatformApiKey, UserSession
 from services.balance import total_consumed
+
+
+_sqlite_amount_connections = WeakSet()
+
+
+class _SQLiteConsumed:
+    def __init__(self):
+        self.total = Decimal(0)
+
+    def step(self, change_amount):
+        self.total -= Decimal(change_amount)
+
+    def finalize(self):
+        return str(self.total)
+
+
+async def _user_list_amounts():
+    db = User._meta.db
+    balance = Coalesce("userwallets__balance", 0)
+    cost_sum = "-SUM(change_amount)"
+    collation = ""
+    if db.capabilities.dialect == "sqlite":
+        # SQLite stores DecimalField as text; NUMERIC would lose low digits on large balances.
+        # aiosqlite exposes neither registration publicly, so run both on its connection thread.
+        async with db.acquire_connection() as connection:
+            if connection not in _sqlite_amount_connections:
+                await connection._execute(connection._conn.create_aggregate, "cat_consumed", 1, _SQLiteConsumed)
+                await connection._execute(connection._conn.create_collation, "cat_decimal",
+                                          lambda left, right: int(Decimal(left).compare(Decimal(right))))
+                _sqlite_amount_connections.add(connection)
+        cost_sum = "cat_consumed(change_amount)"
+        collation = " COLLATE cat_decimal"
+        balance = RawSQL("COALESCE((SELECT balance FROM userwallet WHERE user_id = users.id), '0')" + collation)
+    cost = (f"(SELECT COALESCE({cost_sum}, '0') FROM account_balance_transactions "
+            "WHERE account_user_id = users.id AND type = 'consume')")
+    return {"balance": balance, "total_cost": RawSQL(cost + collation)}
 
 
 class UserController:
@@ -35,12 +72,10 @@ class UserController:
             base = base.filter(Q(id__in=Subquery(UserWallet.filter(balance__lte=10).values("user_id"))) |
                                ~Q(id__in=Subquery(UserWallet.all().values("user_id"))))
         total = await base.count()
-        users = await base.order_by(order_by).offset((page - 1) * page_size).limit(page_size)
-        ids = [user.id for user in users]
-        costs = {row["account_user_id"]: -Decimal(row["total"] or 0) for row in
-                 await BalanceTransaction.filter(account_user_id__in=ids, type='consume').group_by("account_user_id").annotate(total=Sum("change_amount")).values("account_user_id", "total")}
-        balances = {row["user_id"]: row["balance"] for row in await UserWallet.filter(user_id__in=ids).values("user_id", "balance")}
-        return {"items": [self.user_row(user, balances.get(user.id, Decimal("0")), costs.get(user.id, Decimal("0"))) for user in users],
+        accounts = base.annotate(**await _user_list_amounts())
+        ordering = (order_by,) if order_by in ("id", "-id") else (order_by, "-id")
+        users = await accounts.order_by(*ordering).offset((page - 1) * page_size).limit(page_size)
+        return {"items": [self.user_row(user, Decimal(user.balance), Decimal(user.total_cost)) for user in users],
                 "pagination": {"total": total, "page": page, "page_size": page_size,
                                "pages": (total + page_size - 1) // page_size}}
 

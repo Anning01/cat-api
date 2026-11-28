@@ -26,6 +26,63 @@ async def test_user_filters_apply_before_pagination_and_include_unfunded_account
     assert [row['id'] for row in result['items']] == [low.id]
 
 
+async def test_user_list_sorts_filtered_accounts_by_amount_across_pages(monkeypatch):
+    from main import app
+
+    admin = await User.create(username='admin', is_super_admin=True)
+    high = await User.create(username='high-balance')
+    unfunded = await User.create(username='unfunded')
+    spender = await User.create(username='split-spend')
+    debt = await User.create(username='debt')
+    empty = await User.create(username='empty-wallet')
+    highest = await User.create(username='highest-balance')
+    await User.create(username='disabled', status=0)
+    balances = {
+        high.id: Decimal('987654321000.000001'), highest.id: Decimal('987654321000.000002'),
+        spender.id: 2, debt.id: Decimal('-0.000001'), empty.id: 0,
+    }
+    for user_id, balance in balances.items():
+        await UserWallet.create(user_id=user_id, balance=balance)
+    for user, kind, amount in [
+        (spender, 'consume', '-0.1'), (spender, 'consume', '-0.2'),
+        (debt, 'consume', '-0.3'), (high, 'topup', '100'),
+        (high, 'consume', '-987654321000.000002'), (highest, 'consume', '-987654321000.000001'),
+    ]:
+        await BalanceTransaction.create(
+            account_user_id=user.id, type=kind, change_amount=Decimal(amount), balance_after=0,
+        )
+
+    monkeypatch.setitem(app.dependency_overrides, get_auth_context, lambda: AuthContext(user=admin, is_super_admin=True))
+    costs = {
+        high.id: Decimal('987654321000.000002'), highest.id: Decimal('987654321000.000001'),
+        spender.id: Decimal('0.3'), debt.id: Decimal('0.3'),
+    }
+    expected_orders = {
+        'balance': [debt, empty, unfunded, spender, high, highest],
+        '-balance': [highest, high, spender, empty, unfunded, debt],
+        'total_cost': [empty, unfunded, debt, spender, highest, high],
+        '-total_cost': [high, highest, debt, spender, empty, unfunded],
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+        for order_by, expected in expected_orders.items():
+            for page in range(1, 4):
+                result = (await client.get('/api/users', params={
+                    'role': 'user', 'status': 1, 'order_by': order_by, 'page_size': 2, 'page': page,
+                })).json()
+                assert result['code'] == 0, result
+                data = result['data']
+                assert data['pagination']['total'] == len(expected)
+                expected_page = expected[(page - 1) * 2:page * 2]
+                assert [row['id'] for row in data['items']] == [user.id for user in expected_page]
+                for row in data['items']:
+                    assert Decimal(row['balance']) == balances.get(row['id'], 0)
+                    assert row['total_cost'] == float(costs.get(row['id'], 0))
+
+    result = await user_controller.list_users(1, 20, status=1, role='user', order_by='-total_cost')
+    for row in result['items']:
+        assert row['total_cost'] == costs.get(row['id'], 0)
+
+
 async def test_user_admin_actions_are_audited_without_credentials():
     operator = await User.create(username='operator', is_super_admin=True)
     row = await user_controller.create_user('new-user', 'password-fixture', 'New', operator.id)

@@ -39,10 +39,10 @@ async def list_users(
     _: AuthContext = _SUPER,
     params=Depends(get_list_params),
     search: str | None = Query(default=None, max_length=100),
-    status: Literal[0, 1] | None = None,
+    status: int | None = Query(default=None, ge=0, le=1),
     role: Literal['user', 'admin'] | None = None,
     balance_view: Literal['low', 'negative'] | None = None,
-    order_by: Literal['id', '-id', 'created_at', '-created_at'] = '-id',
+    order_by: Literal['id', '-id', 'created_at', '-created_at', 'balance', '-balance', 'total_cost', '-total_cost'] = '-id',
 ):
     return ResponseSchema(
         data=await user_controller.list_users(params.page, params.page_size, search, status, role, balance_view, order_by)
